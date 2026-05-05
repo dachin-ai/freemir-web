@@ -19,6 +19,27 @@ const { Dragger } = Upload;
 // ─────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────
+/** Excel worksheet names: max 31 chars; cannot contain \\ / ? * [ ] : */
+function sanitizeExcelSheetName(raw) {
+    const s = String(raw ?? '').replace(/[/\\?*[\]:]/g, '_').trim();
+    const base = s || 'Sheet';
+    return base.slice(0, 31);
+}
+
+/** Ensures unique sheet names within one workbook (SheetJS rejects duplicates). */
+function uniqueExcelSheetName(raw, usedNames) {
+    let base = sanitizeExcelSheetName(raw);
+    let name = base;
+    let i = 2;
+    while (usedNames.has(name)) {
+        const suf = `_${i}`;
+        name = (base.slice(0, Math.max(1, 31 - suf.length)) + suf).slice(0, 31);
+        i += 1;
+    }
+    usedNames.add(name);
+    return name;
+}
+
 const fmt = (v) => (v == null ? '—' : Number(v).toLocaleString());
 const fmtPct    = (v) => (v == null ? '—' : `${(Number(v) * 100).toFixed(2)}%`);
 const fmtGrowth = (v) => {
@@ -920,6 +941,7 @@ function SkuBrandTab({ weeks }) {
 
     const handleDownload = () => {
         if (!data.length) { message.warning(t('productPerf.msgNoDataDownload')); return; }
+        try {
         const headers = [
             t('productPerf.excelHdrWeek'), t('productPerf.excelHdrPlatform'), t('productPerf.excelHdrStore'), t('productPerf.excelHdrSku'),
             t('productPerf.excelHdrProductName'), t('productPerf.excelHdrPids'), t('productPerf.excelHdrImpression'), t('productPerf.excelHdrVisitor'),
@@ -936,8 +958,13 @@ function SkuBrandTab({ weeks }) {
         ws['!freeze'] = { xSplit: 0, ySplit: 1 };
         const wb = XLSX.utils.book_new();
         const tag = `${filters.week || 'All'} ${filters.platform || 'All'}`;
-        XLSX.utils.book_append_sheet(wb, ws, tag.slice(0, 31));
+        const sheetUsed = new Set();
+        XLSX.utils.book_append_sheet(wb, ws, uniqueExcelSheetName(tag, sheetUsed));
         XLSX.writeFile(wb, `SKU_Brand_${(filters.week || 'all').replace(/\s/g,'_')}_${filters.platform || 'all'}.xlsx`);
+        } catch (err) {
+            console.error('SKU Brand Excel export failed:', err);
+            message.error(err?.message || String(err) || t('productPerf.msgDownloadExcelFailed'));
+        }
     };
 
     const fetchSkuSummary = async () => {
@@ -1150,7 +1177,206 @@ function ComparisonTab({ weeks }) {
 
     const handleDownload = () => {
         if (!data?.sections?.length) { message.warning(t('productPerf.msgNoDataDownload')); return; }
+        try {
         const wb = XLSX.utils.book_new();
+        const usedSheetNames = new Set();
+        const allSecs = data.sections || [];
+
+        // Sheet 1: UI View (all stores expanded to the right)
+        if (allSecs.length) {
+            const baseSec = allSecs.find(s => String(s.section || '').toLowerCase() === 'all brand') || allSecs[0];
+            const baseRows = enrichAndOrderRows(baseSec.rows);
+            const baseMap = new Map(baseRows.map(r => [r.sku, r]));
+            const skuOrder = [...baseRows.map(r => r.sku)];
+            const seenSku = new Set(skuOrder);
+            allSecs.forEach(sec => {
+                enrichAndOrderRows(sec.rows).forEach(r => {
+                    if (r.sku && !seenSku.has(r.sku)) { seenSku.add(r.sku); skuOrder.push(r.sku); }
+                });
+            });
+
+            const secMaps = allSecs.map(sec => ({
+                sec,
+                label: (() => {
+                    const full = sec.store_name || sec.section || '';
+                    const code = sec.store_code ? String(sec.store_code).trim() : '';
+                    if (code && full && !full.toLowerCase().includes(code.toLowerCase())) return `${code} - ${full}`;
+                    return full || code || 'Section';
+                })(),
+                map: new Map(sec.rows.map(r => [r.sku, r])),
+            }));
+            const pp = (v) => (v != null ? parseFloat((v * 100).toFixed(4)) : null);
+
+            const uiHdrGroupTop = [
+                'Product Information', '', '', '', '', '', '',
+            ];
+            const uiHdrGroupMid = ['', '', '', '', '', '', ''];
+            const uiHdrSub = [
+                t('productPerf.colMark'),
+                t('productPerf.colSku'),
+                t('productPerf.colProduct'),
+                t('productPerf.colLink'),
+                t('productPerf.colHighestGmvStore'),
+                t('productPerf.colHighestImpressionStore'),
+                t('productPerf.colTopSignal'),
+            ];
+            const subCols = [
+                'PIDs', t('productPerf.colImp'), t('productPerf.colClick'), t('productPerf.colVisitor'),
+                t('productPerf.colUnit'), t('productPerf.colGmv'), t('productPerf.colCtrPct'), t('productPerf.colCoPct'),
+            ];
+            secMaps.forEach(({ label }) => {
+                uiHdrGroupTop.push(label, ...Array(23).fill(''));
+                uiHdrGroupMid.push(
+                    weekA || t('productPerf.periodAFallback'), ...Array(7).fill(''),
+                    weekB || t('productPerf.periodBFallback'), ...Array(7).fill(''),
+                    t('productPerf.colGrowth'), ...Array(7).fill(''),
+                );
+                uiHdrSub.push(
+                    ...subCols, ...subCols,
+                    t('productPerf.colImpPct'), t('productPerf.colClickPct'), t('productPerf.colVisitorPct'), t('productPerf.colUnitPct'),
+                    t('productPerf.colGmvGap'), t('productPerf.colGmvPct'), t('productPerf.colCtrPct'), t('productPerf.colCoPct'),
+                );
+            });
+
+            const totalRow = ['-', t('productPerf.colTotalRow'), '', '', '—', '—', '—'];
+            secMaps.forEach(({ sec }) => {
+                totalRow.push(
+                    sec.total_pid_a ?? 0,
+                    sec.total_a.impression, sec.total_a.click, sec.total_a.visitor, sec.total_a.unit, sec.total_a.gmv, pp(sec.total_a.ctr), pp(sec.total_a.co),
+                    sec.total_pid_b ?? 0,
+                    sec.total_b.impression, sec.total_b.click, sec.total_b.visitor, sec.total_b.unit, sec.total_b.gmv, pp(sec.total_b.ctr), pp(sec.total_b.co),
+                    sec.growth.impression, sec.growth.click, sec.growth.visitor, sec.growth.unit, sec.growth.gmv_gap, sec.growth.gmv, sec.growth.ctr, sec.growth.co,
+                );
+            });
+
+            const bodyRows = skuOrder.map((sku) => {
+                const base = baseMap.get(sku) || secMaps.map(s => s.map.get(sku)).find(Boolean) || {};
+                const row = [
+                    base.mark || '-',
+                    sku || '',
+                    base.product_name || '',
+                    base.product_link || '',
+                    base.highest_gmv_store || '',
+                    base.highest_impression_store || '',
+                    base.top5_signal || '-',
+                ];
+                secMaps.forEach(({ map }) => {
+                    const r = map.get(sku);
+                    if (!r) {
+                        for (let i = 0; i < 24; i += 1) row.push(null);
+                        return;
+                    }
+                    row.push(
+                        r.pid_a ?? 0,
+                        r.a?.impression, r.a?.click, r.a?.visitor, r.a?.unit, r.a?.gmv, pp(r.a?.ctr), pp(r.a?.co),
+                        r.pid_b ?? 0,
+                        r.b?.impression, r.b?.click, r.b?.visitor, r.b?.unit, r.b?.gmv, pp(r.b?.ctr), pp(r.b?.co),
+                        r.growth?.impression, r.growth?.click, r.growth?.visitor, r.growth?.unit, r.growth?.gmv_gap, r.growth?.gmv, r.growth?.ctr, r.growth?.co,
+                    );
+                });
+                return row;
+            });
+
+            const uiWs = XLSX.utils.aoa_to_sheet([uiHdrGroupTop, uiHdrGroupMid, uiHdrSub, totalRow, ...bodyRows]);
+            const fixedCols = [12, 20, 28, 28, 24, 24, 16];
+            const blockCols = [8, 10, 10, 10, 10, 12, 10, 10, 8, 10, 10, 10, 10, 12, 10, 10, 10, 10, 10, 10, 12, 10, 10, 10];
+            const widths = [...fixedCols];
+            secMaps.forEach(() => widths.push(...blockCols));
+            uiWs['!cols'] = widths.map(w => ({ wch: w }));
+            uiWs['!freeze'] = { xSplit: 0, ySplit: 3 };
+            const uiMerges = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }];
+            secMaps.forEach((_, i) => {
+                const base = 7 + (i * 24);
+                uiMerges.push({ s: { r: 0, c: base }, e: { r: 0, c: base + 23 } });
+                uiMerges.push({ s: { r: 1, c: base }, e: { r: 1, c: base + 7 } });
+                uiMerges.push({ s: { r: 1, c: base + 8 }, e: { r: 1, c: base + 15 } });
+                uiMerges.push({ s: { r: 1, c: base + 16 }, e: { r: 1, c: base + 23 } });
+            });
+            uiWs['!merges'] = uiMerges;
+
+            const uiBorder = {
+                top: { style: 'thin', color: { rgb: 'FFD1D5DB' } },
+                bottom: { style: 'thin', color: { rgb: 'FFD1D5DB' } },
+                left: { style: 'thin', color: { rgb: 'FFD1D5DB' } },
+                right: { style: 'thin', color: { rgb: 'FFD1D5DB' } },
+            };
+            const uiStyle = (fill, font = {}, numFmt = null, align = 'left') => ({
+                fill: { patternType: 'solid', fgColor: { rgb: fill } },
+                font: { name: 'Calibri', sz: 10, bold: !!font.bold, color: { rgb: font.color || 'FF111827' } },
+                alignment: { horizontal: align, vertical: 'center', wrapText: true },
+                border: uiBorder,
+                ...(numFmt ? { numFmt } : {}),
+            });
+            const ref = XLSX.utils.decode_range(uiWs['!ref'] || 'A1');
+            for (let r = 0; r <= ref.e.r; r++) {
+                for (let c = 0; c <= ref.e.c; c++) {
+                    const addr = XLSX.utils.encode_cell({ r, c });
+                    if (!uiWs[addr]) continue;
+                    let fill = 'FFFFFFFF';
+                    let font = {};
+                    let numFmt = null;
+                    let align = c >= 7 ? 'right' : 'left';
+
+                    if (r <= 2) {
+                        if (c <= 6) fill = 'FF374151';
+                        else {
+                            const rel = (c - 7) % 24;
+                            if (rel <= 7) fill = 'FF1E3A5F';
+                            else if (rel <= 15) fill = 'FF1A4731';
+                            else fill = 'FF3B1F1F';
+                        }
+                        font = { bold: true, color: 'FFFFFFFF' };
+                        align = 'center';
+                    } else if (r === 3) {
+                        fill = 'FFFFF2CC';
+                        font = { bold: true, color: 'FF111827' };
+                    } else {
+                        if (c <= 6) fill = 'FFFFFFFF';
+                        else {
+                            const rel = (c - 7) % 24;
+                            if (rel <= 7) fill = 'FFE8F1FB';
+                            else if (rel <= 15) fill = 'FFE7F8EF';
+                            else {
+                                const v = uiWs[addr].v;
+                                if (v == null || v === '') fill = 'FFFFFFFF';
+                                else fill = Number(v) >= 0 ? 'FFE0EDFF' : 'FFFCE7F3';
+                            }
+                        }
+                    }
+
+                    if (r >= 3 && c >= 7) {
+                        const rel = (c - 7) % 24;
+                        if ([6, 7, 14, 15].includes(rel)) numFmt = '#,##0.00"%"';
+                        if ([16, 17, 18, 19, 21, 22, 23].includes(rel)) numFmt = '+0.00"%";-0.00"%";"—"';
+                        if (rel === 20) numFmt = '+#,##0;-#,##0;"—"';
+                        if ([0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13].includes(rel)) numFmt = '#,##0';
+                    }
+
+                    if (c === 6 && r >= 4) {
+                        const sig = String(uiWs[addr].v || '').toLowerCase();
+                        if (sig.includes('drop')) {
+                            fill = 'FFFCE7F3';
+                            font = { bold: true, color: 'FFBE185D' };
+                            align = 'center';
+                        } else if (sig.includes('growth')) {
+                            fill = 'FFE0EDFF';
+                            font = { bold: true, color: 'FF1D4ED8' };
+                            align = 'center';
+                        } else {
+                            align = 'center';
+                        }
+                    }
+
+                    if (c === 3 && r >= 4) {
+                        const v = String(uiWs[addr].v || '');
+                        if (/^https?:\/\//i.test(v)) uiWs[addr].l = { Target: v };
+                    }
+
+                    uiWs[addr].s = uiStyle(fill, font, numFmt, align);
+                }
+            }
+            XLSX.utils.book_append_sheet(wb, uiWs, uniqueExcelSheetName('UI View', usedSheetNames));
+        }
 
         // ── colour palettes (ARGB hex) ──────────────────────────────
         const CLR_A_HDR  = 'FF1E3A5F'; // dark navy  — Period A header
@@ -1217,7 +1443,7 @@ function ComparisonTab({ weeks }) {
         //   c11-c18 : Period B  (PID, Imp, Click, Visitor, Unit, GMV, CTR, CO)
         //   c19-c26 : Growth    (Imp%, Click%, Visitor%, Unit%, GMV Gap, GMV%, CTR%, CO%)
         const writeSection = (sec) => {
-            const sheetName = (sec.store_name || sec.section).slice(0, 31);
+            const sheetName = uniqueExcelSheetName(sec.store_name || sec.section, usedSheetNames);
             const ta = sec.total_a; const tb = sec.total_b; const tg = sec.growth;
 
             const labelA = `← ${weekA}${dateALabel} →`;
@@ -1239,7 +1465,8 @@ function ComparisonTab({ weeks }) {
             ];
 
             const totalRowData = mkDataRow('TOTAL', ta, tb, tg, sec.total_pid_a, sec.total_pid_b, '', '');
-            const skuRows = sec.rows.map(r => mkDataRow(r.sku, r.a, r.b, r.growth, r.pid_a, r.pid_b, r.product_name, r.product_link));
+            const orderedRows = enrichAndOrderRows(sec.rows);
+            const skuRows = orderedRows.map(r => mkDataRow(r.sku, r.a, r.b, r.growth, r.pid_a, r.pid_b, r.product_name, r.product_link));
 
             const aoa = [grpRow, subHdr, totalRowData, ...skuRows];
             const ws = XLSX.utils.aoa_to_sheet(aoa);
@@ -1309,7 +1536,10 @@ function ComparisonTab({ weeks }) {
                         bg = isTotal ? CLR_TOTAL : CLR_WHITE;
                         const lStyle = val ? cellStyle(bg, { color: 'FF2563EB', underline: true }, null, false, 'left') : cellStyle(bg, {}, null, false, 'left');
                         applyCell(ws, dataRowIdx, c, val || '', lStyle);
-                        if (val) { const addr = XLSX.utils.encode_cell({ r: dataRowIdx, c: 2 }); if (ws[addr]) ws[addr].l = { Target: val }; }
+                        if (val && /^https?:\/\//i.test(String(val))) {
+                            const addr = XLSX.utils.encode_cell({ r: dataRowIdx, c: 2 });
+                            if (ws[addr]) ws[addr].l = { Target: String(val) };
+                        }
                         return;
                     }
                     if (c >= 3 && c <= 10) {
@@ -1522,12 +1752,18 @@ function ComparisonTab({ weeks }) {
             XLSX.utils.book_append_sheet(wb, ws, sheetName);
         });
         const summaryWs = writeSummary();
-        XLSX.utils.book_append_sheet(wb, summaryWs, t('productPerf.excelSummarySheet'));
-        // Move Summary to first position
-        const sumName = t('productPerf.excelSummarySheet');
-        wb.SheetNames = [sumName, ...wb.SheetNames.filter(n => n !== sumName)];
+        const summarySheetName = uniqueExcelSheetName(t('productPerf.excelSummarySheet'), usedSheetNames);
+        XLSX.utils.book_append_sheet(wb, summaryWs, summarySheetName);
+        // Keep UI View as first sheet when present
+        const uiName = wb.SheetNames.find(n => n.toLowerCase().includes('ui view'));
+        if (uiName) wb.SheetNames = [uiName, ...wb.SheetNames.filter(n => n !== uiName)];
+        else wb.SheetNames = [summarySheetName, ...wb.SheetNames.filter(n => n !== summarySheetName)];
 
         XLSX.writeFile(wb, `Comparison_${(weekA||'A').replace(/\s/g,'_')}_vs_${(weekB||'B').replace(/\s/g,'_')}.xlsx`);
+        } catch (err) {
+            console.error('Comparison Excel export failed:', err);
+            message.error(err?.message || String(err) || t('productPerf.msgDownloadExcelFailed'));
+        }
     };
 
     const section = data?.sections?.[sectionIdx];
@@ -1537,28 +1773,151 @@ function ComparisonTab({ weeks }) {
     const bgG = 'rgba(239,68,68,0.04)';   // soft red for Growth
     const mkCell = (bg, content) => <div style={{ background: bg, margin: '-4px -8px', padding: '4px 8px', height: '100%' }}>{content}</div>;
 
+    const normalizeMarkGroup = (mark) => {
+        const m = String(mark || '').trim().toLowerCase();
+        if (m.includes('hot')) return 'hot';
+        if (m.includes('regular')) return 'regular';
+        if (m.includes('gtm')) return 'gtm';
+        if (m.includes('new')) return 'new';
+        if (m.includes('old')) return 'old';
+        return null;
+    };
+
+    const buildTop5SignalMap = (rows) => {
+        const byMark = new Map();
+        rows.forEach((r) => {
+            const mk = normalizeMarkGroup(r.mark);
+            if (!mk) return;
+            if (!byMark.has(mk)) byMark.set(mk, []);
+            byMark.get(mk).push(r);
+        });
+
+        const out = new Map();
+        byMark.forEach((items) => {
+            const withGrowth = items.filter(r => typeof r?.growth?.gmv === 'number');
+            const topGrowth = [...withGrowth].sort((a, b) => (b.growth.gmv ?? -Infinity) - (a.growth.gmv ?? -Infinity)).slice(0, 5);
+            const topDrop = [...withGrowth].sort((a, b) => (a.growth.gmv ?? Infinity) - (b.growth.gmv ?? Infinity)).slice(0, 5);
+            topGrowth.forEach(r => out.set(r.sku, { label: t('productPerf.top5Growth'), kind: 'growth' }));
+            topDrop.forEach(r => {
+                // If a SKU appears in both lists, keep the stronger absolute move.
+                const prev = out.get(r.sku);
+                if (!prev || prev.kind !== 'growth') out.set(r.sku, { label: t('productPerf.top5Drop'), kind: 'drop' });
+            });
+        });
+        return out;
+    };
+
+    const enrichAndOrderRows = (rows) => {
+        const top5MapLocal = buildTop5SignalMap(rows);
+        const enriched = rows.map((r, i) => {
+            const sig = top5MapLocal.get(r.sku);
+            return {
+                ...r,
+                _markGroup: normalizeMarkGroup(r.mark),
+                top5_signal: sig?.label || '-',
+                top5_kind: sig?.kind || null,
+                key: `${r.sku}_${i}`,
+            };
+        });
+
+        const sortBySignalAndGrowth = (arr) => arr.sort((a, b) => {
+            const signalRank = (r) => (r.top5_kind === 'growth' ? 0 : r.top5_kind === 'drop' ? 1 : 2);
+            const ra = signalRank(a);
+            const rb = signalRank(b);
+            if (ra !== rb) return ra - rb;
+            const ga = Number(a?.growth?.gmv ?? 0);
+            const gb = Number(b?.growth?.gmv ?? 0);
+            if (ra === 0) return gb - ga;
+            if (ra === 1) return ga - gb;
+            return Number(b?.b?.gmv ?? 0) - Number(a?.b?.gmv ?? 0);
+        });
+
+        const byMark = (mark, includeNoSignal) =>
+            sortBySignalAndGrowth(
+                enriched.filter(r => r._markGroup === mark && (includeNoSignal || !!r.top5_kind))
+            );
+
+        return [
+            ...byMark('gtm', true),
+            ...byMark('new', false),
+            ...byMark('hot', false),
+            ...byMark('regular', false),
+            ...byMark('old', false),
+        ];
+    };
+
     const cmpCols = [
-        { title: t('productPerf.colProduct'), width: 270, fixed: 'left',
+        {
+            title: t('productPerf.colMark'),
+            width: 95,
+            fixed: 'left',
+            align: 'center',
+            render: (_, r) => (r._isTotal ? '—' : (r.mark ? <MarkTag mark={r.mark} /> : '—')),
+        },
+        {
+            title: t('productPerf.colSku'),
+            dataIndex: 'sku',
+            width: 170,
+            fixed: 'left',
+            render: (v, r) => (
+                <Tooltip title={v}>
+                    <Text style={{ fontWeight: r._isTotal ? 700 : 600, fontSize: 12 }} ellipsis>{v || '—'}</Text>
+                </Tooltip>
+            ),
+        },
+        {
+            title: t('productPerf.colProduct'),
+            width: 220,
+            fixed: 'left',
             render: (_, r) => (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     {r.photo
                         ? <img src={r.photo} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
                         : <div style={{ width: 40, height: 40, background: 'var(--border)', borderRadius: 4, flexShrink: 0 }} />}
-                    <div style={{ minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-                            <Tooltip title={r.sku}>
-                                <Text style={{ fontWeight: r._isTotal ? 700 : 600, fontSize: 12 }} ellipsis>{r.sku || '—'}</Text>
-                            </Tooltip>
-                            <MarkTag mark={r.mark} />
-                            {r.product_link && (
-                                <a href={r.product_link} target="_blank" rel="noopener noreferrer"
-                                    style={{ color: '#3b82f6', lineHeight: 1, flexShrink: 0 }} title={t('productPerf.titleOpenProduct')}>↗</a>
-                            )}
-                        </div>
-                        {r.product_name && <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.3 }}>{r.product_name}</div>}
+                    <div
+                        title={r.product_name || '—'}
+                        style={{
+                            fontSize: 12,
+                            lineHeight: 1.25,
+                            maxWidth: 160,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            whiteSpace: 'normal',
+                            wordBreak: 'break-word',
+                        }}
+                    >
+                        {r.product_name || '—'}
                     </div>
                 </div>
-            ) },
+            ),
+        },
+        {
+            title: t('productPerf.colLink'),
+            width: 90,
+            align: 'center',
+            render: (_, r) => (
+                r.product_link
+                    ? <a href={r.product_link} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }} title={t('productPerf.titleOpenProduct')}>↗</a>
+                    : '—'
+            ),
+        },
+        { title: t('productPerf.colHighestGmvStore'), dataIndex: 'highest_gmv_store', width: 170, render: v => v || '—' },
+        { title: t('productPerf.colHighestImpressionStore'), dataIndex: 'highest_impression_store', width: 190, render: v => v || '—' },
+        {
+            title: t('productPerf.colTopSignal'),
+            width: 120,
+            align: 'center',
+            render: (_, r) => {
+                if (r._isTotal) return '—';
+                if (!r.top5_signal || r.top5_signal === '-') return '—';
+                const bg = r.top5_kind === 'drop' ? '#fce7f3' : '#dbeafe';
+                const color = r.top5_kind === 'drop' ? '#be185d' : '#1d4ed8';
+                return <span style={{ background: bg, color, fontWeight: 700, fontSize: 11, padding: '2px 8px', borderRadius: 999 }}>{r.top5_signal}</span>;
+            },
+        },
         { title: <span style={{ color: '#3b82f6' }}>{weekA || t('productPerf.periodAFallback')}</span>, children: [
             { title: t('productPerf.colPids'),    width: 70,  align: 'right', onCell: () => ({ style: { background: bgA } }), render: (_, r) => fmt(r.pid_a) },
             { title: t('productPerf.colImp'),     width: 110, align: 'right', onCell: () => ({ style: { background: bgA } }), render: (_, r) => fmt(r.a?.impression) },
@@ -1591,9 +1950,26 @@ function ComparisonTab({ weeks }) {
         ]},
     ];
 
+    const displayRows = section ? enrichAndOrderRows(section.rows) : [];
+
     const tableData = section ? [
-        { sku: t('productPerf.colTotalRow'), a: section.total_a, b: section.total_b, growth: section.growth, pid_a: section.total_pid_a, pid_b: section.total_pid_b, _isTotal: true, key: '__total' },
-        ...section.rows.map((r, i) => ({ ...r, key: `${r.sku}_${i}` })),
+        {
+            sku: t('productPerf.colTotalRow'),
+            product_name: '',
+            product_link: '',
+            mark: '',
+            highest_gmv_store: '—',
+            highest_impression_store: '—',
+            top5_signal: '—',
+            a: section.total_a,
+            b: section.total_b,
+            growth: section.growth,
+            pid_a: section.total_pid_a,
+            pid_b: section.total_pid_b,
+            _isTotal: true,
+            key: '__total',
+        },
+        ...displayRows,
     ] : [];
 
     return (

@@ -286,7 +286,7 @@ def sku_data(
             "product_name": name_map[r.sku].product_name if r.sku in name_map else None,
             "product_link": name_map[r.sku].link if r.sku in name_map else None,
             "mark": name_map[r.sku].mark if r.sku in name_map else None,
-            "photo": photo_map.get(r.sku) or (name_map[r.sku].link if r.sku in name_map else None),
+            "photo": (name_map[r.sku].link if r.sku in name_map else None) or photo_map.get(r.sku),
             "impression": r.impression,
             "visitor": r.visitor,
             "click": r.click,

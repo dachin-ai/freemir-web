@@ -1085,9 +1085,39 @@ def get_sku_comparison(db: Session, week_a: str, week_b: str, platform: str = "A
                 t[k] += getattr(r, k) or 0.0
         return _ctr_co(t)
 
+    def _top_store_by_metric(rows, metric: str):
+        per_store = {}
+        for r in rows:
+            sku = r.sku or ""
+            if not sku:
+                continue
+            store = (r.store or "").strip()
+            if not store or store in ("-", "—"):
+                continue
+            platform = (r.platform or "").strip()
+            key = (platform, store)
+            if sku not in per_store:
+                per_store[sku] = {}
+            per_store[sku][key] = per_store[sku].get(key, 0.0) + (getattr(r, metric) or 0.0)
+        top_map = {}
+        for sku, store_vals in per_store.items():
+            top_key = max(store_vals.items(), key=lambda x: x[1])[0] if store_vals else None
+            if not top_key:
+                top_map[sku] = None
+                continue
+            plat, store = top_key
+            store_label = store_name_map.get(store, store)
+            top_map[sku] = f"{plat} {store_label}".strip() if plat else store_label
+        return top_map
+
     def _make_section(section_id: str, store_code, rows_a_sub, rows_b_sub):
         map_a, pid_a = _agg_by_sku(rows_a_sub)
         map_b, pid_b = _agg_by_sku(rows_b_sub)
+        # Highest-store labels use Period B as primary baseline, fallback to Period A.
+        gmv_top_b = _top_store_by_metric(rows_b_sub, "gmv")
+        gmv_top_a = _top_store_by_metric(rows_a_sub, "gmv")
+        imp_top_b = _top_store_by_metric(rows_b_sub, "impression")
+        imp_top_a = _top_store_by_metric(rows_a_sub, "impression")
         all_skus = sorted(
             set(map_a) | set(map_b),
             key=lambda s: -(map_a.get(s, {}).get("gmv", 0) + map_b.get(s, {}).get("gmv", 0)),
@@ -1109,6 +1139,8 @@ def get_sku_comparison(db: Session, week_a: str, week_b: str, platform: str = "A
                 "growth": _growth_dict(a, b),
                 "pid_a": pid_a.get(sku, 0),
                 "pid_b": pid_b.get(sku, 0),
+                "highest_gmv_store": gmv_top_b.get(sku) or gmv_top_a.get(sku),
+                "highest_impression_store": imp_top_b.get(sku) or imp_top_a.get(sku),
             })
 
         return {
@@ -1169,8 +1201,8 @@ def get_sku_comparison(db: Session, week_a: str, week_b: str, platform: str = "A
             row["product_name"] = nm.get("product_name")
             row["product_link"] = nm.get("product_link")
             row["mark"] = nm.get("mark")
-            # Use product_performance photo first, then fallback to SKU_Info link image.
-            row["photo"] = photo_map.get(row["sku"]) or nm.get("product_link")
+            # Prefer SKU_Info link as canonical SKU image, then fallback to PID-based snapshot.
+            row["photo"] = nm.get("product_link") or photo_map.get(row["sku"])
 
     return {
         "week_a": week_a, "week_b": week_b, "platform": platform,
