@@ -9,7 +9,7 @@ import {
     CheckCircleFilled, CloseCircleFilled, FileExcelOutlined,
     DatabaseOutlined, DownloadOutlined, UploadOutlined,
     FileTextOutlined, BarChartOutlined, AppstoreOutlined, RiseOutlined,
-    UnorderedListOutlined, BarcodeOutlined, ThunderboltOutlined
+    UnorderedListOutlined, BarcodeOutlined, ThunderboltOutlined, RightOutlined
 } from '@ant-design/icons';
 import api from '../api';
 import { useTranslation } from 'react-i18next';
@@ -59,6 +59,7 @@ const statCardStyle = (accentColor) => ({
 /* ─── Main Component ─── */
 const PriceChecker = () => {
     const { t } = useTranslation();
+    const [inputMode, setInputMode] = useState('Batch');
     const [method, setMethod] = useState('Listing');
     const [loadingDb, setLoadingDb] = useState(false);
     const [calcLoading, setCalcLoading] = useState(false);
@@ -397,101 +398,157 @@ const PriceChecker = () => {
 
             {/* TABS */}
             <Tabs
-                activeKey={method}
-                onChange={(key) => { setMethod(key); setFileList([]); setDirectResult(null); setBatchOverview(null); }}
+                activeKey={inputMode}
+                onChange={(key) => {
+                    setInputMode(key);
+                    setFileList([]);
+                    setDirectResult(null);
+                    setBatchOverview(null);
+                }}
                 type="card"
                 className="tabs-nav-only"
                 items={[
-                    { key: 'Listing', label: <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><UnorderedListOutlined /><Bi i18nKey="priceChecker.listingMethod" /></span> },
-                    { key: 'SKU',     label: <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><BarcodeOutlined /><Bi i18nKey="priceChecker.skuMethod" /></span> },
-                    { key: 'Direct',  label: <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><ThunderboltOutlined /><Bi i18nKey="priceChecker.directInput" /></span> },
+                    { key: 'Batch', label: <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><UnorderedListOutlined /><Bi i18nKey="priceChecker.batchInput" /></span> },
+                    { key: 'Direct', label: <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><ThunderboltOutlined /><Bi i18nKey="priceChecker.directInput" /></span> },
                 ]}
             />
 
             {/* ─── BATCH METHODS ─── */}
-            {method !== 'Direct' && (
+            {inputMode === 'Batch' && (
                 <div>
-                    <Row gutter={20}>
-                        {/* Step 1: Download Template */}
-                        <Col xs={24} md={12}>
-                            <div style={stepCardStyle}>
-                                <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)' }}>
-                                    <SectionHeading icon={<DownloadOutlined />}><Bi i18nKey="priceChecker.downloadTemplate" /></SectionHeading>
-                                </div>
-                                <div style={{ padding: '18px 20px' }}>
-                                    <Text style={{ fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 16 }}>
-                                        <Bi i18nKey="priceChecker.downloadTemplateHint" />
-                                    </Text>
-                                    <Button
-                                        icon={<CloudDownloadOutlined />}
-                                        block
-                                        onClick={() => downloadTemplate(method)}
-                                        style={{
-                                            height: 44, borderRadius: 8, fontWeight: 600, fontSize: 13,
-                                            background: 'var(--bg-panel)', color: 'var(--indigo)',
-                                            border: '1.5px dashed var(--indigo)',
-                                        }}
-                                    >
-                                        {t('priceChecker.downloadMethodTemplate', { method })}
-                                    </Button>
-                                </div>
-                            </div>
-                        </Col>
+                    <div style={{ marginBottom: 18 }}>
+                        <Text style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 10 }}>
+                            Batch Method
+                        </Text>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                            <Button
+                                onClick={() => { setMethod('Listing'); setFileList([]); setBatchOverview(null); }}
+                                style={{
+                                    height: 46,
+                                    borderRadius: 10,
+                                    fontWeight: 700,
+                                    border: method === 'Listing' ? '2px solid var(--indigo)' : '1px solid var(--border)',
+                                    background: method === 'Listing' ? 'rgba(99,102,241,0.08)' : 'var(--bg-card)',
+                                    color: method === 'Listing' ? 'var(--indigo)' : 'var(--text-main)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 8,
+                                }}
+                            >
+                                <UnorderedListOutlined />
+                                {t('priceChecker.listingMethod')}
+                            </Button>
+                            <Button
+                                onClick={() => { setMethod('SKU'); setFileList([]); setBatchOverview(null); }}
+                                style={{
+                                    height: 46,
+                                    borderRadius: 10,
+                                    fontWeight: 700,
+                                    border: method === 'SKU' ? '2px solid var(--indigo)' : '1px solid var(--border)',
+                                    background: method === 'SKU' ? 'rgba(99,102,241,0.08)' : 'var(--bg-card)',
+                                    color: method === 'SKU' ? 'var(--indigo)' : 'var(--text-main)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 8,
+                                }}
+                            >
+                                <BarcodeOutlined />
+                                {t('priceChecker.skuMethod')}
+                            </Button>
+                        </div>
+                    </div>
 
-                        {/* Step 2: Upload & Process */}
-                        <Col xs={24} md={12}>
-                            <div style={stepCardStyle}>
-                                <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)' }}>
-                                    <SectionHeading icon={<UploadOutlined />}><Bi i18nKey="priceChecker.uploadProcess" /></SectionHeading>
-                                </div>
-                                <div style={{ padding: '18px 20px' }}>
-                                    <Dragger
-                                        maxCount={1}
-                                        beforeUpload={(file) => { setFileList([file]); return false; }}
-                                        onRemove={() => setFileList([])}
-                                        fileList={fileList}
-                                        style={{ borderRadius: 8, marginBottom: 14 }}
-                                        itemRender={(_, file, __, { remove }) => (
-                                            <div style={{
-                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                background: 'rgba(16,185,129,0.1)', border: '1px solid #10b981', borderRadius: 6,
-                                                padding: '8px 12px', marginTop: 8,
-                                            }}>
-                                                <Text style={{ color: '#10b981', fontSize: 13, fontWeight: 500 }}>
-                                                    <SyncOutlined style={{ color: '#10b981', marginRight: 6 }} />{file.name}
-                                        <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text-muted)' }}>
-                                            {file.size ? '(' + (file.size / 1024 / 1024 > 1 ? (file.size / 1024 / 1024).toFixed(2) + ' MB' : (file.size / 1024).toFixed(2) + ' KB') + ')' : ''}
-                                        </span>
-                                                </Text>
-                                                <Button
-                                                    type="text" size="small" danger
-                                                    onClick={remove}
-                                                    style={{ fontSize: 12, color: '#ef4444', padding: '0 4px' }}
-                                                >
-                                                    Remove
-                                                </Button>
-                                            </div>
-                                        )}
-                                    >
-                                        <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-                                        <p className="ant-upload-text"><Bi i18nKey="priceChecker.uploadExcelHint" /></p>
-                                    </Dragger>
-                                    <Button
-                                        block
-                                        loading={calcLoading}
-                                        onClick={handleUpload}
-                                        style={{
-                                            height: 44, borderRadius: 8, fontWeight: 700, fontSize: 14,
-                                            background: 'var(--indigo)', color: '#fff', border: 'none',
-                                            boxShadow: '0 2px 8px rgba(99,102,241,0.25)',
-                                        }}
-                                    >
-                                        {calcLoading ? <Bi i18nKey="priceChecker.processing" /> : <Bi i18nKey="priceChecker.startBatch" />}
-                                    </Button>
-                                </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12, alignItems: 'stretch' }}>
+                        <div style={stepCardStyle}>
+                            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)' }}>
+                                <SectionHeading icon={<DownloadOutlined />}>Step 1 - <Bi i18nKey="priceChecker.downloadTemplate" /> <RightOutlined style={{ fontSize: 12, marginLeft: 2 }} /></SectionHeading>
                             </div>
-                        </Col>
-                    </Row>
+                            <div style={{ padding: '18px 20px' }}>
+                                <Text style={{ fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 16 }}>
+                                    <Bi i18nKey="priceChecker.downloadTemplateHint" />
+                                </Text>
+                                <Button
+                                    icon={<CloudDownloadOutlined />}
+                                    block
+                                    onClick={() => downloadTemplate(method)}
+                                    style={{
+                                        height: 44, borderRadius: 8, fontWeight: 600, fontSize: 13,
+                                        background: 'var(--bg-panel)', color: 'var(--indigo)',
+                                        border: '1.5px dashed var(--indigo)',
+                                    }}
+                                >
+                                    {t('priceChecker.downloadMethodTemplate', { method })}
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div style={stepCardStyle}>
+                            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)' }}>
+                                <SectionHeading icon={<UploadOutlined />}>Step 2 - Upload File <RightOutlined style={{ fontSize: 12, marginLeft: 2 }} /></SectionHeading>
+                            </div>
+                            <div style={{ padding: '18px 20px' }}>
+                                <Dragger
+                                    maxCount={1}
+                                    beforeUpload={(file) => { setFileList([file]); return false; }}
+                                    onRemove={() => setFileList([])}
+                                    fileList={fileList}
+                                    style={{ borderRadius: 8 }}
+                                    itemRender={(_, file, __, { remove }) => (
+                                        <div style={{
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                            background: 'rgba(16,185,129,0.1)', border: '1px solid #10b981', borderRadius: 6,
+                                            padding: '8px 12px', marginTop: 8,
+                                        }}>
+                                            <Text style={{ color: '#10b981', fontSize: 13, fontWeight: 500 }}>
+                                                <SyncOutlined style={{ color: '#10b981', marginRight: 6 }} />{file.name}
+                                                <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+                                                    {file.size ? '(' + (file.size / 1024 / 1024 > 1 ? (file.size / 1024 / 1024).toFixed(2) + ' MB' : (file.size / 1024).toFixed(2) + ' KB') + ')' : ''}
+                                                </span>
+                                            </Text>
+                                            <Button
+                                                type="text" size="small" danger
+                                                onClick={remove}
+                                                style={{ fontSize: 12, color: '#ef4444', padding: '0 4px' }}
+                                            >
+                                                Remove
+                                            </Button>
+                                        </div>
+                                    )}
+                                >
+                                    <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                                    <p className="ant-upload-text"><Bi i18nKey="priceChecker.uploadExcelHint" /></p>
+                                </Dragger>
+                            </div>
+                        </div>
+
+                        <div style={stepCardStyle}>
+                            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)' }}>
+                                <SectionHeading icon={<RiseOutlined />}>Step 3 - Start Calculation</SectionHeading>
+                            </div>
+                            <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                <Text style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                                    {fileList.length ? 'File siap diproses.' : 'Upload file dulu untuk mengaktifkan proses.'}
+                                </Text>
+                                <Button
+                                    block
+                                    loading={calcLoading}
+                                    disabled={!fileList.length}
+                                    onClick={handleUpload}
+                                    style={{
+                                        height: 44, borderRadius: 8, fontWeight: 700, fontSize: 14,
+                                        background: !fileList.length ? 'var(--bg-panel)' : 'var(--indigo)',
+                                        color: !fileList.length ? 'var(--text-muted)' : '#fff',
+                                        border: !fileList.length ? '1px solid var(--border)' : 'none',
+                                        boxShadow: !fileList.length ? 'none' : '0 2px 8px rgba(99,102,241,0.25)',
+                                    }}
+                                >
+                                    {calcLoading ? <Bi i18nKey="priceChecker.processing" /> : <Bi i18nKey="priceChecker.startBatch" />}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
 
                     {/* ─── BATCH OVERVIEW ─── */}
                     {batchOverview && (
@@ -585,10 +642,26 @@ const PriceChecker = () => {
             )}
 
             {/* ─── DIRECT INPUT ─── */}
-            {method === 'Direct' && (
-                <div style={{ background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)', padding: '24px' }}>
-                    <Row gutter={[20, 20]}>
-                        <Col xs={24} md={16}>
+            {inputMode === 'Direct' && (
+                <div style={{
+                    background: 'linear-gradient(180deg, var(--bg-card) 0%, var(--bg-panel) 100%)',
+                    borderRadius: 14,
+                    border: '1px solid var(--border)',
+                    padding: '22px',
+                    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.05)',
+                }}>
+                    <div style={{ marginBottom: 16 }}>
+                        <Text style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.7px' }}>
+                            Direct Input
+                        </Text>
+                    </div>
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                        gap: 14,
+                        alignItems: 'end',
+                    }}>
+                        <div style={{ gridColumn: 'span 2' }}>
                             <Label><Bi i18nKey="priceChecker.bundleSku" /></Label>
                             <Input
                                 size="large"
@@ -596,14 +669,15 @@ const PriceChecker = () => {
                                 value={skuInput}
                                 onChange={e => setSkuInput(e.target.value)}
                                 onPressEnter={doCalculateDirect}
-                                style={{ borderRadius: 8, height: 46 }}
+                                style={{ borderRadius: 10, height: 40, borderWidth: 1.5 }}
                             />
-                        </Col>
-                        <Col xs={24} md={4}>
+                        </div>
+                        <div>
                             <Label><Bi i18nKey="priceChecker.targetPrice" /></Label>
                             <InputNumber
                                 size="large"
-                                style={{ width: '100%', borderRadius: 8, height: 46 }}
+                                style={{ width: '100%', borderRadius: 10 }}
+                                controls={false}
                                 placeholder="Enter target price"
                                 min={0}
                                 step={1000}
@@ -613,12 +687,13 @@ const PriceChecker = () => {
                                 formatter={(v) => (v === null || v === undefined || v === '' ? '' : `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, '.'))}
                                 parser={(v) => (v ? v.replace(/\./g, '') : '')}
                             />
-                        </Col>
-                        <Col xs={24} md={4}>
+                        </div>
+                        <div>
                             <Label><Bi i18nKey="priceChecker.targetStock" /></Label>
                             <InputNumber
                                 size="large"
-                                style={{ width: '100%', borderRadius: 8, height: 46 }}
+                                style={{ width: '100%', borderRadius: 10 }}
+                                controls={false}
                                 placeholder="Enter target stock"
                                 min={0}
                                 step={1}
@@ -626,17 +701,17 @@ const PriceChecker = () => {
                                 onChange={setTargetStock}
                                 onFocus={() => { if (targetStock === 0) setTargetStock(null); }}
                             />
-                        </Col>
-                    </Row>
+                        </div>
+                    </div>
 
                     <Button
                         size="large"
                         loading={calcLoading}
                         onClick={doCalculateDirect}
                         style={{
-                            marginTop: 16, height: 46, borderRadius: 8, fontWeight: 700, fontSize: 14,
+                            marginTop: 18, height: 46, borderRadius: 10, fontWeight: 700, fontSize: 14,
                             background: 'var(--indigo)', color: '#fff', border: 'none',
-                            boxShadow: '0 2px 8px rgba(99,102,241,0.25)', paddingInline: 32,
+                            boxShadow: '0 8px 18px rgba(99,102,241,0.28)', paddingInline: 32,
                         }}
                     >
                         <Bi i18nKey="priceChecker.calcRealtime" />

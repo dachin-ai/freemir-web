@@ -91,6 +91,7 @@
     "syncPrice": "同步价格数据",
     "lastStockUpload": "最后库存上传（服务器记录）：{{time}}",
     "listingMethod": "列表法",
+    "batchInput": "批量输入",
     "skuMethod": "SKU法",
     "directInput": "直接输入",
     "downloadMethodTemplate": "下载 {{method}} 模板",

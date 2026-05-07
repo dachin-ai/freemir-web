@@ -91,6 +91,7 @@
     "syncPrice": "Sync Price Data",
     "lastStockUpload": "Last stock upload (from server): {{time}}",
     "listingMethod": "Listing Method",
+    "batchInput": "Batch Input",
     "skuMethod": "SKU Method",
     "directInput": "Direct Input",
     "downloadMethodTemplate": "Download {{method}} Template",

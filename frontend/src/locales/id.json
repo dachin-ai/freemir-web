@@ -91,6 +91,7 @@
     "syncPrice": "Sinkron data harga",
     "lastStockUpload": "Unggah stok terakhir (dari server): {{time}}",
     "listingMethod": "Metode Listing",
+    "batchInput": "Input batch",
     "skuMethod": "Metode SKU",
     "directInput": "Input langsung",
     "downloadMethodTemplate": "Unduh template {{method}}",
