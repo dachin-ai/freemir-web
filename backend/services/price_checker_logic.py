@@ -49,7 +49,12 @@ LISTING_STOCK_DETAIL_COLS_HIDDEN = (
     "Gap SBY-Lock",
     "IDR-OTW",
     "Gap IDR-OTW",
+    "SBY-OTW",
+    "Gap SBY-OTW",
 )
+
+# Extra hidden informational columns in export.
+EXPORT_HIDDEN_COLUMNS = ()
 
 SHEET_CONFIG = [
     ("All", PRICE_TYPES),
@@ -163,7 +168,9 @@ def sync_google_sheets_to_vps_postgres() -> int:
                 sku_col = col("SKU") or (df_sku_info.columns[1] if len(df_sku_info.columns) > 1 else df_sku_info.columns[0])
                 df_sku_info = df_sku_info[df_sku_info[sku_col].astype(str).str.strip() != ""]
 
-                cat_col = col("Category")
+                # Category usually exists as explicit header. Fallback to column E when
+                # sheet headers are changed/empty, because business data stores it there.
+                cat_col = col("Category") or (df_sku_info.columns[4] if len(df_sku_info.columns) > 4 else None)
                 clear_col = col("Clearance")
                 name_col = col("Product-Name", "Product Name", "Name", "English Name")
                 link_col = col("Link", "Product Link", "URL", "Image", "Image URL", "Pic")
@@ -470,6 +477,7 @@ def calculate_prices(sku_string: str, price_db: Dict, name_map: Dict, link_map: 
     sku_count = len(skus)
     result = {}
     sku_items = []
+    categories_per_sku = []
     
     # Only open DB connection if photo_map not provided
     if photo_map is None:
@@ -499,6 +507,8 @@ def calculate_prices(sku_string: str, price_db: Dict, name_map: Dict, link_map: 
             "image": image_url,
             "stock": {st: parse_stock_value(price_db.get(sku, {}).get(st, 0)) for st in STOCK_TYPES}
         })
+        category_value = str(price_db.get(sku, {}).get("Category", "")).strip()
+        categories_per_sku.append((sku, category_value))
 
     if sku_count == 0:
         result.update({
@@ -587,6 +597,7 @@ def calculate_prices(sku_string: str, price_db: Dict, name_map: Dict, link_map: 
         "Bundle Discount": final_discount_display,
         "Mark Clearance": "Yes" if has_clearance else "-",
         "Mark Gift": "Yes" if has_gift else "-",
+        "Category": "+".join([cat if cat else "-" for _, cat in categories_per_sku]),
         **bundle_stock,
         "Available Stock": summarize_bundle_stock(bundle_stock),
         "sku_items": sku_items
@@ -740,7 +751,15 @@ def convert_df_to_excel_multisheet(df: pd.DataFrame, method: str = "Listing", in
                 interleaved_stock_cols.append(st)
                 interleaved_stock_cols.append(f"Gap {st}")
             
-            target_cols = core_cols + sku_info_cols + identity_cols + interleaved_stock_cols + interleaved_price_cols
+            if method == "Listing":
+                ordered_core_cols = [
+                    "Product ID", "PID Name", "Variation ID", "MID Name",
+                    "Campaign Price", "Target Stock", "Category", "SKU"
+                ]
+            else:
+                ordered_core_cols = ["SKU", "Input Price", "Target Stock", "Category"]
+
+            target_cols = ordered_core_cols + sku_info_cols + identity_cols + interleaved_stock_cols + interleaved_price_cols
             final_cols = [c for c in target_cols if c in current_df.columns]
             
             sheet_df = current_df[final_cols].fillna("").replace([np.inf, -np.inf], "")
@@ -867,12 +886,17 @@ def convert_df_to_excel_multisheet(df: pd.DataFrame, method: str = "Listing", in
                     worksheet.conditional_format(rng, {"type": "cell", "criteria": "greater than or equal to", "value": 0, "format": green_bg})
                     worksheet.conditional_format(rng, {"type": "cell", "criteria": "less than", "value": 0, "format": red_bg})
 
-            # Same hide pattern as SKU Name/Link (per-column index). Letter-range O:V grouped <col> can be ignored by some Excel builds / viewers.
-            if method == "Listing":
-                for _hide_name in LISTING_STOCK_DETAIL_COLS_HIDDEN:
-                    if _hide_name in final_cols:
-                        _hi = final_cols.index(_hide_name)
-                        worksheet.set_column(_hi, _hi, 4, None, {"hidden": True})
+            # Hide detailed stock columns (compact view by default).
+            for _hide_name in LISTING_STOCK_DETAIL_COLS_HIDDEN:
+                if _hide_name in final_cols:
+                    _hi = final_cols.index(_hide_name)
+                    worksheet.set_column(_hi, _hi, 4, None, {"hidden": True})
+
+            # Hide verbose informational columns by default.
+            for _hide_name in EXPORT_HIDDEN_COLUMNS:
+                if _hide_name in final_cols:
+                    _hi = final_cols.index(_hide_name)
+                    worksheet.set_column(_hi, _hi, 4, None, {"hidden": True})
 
     return output.getvalue()
 
