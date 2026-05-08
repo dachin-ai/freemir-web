@@ -79,7 +79,7 @@ const MainLayout = () => {
         { key: '/price-checker', label: lockedLabel(<Bi i18nKey="layout.priceChecker" />, 'price_checker'), style: !hasAccess('price_checker') ? { opacity: 0.6 } : {} },
         { key: '/warehouse-order', label: lockedLabel(<Bi i18nKey="layout.orderPlanner" />, 'order_planner'), style: !hasAccess('order_planner') ? { opacity: 0.6 } : {} },
         { key: '/product-performance', label: lockedLabel(<Bi i18nKey="layout.productPerformance" />, 'product_performance'), style: !hasAccess('product_performance') ? { opacity: 0.6 } : {} },
-        { key: '/photo-downloader', label: lockedLabel('Photo Downloader', 'photo_downloader'), style: !hasAccess('photo_downloader') ? { opacity: 0.6 } : {} },
+        { key: '/photo-downloader', label: lockedLabel(<Bi i18nKey="layout.photoDownloader" />, 'photo_downloader'), style: !hasAccess('photo_downloader') ? { opacity: 0.6 } : {} },
       ]
     },
     {

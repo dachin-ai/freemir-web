@@ -5,6 +5,7 @@
     "priceChecker": "查价仪",
     "orderPlanner": "备货预估",
     "productPerformance": "商品表现",
+    "photoDownloader": "图片下载器",
     "shopeeSuite": "Shopee 套件",
     "orderReview": "订单亏损审查",
     "affiliatePerformance": "联盟中心",
@@ -272,6 +273,12 @@
         "desc": "按周上传、清洗并存储商品表现数据。",
         "mainUser": "账户负责人",
         "platform": "Shopee"
+      },
+      "photo_downloader": {
+        "name": "图片下载器",
+        "desc": "支持直链下载或模板批量下载（名称 + URL）。",
+        "mainUser": "运营 / 内容团队",
+        "platform": "多平台"
       },
       "order_review": {
         "name": "订单亏损审查",

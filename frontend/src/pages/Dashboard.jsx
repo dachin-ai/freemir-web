@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Typography, Row, Col, Card, Tag, Tooltip, Button } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRightOutlined, LockOutlined, TagOutlined, InboxOutlined, FileSearchOutlined, BarChartOutlined, FundProjectionScreenOutlined, RiseOutlined, PieChartOutlined, VideoCameraOutlined, UnlockOutlined } from '@ant-design/icons';
+import { ArrowRightOutlined, LockOutlined, TagOutlined, InboxOutlined, FileSearchOutlined, BarChartOutlined, FundProjectionScreenOutlined, RiseOutlined, PieChartOutlined, VideoCameraOutlined, UnlockOutlined, PictureOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -20,6 +20,7 @@ const TOOL_ITEMS = [
     { toolKey: 'price_checker', icon: <TagOutlined />, path: '/price-checker', active: true, category: 'freemir' },
     { toolKey: 'order_planner', icon: <InboxOutlined />, path: '/warehouse-order', active: true, category: 'freemir' },
     { toolKey: 'product_performance', icon: <BarChartOutlined />, path: '/product-performance', active: true, category: 'freemir' },
+    { toolKey: 'photo_downloader', icon: <PictureOutlined />, path: '/photo-downloader', active: true, category: 'freemir' },
     { toolKey: 'order_review', icon: <FileSearchOutlined />, path: '/order-loss', active: true, category: 'shopee' },
     { toolKey: 'affiliate_performance', icon: <BarChartOutlined />, path: '/shopee-affiliate', active: true, category: 'shopee' },
     { toolKey: 'livestream_display', icon: <VideoCameraOutlined />, path: '/livestream-display', active: true, category: 'shopee' },
@@ -31,8 +32,16 @@ const TOOL_ITEMS = [
 const Dashboard = () => {
     const { t } = useTranslation();
     const navigate = useNavigate();
-    const { hasAccess } = useAuth();
+    const { hasAccess, logActivity } = useAuth();
     const { isDark } = useTheme();
+
+    const handleLaunchTool = (tool) => {
+        if (!tool.active || !hasAccess(tool.toolKey)) return;
+        const tk = `lobbyPage.tools.${tool.toolKey}.name`;
+        const toolName = t(tk, { defaultValue: tool.toolKey });
+        logActivity(`Lobby Launch (${toolName})`);
+        navigate(tool.path);
+    };
 
     useEffect(() => {
         const style = document.createElement('style');
@@ -145,7 +154,7 @@ const Dashboard = () => {
                                         <Tooltip title={!accessible ? t('lobbyPage.lockedTooltip') : ''} placement="top">
                                             <Card
                                                 hoverable={isClickable}
-                                                onClick={() => isClickable && navigate(tool.path)}
+                                                onClick={() => isClickable && handleLaunchTool(tool)}
                                                 className={`lobby-card card-${catKey}`}
                                                 style={{
                                                     background: isDark ? '#0f172a' : '#ffffff',

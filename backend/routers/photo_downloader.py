@@ -68,8 +68,8 @@ def _download_image_bytes(url: str, timeout_sec: int = 30) -> tuple[bytes, str]:
 def download_template():
     df = pd.DataFrame(
         [
-            {"name": "kucing", "url": "https://example.com/cat.png"},
-            {"name": "anjing", "url": "https://example.com/dog.jpg"},
+            {"name": "Panci", "url": "https://example.com/panci.png"},
+            {"name": "Wajan", "url": "https://example.com/wajan.jpg"},
         ]
     )
     output = io.BytesIO()

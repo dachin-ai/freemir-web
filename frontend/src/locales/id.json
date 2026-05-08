@@ -5,6 +5,7 @@
     "priceChecker": "Price Checker",
     "orderPlanner": "Perencana Pesanan",
     "productPerformance": "Performa Produk",
+    "photoDownloader": "Photo Downloader",
     "shopeeSuite": "Suite Shopee",
     "orderReview": "Tinjauan Pesanan",
     "affiliatePerformance": "Performa Afiliasi",
@@ -272,6 +273,12 @@
         "desc": "Unggah, bersihkan, dan simpan data performa produk per minggu.",
         "mainUser": "Account Responsible",
         "platform": "Shopee"
+      },
+      "photo_downloader": {
+        "name": "Photo Downloader",
+        "desc": "Unduh foto via direct link atau batch template nama + URL.",
+        "mainUser": "Ops / Konten",
+        "platform": "Multiplatform"
       },
       "order_review": {
         "name": "Tinjauan Pesanan",

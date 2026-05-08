@@ -5,6 +5,7 @@
     "priceChecker": "Price Checker",
     "orderPlanner": "Order Planner",
     "productPerformance": "Product Performance",
+    "photoDownloader": "Photo Downloader",
     "shopeeSuite": "Shopee Suite",
     "orderReview": "Order Review",
     "affiliatePerformance": "Affiliate Performance",
@@ -273,6 +274,12 @@
         "desc": "Upload, clean, and store product performance data by week.",
         "mainUser": "Account Responsible",
         "platform": "Shopee"
+      },
+      "photo_downloader": {
+        "name": "Photo Downloader",
+        "desc": "Download images via direct link or batch template (name + URL).",
+        "mainUser": "Ops / Content",
+        "platform": "Multiplatform"
       },
       "order_review": {
         "name": "Order Review",
