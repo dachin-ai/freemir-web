@@ -346,7 +346,8 @@ def upload_stock_data_to_google_sheet(file_bytes: bytes) -> Dict[str, Any]:
 
 def clean_sku_list(sku_string: str) -> List[str]:
     if pd.isna(sku_string) or not sku_string: return []
-    parts = re.split(r'[+\-,|]+', str(sku_string))
+    # Accept delimiters: + , - | and plain whitespace between SKUs.
+    parts = re.split(r'\s*[+\-,|]+\s*|\s+', str(sku_string).strip())
     return [p.strip() for p in parts if p.strip()]
 
 def parse_idr_price(val: Any) -> float:

@@ -59,6 +59,7 @@ const statCardStyle = (accentColor) => ({
 /* ─── Main Component ─── */
 const PriceChecker = () => {
     const { t } = useTranslation();
+    const { isDark } = useTheme();
     const [inputMode, setInputMode] = useState('Batch');
     const [method, setMethod] = useState('Listing');
     const [loadingDb, setLoadingDb] = useState(false);
@@ -665,7 +666,7 @@ const PriceChecker = () => {
                             <Label><Bi i18nKey="priceChecker.bundleSku" /></Label>
                             <Input
                                 size="large"
-                                placeholder="e.g. SKU_A + SKU_B + SKU_C"
+                                placeholder="e.g. SKU_A + SKU_B or SKU_A SKU_B"
                                 value={skuInput}
                                 onChange={e => setSkuInput(e.target.value)}
                                 onPressEnter={doCalculateDirect}
@@ -735,8 +736,25 @@ const PriceChecker = () => {
                                     <div style={{ display: 'grid', gridTemplateColumns: directResult.items.length === 1 ? '1fr' : 'repeat(auto-fit, minmax(210px, 1fr))', gap: 16 }}>
                                         {directResult.items.map((item, idx) => (
                                             <div key={`${item.sku}-${idx}`} style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 18, overflow: 'hidden', minHeight: 220, display: 'flex', flexDirection: 'column' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'center', padding: 16, background: '#0f172a' }}>
-                                                    <div style={{ width: 120, minWidth: 120, aspectRatio: '1 / 1', position: 'relative', overflow: 'hidden', borderRadius: 18, background: '#111827' }}>
+                                                <div style={{
+                                                    display: 'flex',
+                                                    justifyContent: 'center',
+                                                    padding: 16,
+                                                    background: isDark
+                                                        ? 'linear-gradient(180deg, #0f172a 0%, #111827 100%)'
+                                                        : 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)',
+                                                }}>
+                                                    <div style={{
+                                                        width: 120,
+                                                        minWidth: 120,
+                                                        aspectRatio: '1 / 1',
+                                                        position: 'relative',
+                                                        overflow: 'hidden',
+                                                        borderRadius: 18,
+                                                        background: isDark ? '#111827' : '#ffffff',
+                                                        border: isDark ? '1px solid #1f2937' : '1px solid #cbd5e1',
+                                                        boxShadow: isDark ? '0 6px 16px rgba(0,0,0,0.35)' : '0 6px 16px rgba(15,23,42,0.08)',
+                                                    }}>
                                                         {item.image ? (
                                                             <img src={item.image} alt={item.name || item.sku} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
                                                         ) : (

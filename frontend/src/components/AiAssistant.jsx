@@ -5,10 +5,87 @@ import { askAssistant } from '../api';
 
 const { Text } = Typography;
 
+const renderMessageContent = (text) => {
+    if (!text) return null;
+
+    const withMarkdownLinks = [];
+    const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+    let lastIdx = 0;
+    let match;
+
+    while ((match = linkRegex.exec(text)) !== null) {
+        if (match.index > lastIdx) {
+            withMarkdownLinks.push({ type: 'text', value: text.slice(lastIdx, match.index) });
+        }
+        withMarkdownLinks.push({ type: 'link', label: match[1], href: match[2] });
+        lastIdx = linkRegex.lastIndex;
+    }
+    if (lastIdx < text.length) {
+        withMarkdownLinks.push({ type: 'text', value: text.slice(lastIdx) });
+    }
+
+    const nodes = [];
+    const inlineRegex = /(\*\*[^*]+\*\*|__[^_]+__|https?:\/\/\S+)/g;
+    let idx = 0;
+
+    withMarkdownLinks.forEach((chunk) => {
+        if (chunk.type === 'link') {
+            nodes.push(
+                <a
+                    key={`lk-${idx++}`}
+                    href={chunk.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color: '#93c5fd', textDecoration: 'underline', wordBreak: 'break-all' }}
+                >
+                    {chunk.label}
+                </a>
+            );
+            return;
+        }
+
+        const value = chunk.value;
+        let last = 0;
+        let m;
+        while ((m = inlineRegex.exec(value)) !== null) {
+            if (m.index > last) {
+                nodes.push(<React.Fragment key={`tx-${idx++}`}>{value.slice(last, m.index)}</React.Fragment>);
+            }
+            const token = m[0];
+            if ((token.startsWith('**') && token.endsWith('**')) || (token.startsWith('__') && token.endsWith('__'))) {
+                const clean = token.slice(2, -2);
+                nodes.push(
+                    <span key={`ul-${idx++}`} style={{ textDecoration: 'underline', textUnderlineOffset: 2 }}>
+                        {clean}
+                    </span>
+                );
+            } else if (token.startsWith('http://') || token.startsWith('https://')) {
+                nodes.push(
+                    <a
+                        key={`ur-${idx++}`}
+                        href={token}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: '#93c5fd', textDecoration: 'underline', wordBreak: 'break-all' }}
+                    >
+                        {token}
+                    </a>
+                );
+            }
+            last = inlineRegex.lastIndex;
+        }
+        if (last < value.length) {
+            nodes.push(<React.Fragment key={`tx-${idx++}`}>{value.slice(last)}</React.Fragment>);
+        }
+    });
+
+    return nodes;
+};
+
 const AiAssistant = () => {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState([
-        { role: 'model', text: 'Halo! Saya freemir AI. Ada yang bisa saya bantu terkait Cek Harga atau panduan alat yang ada?' }
+        { role: 'model', text: 'Hello! I am freemir AI. How can I help you with Price Checking or tool guidance today?' }
     ]);
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -40,7 +117,11 @@ const AiAssistant = () => {
             }
         } catch (error) {
             console.error("Chat Error:", error);
-            setMessages([...newMessages, { role: 'model', text: 'Maaf, sistem AI sedang mengalami gangguan koneksi atau database harga belum termuat.' }]);
+            const detail =
+                error?.response?.data?.detail ||
+                error?.message ||
+                'Maaf, sistem AI sedang mengalami gangguan koneksi.';
+            setMessages([...newMessages, { role: 'model', text: `Maaf, chat belum bisa diproses. Detail: ${detail}` }]);
         } finally {
             setIsLoading(false);
         }
@@ -142,9 +223,11 @@ const AiAssistant = () => {
                                     border: m.role === 'user' ? 'none' : '1px solid rgba(255,255,255,0.05)',
                                     fontSize: 14,
                                     lineHeight: 1.5,
-                                    whiteSpace: 'pre-wrap'
+                                    whiteSpace: 'pre-wrap',
+                                    overflowWrap: 'anywhere',
+                                    wordBreak: 'break-word',
                                 }}>
-                                    {m.text}
+                                    {renderMessageContent(m.text)}
                                 </div>
                             </div>
                         ))}

@@ -12,6 +12,7 @@ const TOOL_KEYS = [
     'price_checker',
     'order_planner',
     'product_performance',
+    'photo_downloader',
     'order_review',
     'affiliate_performance',
     'livestream_display',

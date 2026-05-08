@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from sqlalchemy import text
-from routers import price_checker, order_loss, failed_delivery, presales, erp_oos, sku_plan, conversion_cleaner, order_match, auth, warehouse_order, socmed, affiliate, tiktok_ads, access, product_performance, livestream_display
+from routers import price_checker, order_loss, failed_delivery, presales, erp_oos, sku_plan, conversion_cleaner, order_match, auth, warehouse_order, socmed, affiliate, tiktok_ads, access, product_performance, livestream_display, photo_downloader
 from database import engine, Base
 import models  # noqa: F401 - ensure all models are registered before create_all
 import os
@@ -18,9 +18,9 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-# AI Chat router is optional (only loaded if GEMINI_API_KEY is configured)
+# AI Chat router is optional (loaded if any LLM provider key is configured)
 ai_chat_available = False
-if os.getenv("GEMINI_API_KEY"):
+if os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY"):
     try:
         from routers import ai_chat
         ai_chat_available = True
@@ -281,6 +281,7 @@ app.include_router(tiktok_ads.router)
 app.include_router(access.router)
 app.include_router(product_performance.router)
 app.include_router(livestream_display.router)
+app.include_router(photo_downloader.router)
 
 # Include AI Chat router only if GEMINI_API_KEY is set
 if ai_chat_available:

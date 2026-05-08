@@ -58,6 +58,14 @@ export const forgotPassword = (username, email) => api.post('/auth/forgot-passwo
 export const changePassword = (current_password, new_password) => api.post('/auth/change-password', { current_password, new_password });
 
 export const askAssistant = (messages) => api.post('/chat/ask', { messages });
+export const downloadPhotoTemplate = () => api.get('/photo-downloader/template', { responseType: 'blob' });
+export const downloadPhotoDirect = (name, url) =>
+  api.post('/photo-downloader/direct', { name, url }, { responseType: 'blob' });
+export const downloadPhotoBatch = (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.post('/photo-downloader/batch', formData, { responseType: 'blob' });
+};
 
 // Access management
 export const submitAccessRequest = (tool_key) => api.post('/access/request', { tool_key });

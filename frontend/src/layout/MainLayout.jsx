@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import Bi from '../components/Bi';
 import LanguageSelect from '../components/LanguageSelect';
-import Panda from '../components/Panda';
+import AiAssistant from '../components/AiAssistant';
 import { changePassword } from '../api';
 
 const { Sider, Content } = Layout;
@@ -79,6 +79,7 @@ const MainLayout = () => {
         { key: '/price-checker', label: lockedLabel(<Bi i18nKey="layout.priceChecker" />, 'price_checker'), style: !hasAccess('price_checker') ? { opacity: 0.6 } : {} },
         { key: '/warehouse-order', label: lockedLabel(<Bi i18nKey="layout.orderPlanner" />, 'order_planner'), style: !hasAccess('order_planner') ? { opacity: 0.6 } : {} },
         { key: '/product-performance', label: lockedLabel(<Bi i18nKey="layout.productPerformance" />, 'product_performance'), style: !hasAccess('product_performance') ? { opacity: 0.6 } : {} },
+        { key: '/photo-downloader', label: lockedLabel('Photo Downloader', 'photo_downloader'), style: !hasAccess('photo_downloader') ? { opacity: 0.6 } : {} },
       ]
     },
     {
@@ -117,6 +118,7 @@ const MainLayout = () => {
     '/access-management': 'admin',
     '/product-performance': 'product_performance',
     '/livestream-display': 'livestream_display',
+    '/photo-downloader': 'photo_downloader',
   };
 
   const handleMenuClick = ({ key }) => {
@@ -202,8 +204,6 @@ const MainLayout = () => {
           theme={isDark ? 'dark' : 'light'}
         />
 
-        {/* 🐼 Panda mascot */}
-        <Panda />
       </Sider>
 
       {/* ── MAIN AREA ── */}
@@ -345,6 +345,7 @@ const MainLayout = () => {
           </Form.Item>
         </Form>
       </Modal>
+      {user ? <AiAssistant /> : null}
     </Layout>
   );
 };
