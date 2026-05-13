@@ -77,5 +77,9 @@ export const getAllUsersWithPermissions = () => api.get('/access/users');
 export const updateUserPermissions = (username, permissions, name) => api.put(`/access/users/${username}/permissions`, { permissions, name });
 export const getUserActivity = (payload) => api.post('/access/user-activity', payload);
 
+/** Shared Quick Links (all logged-in users read/write same data) */
+export const getQuickLinks = () => api.get('quick-links');
+export const putQuickLinks = (groups) => api.put('quick-links', { groups });
+
 export default api;
 

@@ -198,3 +198,13 @@ class ShopeeAffCreator(Base):
     commission = Column(Float)
     roi = Column(Float)
 
+
+class SharedQuickLinks(Base):
+    """Satu baris global (id=1): Quick Links bersama untuk semua user yang login."""
+
+    __tablename__ = "shared_quick_links"
+
+    id = Column(Integer, primary_key=True)
+    payload = Column(JSON, nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+

@@ -15,6 +15,7 @@
     "affiliateAnalyzer": "Analisis Afiliasi",
     "adsAnalyzer": "Analisis Iklan",
     "requestAccess": "Minta Akses",
+    "quickLinks": "Link Cepat",
     "accessManagement": "Manajemen Akses",
     "topBarTagline": "Alat Business Intelligence",
     "accessRestricted": "Akses dibatasi. Hubungi admin untuk meminta akses.",
@@ -265,6 +266,51 @@
     "launch": "Buka",
     "requestAccessCta": "Minta Akses",
     "lockedTooltip": "Hubungi admin untuk meminta akses",
+    "quickLinks": {
+      "title": "Link Cepat",
+      "formAddLink": "Detail link",
+      "addLinkButton": "Tambah link",
+      "closeEditor": "Tutup",
+      "phName": "Nama link",
+      "phUrl": "https://contoh.com",
+      "phCategory": "Kategori (mis. Ads, Tools, Finance)",
+      "add": "Tambah",
+      "update": "Update",
+      "cancel": "Batal",
+      "dragHint": "Seret kartu untuk urutkan atau pindah antar grup terbuka",
+      "dragSectionReorder": "Seret untuk urutkan grup",
+      "visit": "Kunjungi",
+      "empty": "Belum ada link. Pakai Tambah link untuk menambahkan.",
+      "defaultCategory": "General",
+      "msgNameRequired": "Nama link wajib diisi.",
+      "msgUrlInvalid": "URL belum valid.",
+      "msgAdded": "Link berhasil ditambahkan.",
+      "msgUpdated": "Link berhasil diupdate.",
+      "msgCopied": "Link berhasil disalin.",
+      "msgCopyFail": "Gagal menyalin link.",
+      "accentLabel": "Warna kartu",
+      "defaultGroupTitle": "Utama",
+      "untitledSection": "Grup tanpa nama",
+      "newGroupTitle": "Grup baru",
+      "targetGroup": "Simpan ke grup",
+      "addGroup": "Tambah grup",
+      "phGroupTitle": "Nama grup",
+      "expandGroup": "Buka grup",
+      "collapseGroup": "Ciutkan grup",
+      "groupEmpty": "Belum ada link di grup ini. Pilih grup di \"Simpan ke grup\" lalu tambah link di atas.",
+      "msgGroupAdded": "Grup ditambahkan.",
+      "msgGroupRemoved": "Grup dihapus. Link dipindahkan ke grup lain.",
+      "msgNeedOneGroup": "Minimal satu grup harus ada.",
+      "removeGroup": "Hapus grup",
+      "confirmRemoveSectionTitle": "Hapus grup ini?",
+      "confirmRemoveSectionBody": "Semua link di grup ini akan digabung ke grup lain. Tindakan ini tidak bisa dibatalkan.",
+      "confirmRemoveSectionHint": "Ketik frasa persis di bawah (huruf besar dan spasi harus sama):",
+      "confirmRemoveSectionPhrase": "Remove This Section",
+      "confirmRemoveSectionOk": "Ya, hapus grup",
+      "dropLinkHere": "Lepas untuk menaruh link di grup ini.",
+      "dropToAppend": "Lepas di sini untuk menambah di akhir grup",
+      "msgSyncFail": "Gagal menyimpan Quick Links ke server. Cek koneksi atau coba lagi."
+    },
     "suites": {
       "freemir": "Suite Freemir",
       "shopee": "Suite Shopee",
@@ -645,3 +691,7 @@
     "store": "Toko"
   }
 }
+
+
+
+

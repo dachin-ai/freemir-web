@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Layout, Menu, Typography, Button, message, Modal, Form, Input, Dropdown, Divider, Segmented } from 'antd';
-import { LogoutOutlined, HomeOutlined, LockOutlined, AppstoreOutlined, ShoppingOutlined, PlaySquareOutlined, VideoCameraOutlined, SunOutlined, MoonOutlined, KeyOutlined, UnlockOutlined, TeamOutlined, BarChartOutlined, GlobalOutlined, DownOutlined } from '@ant-design/icons';
+import { LogoutOutlined, HomeOutlined, LockOutlined, AppstoreOutlined, ShoppingOutlined, PlaySquareOutlined, VideoCameraOutlined, SunOutlined, MoonOutlined, KeyOutlined, UnlockOutlined, TeamOutlined, BarChartOutlined, GlobalOutlined, DownOutlined, LinkOutlined } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
@@ -72,6 +72,7 @@ const MainLayout = () => {
 
   const menuItems = [
     { key: '/', icon: <HomeOutlined />, label: <Bi i18nKey="layout.lobby" /> },
+    { key: '/quick-links', icon: <LinkOutlined />, label: <Bi i18nKey="layout.quickLinks" /> },
     {
       key: 'group-freemir',
       label: <Bi i18nKey="layout.freemirSuite" />,

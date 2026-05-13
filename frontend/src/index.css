@@ -257,6 +257,31 @@ h4.ant-typography {
   box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
 }
 
+/* Quick Links: tint per row — overrides global .ant-card !important via higher specificity + CSS vars from JSX */
+.lobby-link-card.ant-card .ant-card-body {
+  background: transparent !important;
+}
+
+:root[data-theme="light"] .lobby-link-card.ant-card,
+.lobby-link-card.ant-card {
+  background: var(--ql-accent-bg) !important;
+  border: var(--ql-accent-border) !important;
+  border-radius: 14px !important;
+  box-shadow: var(--ql-accent-shadow) !important;
+}
+
+.quick-links-editor-card.ant-card .ant-card-body {
+  background: transparent !important;
+}
+
+:root[data-theme="light"] .quick-links-editor-card.ant-card,
+.quick-links-editor-card.ant-card {
+  background: var(--ql-editor-bg) !important;
+  border: var(--ql-editor-border) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--ql-editor-shadow) !important;
+}
+
 .ant-card-head {
   border-bottom: 1px solid var(--border) !important;
   background: transparent !important;
@@ -362,6 +387,74 @@ h4.ant-typography {
   width: 100% !important;
   border-radius: 8px !important;
   border: 1px solid var(--border) !important;
+}
+
+/* Price Checker: clean number inputs (no inner line) */
+.pc-clean-number .ant-input-number-input-wrap {
+  background: transparent !important;
+}
+
+.pc-clean-number .ant-input-number-input {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+/* Price Checker: CTA button feel more alive */
+.pc-live-cta {
+  background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 52%, #7c3aed 100%) !important;
+  box-shadow: 0 10px 24px rgba(99, 102, 241, 0.34), 0 0 0 1px rgba(255, 255, 255, 0.08) inset !important;
+  transition: transform 0.18s ease, box-shadow 0.2s ease, filter 0.2s ease !important;
+}
+
+.pc-live-cta:hover {
+  transform: translateY(-1px);
+  filter: saturate(1.06);
+  box-shadow: 0 14px 30px rgba(99, 102, 241, 0.42), 0 0 0 1px rgba(255, 255, 255, 0.14) inset !important;
+}
+
+.pc-live-cta:active {
+  transform: translateY(0);
+  box-shadow: 0 8px 18px rgba(99, 102, 241, 0.32), 0 0 0 1px rgba(255, 255, 255, 0.1) inset !important;
+}
+
+.pc-live-cta .anticon {
+  font-size: 15px;
+}
+
+:root[data-theme="light"] .pc-live-cta {
+  box-shadow: 0 10px 22px rgba(2, 132, 199, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.12) inset !important;
+}
+
+/* Quick Links: Close editor — merah / danger, tetap “premium” */
+.ql-editor-close-cta {
+  background: linear-gradient(135deg, #fb7185 0%, #ef4444 48%, #dc2626 100%) !important;
+  border: 1px solid rgba(254, 202, 202, 0.45) !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 22px rgba(239, 68, 68, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+  transition: transform 0.16s ease, box-shadow 0.2s ease, filter 0.2s ease !important;
+}
+
+.ql-editor-close-cta:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.06) saturate(1.05);
+  border-color: rgba(254, 226, 226, 0.65) !important;
+  box-shadow: 0 12px 28px rgba(239, 68, 68, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
+}
+
+.ql-editor-close-cta:active {
+  transform: translateY(0);
+  filter: brightness(0.96);
+  box-shadow: 0 6px 16px rgba(220, 38, 38, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+}
+
+:root[data-theme="light"] .ql-editor-close-cta {
+  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+}
+
+:root[data-theme="light"] .ql-editor-close-cta:hover {
+  box-shadow: 0 12px 26px rgba(239, 68, 68, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.45) !important;
 }
 
 /* ============================================
@@ -631,6 +724,15 @@ h4.ant-typography {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Login: beri jarak teks input dari icon prefix */
+.fm-login-card .ant-input-affix-wrapper .ant-input {
+  padding-inline-start: 6px;
+}
+
+.fm-login-card .ant-input-prefix {
+  margin-inline-end: 10px;
 }
 
 @media (max-width: 420px) {

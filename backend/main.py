@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from sqlalchemy import text
-from routers import price_checker, order_loss, failed_delivery, presales, erp_oos, sku_plan, conversion_cleaner, order_match, auth, warehouse_order, socmed, affiliate, tiktok_ads, access, product_performance, livestream_display, photo_downloader
+from routers import price_checker, order_loss, failed_delivery, presales, erp_oos, sku_plan, conversion_cleaner, order_match, auth, warehouse_order, socmed, affiliate, tiktok_ads, access, product_performance, livestream_display, photo_downloader, quick_links
 from database import engine, Base
 import models  # noqa: F401 - ensure all models are registered before create_all
 import os
@@ -221,6 +221,22 @@ def _run_migrations():
         END
         $$;
         """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'shared_quick_links'
+            ) THEN
+                CREATE TABLE shared_quick_links (
+                    id INTEGER PRIMARY KEY,
+                    payload JSON NOT NULL,
+                    updated_at TIMESTAMP DEFAULT NOW()
+                );
+            END IF;
+        END
+        $$;
+        """,
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -282,6 +298,7 @@ app.include_router(access.router)
 app.include_router(product_performance.router)
 app.include_router(livestream_display.router)
 app.include_router(photo_downloader.router)
+app.include_router(quick_links.router)
 
 # Include AI Chat router only if GEMINI_API_KEY is set
 if ai_chat_available:

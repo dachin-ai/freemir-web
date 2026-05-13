@@ -168,6 +168,7 @@ const LoginPage = () => {
             />
 
             <div
+                className="fm-login-card"
                 style={{
                     width: '100%',
                     maxWidth: 440,

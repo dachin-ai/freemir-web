@@ -676,6 +676,7 @@ const PriceChecker = () => {
                         <div>
                             <Label><Bi i18nKey="priceChecker.targetPrice" /></Label>
                             <InputNumber
+                                className="pc-clean-number"
                                 size="large"
                                 style={{ width: '100%', borderRadius: 10 }}
                                 controls={false}
@@ -692,6 +693,7 @@ const PriceChecker = () => {
                         <div>
                             <Label><Bi i18nKey="priceChecker.targetStock" /></Label>
                             <InputNumber
+                                className="pc-clean-number"
                                 size="large"
                                 style={{ width: '100%', borderRadius: 10 }}
                                 controls={false}
@@ -706,13 +708,14 @@ const PriceChecker = () => {
                     </div>
 
                     <Button
+                        className="pc-live-cta"
                         size="large"
+                        icon={<ThunderboltOutlined />}
                         loading={calcLoading}
                         onClick={doCalculateDirect}
                         style={{
                             marginTop: 18, height: 46, borderRadius: 10, fontWeight: 700, fontSize: 14,
-                            background: 'var(--indigo)', color: '#fff', border: 'none',
-                            boxShadow: '0 8px 18px rgba(99,102,241,0.28)', paddingInline: 32,
+                            color: '#fff', border: 'none', paddingInline: 32,
                         }}
                     >
                         <Bi i18nKey="priceChecker.calcRealtime" />

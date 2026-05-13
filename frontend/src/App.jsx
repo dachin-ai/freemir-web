@@ -27,6 +27,7 @@ import AccessManagement from './pages/AccessManagement';
 import ProductPerformanceCleaner from './pages/ProductPerformanceCleaner';
 import LivestreamDisplay from './pages/LivestreamDisplay';
 import PhotoDownloader from './pages/PhotoDownloader';
+import QuickLinks from './pages/QuickLinks';
 import PermissionGate from './components/PermissionGate';
 import { useTranslation } from 'react-i18next';
 
@@ -75,6 +76,7 @@ function ProtectedApp() {
         <Route path="shopee-affiliate" element={<PermissionGate toolKey="affiliate_performance"><ShopeeAffiliate /></PermissionGate>} />
         <Route path="tiktok-ads" element={<PermissionGate toolKey="ads_analyzer"><TikTokAds /></PermissionGate>} />
         <Route path="request-access" element={<RequestAccess />} />
+        <Route path="quick-links" element={<QuickLinks />} />
         <Route path="access-management" element={<PermissionGate toolKey="admin"><AccessManagement /></PermissionGate>} />
         <Route path="product-performance" element={<PermissionGate toolKey="product_performance"><ProductPerformanceCleaner /></PermissionGate>} />
         <Route path="livestream-display" element={<PermissionGate toolKey="livestream_display"><LivestreamDisplay /></PermissionGate>} />

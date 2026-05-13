@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Typography, Row, Col, Card, Tag, Tooltip, Button } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRightOutlined, LockOutlined, TagOutlined, InboxOutlined, FileSearchOutlined, BarChartOutlined, FundProjectionScreenOutlined, RiseOutlined, PieChartOutlined, VideoCameraOutlined, UnlockOutlined, PictureOutlined } from '@ant-design/icons';
+import { ArrowRightOutlined, LockOutlined, TagOutlined, InboxOutlined, FileSearchOutlined, BarChartOutlined, FundProjectionScreenOutlined, RiseOutlined, PieChartOutlined, VideoCameraOutlined, UnlockOutlined, PictureOutlined, LinkOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -105,25 +105,41 @@ const Dashboard = () => {
                                 {t('lobbyPage.heroSubtitle')}
                             </Text>
                         </div>
-                        <Button
-                            icon={<UnlockOutlined />}
-                            size="small"
-                            onClick={() => navigate('/request-access')}
-                            style={{
-                                flexShrink: 0,
-                                marginTop: 6,
-                                borderRadius: 8,
-                                fontSize: 12,
-                                fontWeight: 600,
-                                height: 30,
-                                padding: '0 12px',
-                                background: isDark ? 'rgba(99,102,241,0.15)' : '#6366f1',
-                                border: isDark ? '1px solid rgba(99,102,241,0.4)' : 'none',
-                                color: isDark ? '#a5b4fc' : '#ffffff',
-                            }}
-                        >
-                            {t('lobbyPage.requestAccessTop')}
-                        </Button>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+                            <Button
+                                icon={<UnlockOutlined />}
+                                size="small"
+                                onClick={() => navigate('/request-access')}
+                                style={{
+                                    flexShrink: 0,
+                                    marginTop: 6,
+                                    borderRadius: 8,
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    height: 30,
+                                    padding: '0 12px',
+                                    background: isDark ? 'rgba(99,102,241,0.15)' : '#6366f1',
+                                    border: isDark ? '1px solid rgba(99,102,241,0.4)' : 'none',
+                                    color: isDark ? '#a5b4fc' : '#ffffff',
+                                }}
+                            >
+                                {t('lobbyPage.requestAccessTop')}
+                            </Button>
+                            <Button
+                                icon={<LinkOutlined />}
+                                size="small"
+                                onClick={() => navigate('/quick-links')}
+                                style={{
+                                    borderRadius: 8,
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    height: 30,
+                                    padding: '0 12px',
+                                }}
+                            >
+                                {t('lobbyPage.quickLinks.title')}
+                            </Button>
+                        </div>
                     </div>
                 </div>
             </div>
