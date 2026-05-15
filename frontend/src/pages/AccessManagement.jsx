@@ -26,6 +26,7 @@ const PERM_TOOLS = [
     { key: 'order_planner',         group: 'freemir' },
     { key: 'product_performance',   group: 'freemir' },
     { key: 'photo_downloader',      group: 'freemir' },
+    { key: 'brand_material',        group: 'freemir' },
     { key: 'order_review',          group: 'shopee'  },
     { key: 'affiliate_performance', group: 'shopee'  },
     { key: 'livestream_display',    group: 'shopee'  },

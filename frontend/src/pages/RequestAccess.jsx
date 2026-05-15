@@ -13,6 +13,7 @@ const TOOL_KEYS = [
     'order_planner',
     'product_performance',
     'photo_downloader',
+    'brand_material',
     'order_review',
     'affiliate_performance',
     'livestream_display',

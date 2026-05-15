@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Typography, Row, Col, Card, Tag, Tooltip, Button } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRightOutlined, LockOutlined, TagOutlined, InboxOutlined, FileSearchOutlined, BarChartOutlined, FundProjectionScreenOutlined, RiseOutlined, PieChartOutlined, VideoCameraOutlined, UnlockOutlined, PictureOutlined, LinkOutlined } from '@ant-design/icons';
+import { ArrowRightOutlined, LockOutlined, TagOutlined, InboxOutlined, FileSearchOutlined, BarChartOutlined, FundProjectionScreenOutlined, RiseOutlined, PieChartOutlined, VideoCameraOutlined, UnlockOutlined, PictureOutlined, LinkOutlined, FileImageOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -21,6 +21,7 @@ const TOOL_ITEMS = [
     { toolKey: 'order_planner', icon: <InboxOutlined />, path: '/warehouse-order', active: true, category: 'freemir' },
     { toolKey: 'product_performance', icon: <BarChartOutlined />, path: '/product-performance', active: true, category: 'freemir' },
     { toolKey: 'photo_downloader', icon: <PictureOutlined />, path: '/photo-downloader', active: true, category: 'freemir' },
+    { toolKey: 'brand_material', icon: <FileImageOutlined />, path: '/brand-material', active: true, category: 'freemir' },
     { toolKey: 'order_review', icon: <FileSearchOutlined />, path: '/order-loss', active: true, category: 'shopee' },
     { toolKey: 'affiliate_performance', icon: <BarChartOutlined />, path: '/shopee-affiliate', active: true, category: 'shopee' },
     { toolKey: 'livestream_display', icon: <VideoCameraOutlined />, path: '/livestream-display', active: true, category: 'shopee' },

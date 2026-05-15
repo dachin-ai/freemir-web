@@ -6,6 +6,7 @@ xlsxwriter
 python-multipart
 gspread
 google-auth
+google-cloud-storage
 PyJWT
 apify-client
 requests

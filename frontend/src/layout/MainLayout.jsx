@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Layout, Menu, Typography, Button, message, Modal, Form, Input, Dropdown, Divider, Segmented } from 'antd';
-import { LogoutOutlined, HomeOutlined, LockOutlined, AppstoreOutlined, ShoppingOutlined, PlaySquareOutlined, VideoCameraOutlined, SunOutlined, MoonOutlined, KeyOutlined, UnlockOutlined, TeamOutlined, BarChartOutlined, GlobalOutlined, DownOutlined, LinkOutlined } from '@ant-design/icons';
+import { LogoutOutlined, HomeOutlined, LockOutlined, AppstoreOutlined, ShoppingOutlined, PlaySquareOutlined, VideoCameraOutlined, SunOutlined, MoonOutlined, KeyOutlined, UnlockOutlined, TeamOutlined, BarChartOutlined, GlobalOutlined, DownOutlined, LinkOutlined, FileImageOutlined } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
@@ -82,6 +82,7 @@ const MainLayout = () => {
         { key: '/warehouse-order', label: lockedLabel(<Bi i18nKey="layout.orderPlanner" />, 'order_planner'), style: !hasAccess('order_planner') ? { opacity: 0.6 } : {} },
         { key: '/product-performance', label: lockedLabel(<Bi i18nKey="layout.productPerformance" />, 'product_performance'), style: !hasAccess('product_performance') ? { opacity: 0.6 } : {} },
         { key: '/photo-downloader', label: lockedLabel(<Bi i18nKey="layout.photoDownloader" />, 'photo_downloader'), style: !hasAccess('photo_downloader') ? { opacity: 0.6 } : {} },
+        { key: '/brand-material', label: lockedLabel(<Bi i18nKey="layout.brandMaterial" />, 'brand_material'), style: !hasAccess('brand_material') ? { opacity: 0.6 } : {} },
       ]
     },
     {
@@ -121,6 +122,7 @@ const MainLayout = () => {
     '/product-performance': 'product_performance',
     '/livestream-display': 'livestream_display',
     '/photo-downloader': 'photo_downloader',
+    '/brand-material': 'brand_material',
   };
 
   const handleMenuClick = ({ key }) => {

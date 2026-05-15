@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from sqlalchemy import text
-from routers import price_checker, order_loss, failed_delivery, presales, erp_oos, sku_plan, conversion_cleaner, order_match, auth, warehouse_order, socmed, affiliate, tiktok_ads, access, product_performance, livestream_display, photo_downloader, quick_links
+from routers import price_checker, order_loss, failed_delivery, presales, erp_oos, sku_plan, conversion_cleaner, order_match, auth, warehouse_order, socmed, affiliate, tiktok_ads, access, product_performance, livestream_display, photo_downloader, quick_links, brand_material
 from database import engine, Base, SessionLocal, USING_SQLITE_DEV
 import models  # noqa: F401 - ensure all models are registered before create_all
 import os
@@ -237,12 +237,46 @@ def _run_migrations():
         END
         $$;
         """,
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'brand_materials'
+            ) THEN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'brand_materials' AND column_name = 'media_type'
+                ) THEN
+                    ALTER TABLE brand_materials ADD COLUMN media_type VARCHAR NOT NULL DEFAULT 'photo';
+                    UPDATE brand_materials SET media_type = 'video' WHERE mime_type LIKE 'video/%';
+                END IF;
+            END IF;
+        END
+        $$;
+        """,
     ]
     with engine.connect() as conn:
         for sql in migrations:
             conn.execute(text(sql))
         conn.commit()
     print("[Startup] [OK] Database migrations checked / applied.")
+
+
+def _migrate_brand_material_media_type_column():
+    """SQLite (and any DB) — add media_type if table predates the column."""
+    from sqlalchemy import inspect
+
+    insp = inspect(engine)
+    if "brand_materials" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("brand_materials")}
+    if "media_type" in cols:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE brand_materials ADD COLUMN media_type VARCHAR DEFAULT 'photo'"))
+        conn.execute(text("UPDATE brand_materials SET media_type = 'video' WHERE mime_type LIKE 'video/%'"))
+    print("[Startup] [OK] brand_materials.media_type column added.")
 
 
 def _seed_sqlite_dev_user():
@@ -283,6 +317,7 @@ async def lifespan(app: FastAPI):
     try:
         Base.metadata.create_all(bind=engine)
         print("[Startup] [OK] Database tables created/verified.")
+        _migrate_brand_material_media_type_column()
         _seed_sqlite_dev_user()
     except Exception as e:
         print(f"[Startup] [WARN] Database not yet available: {e}")
@@ -335,6 +370,7 @@ app.include_router(product_performance.router)
 app.include_router(livestream_display.router)
 app.include_router(photo_downloader.router)
 app.include_router(quick_links.router)
+app.include_router(brand_material.router)
 
 # Include AI Chat router only if GEMINI_API_KEY is set
 if ai_chat_available:

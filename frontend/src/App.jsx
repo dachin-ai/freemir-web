@@ -27,6 +27,7 @@ import AccessManagement from './pages/AccessManagement';
 import ProductPerformanceCleaner from './pages/ProductPerformanceCleaner';
 import LivestreamDisplay from './pages/LivestreamDisplay';
 import PhotoDownloader from './pages/PhotoDownloader';
+import BrandMaterial from './pages/BrandMaterial';
 import QuickLinks from './pages/QuickLinks';
 import PermissionGate from './components/PermissionGate';
 import { useTranslation } from 'react-i18next';
@@ -81,6 +82,7 @@ function ProtectedApp() {
         <Route path="product-performance" element={<PermissionGate toolKey="product_performance"><ProductPerformanceCleaner /></PermissionGate>} />
         <Route path="livestream-display" element={<PermissionGate toolKey="livestream_display"><LivestreamDisplay /></PermissionGate>} />
         <Route path="photo-downloader" element={<PermissionGate toolKey="photo_downloader"><PhotoDownloader /></PermissionGate>} />
+        <Route path="brand-material" element={<PermissionGate toolKey="brand_material"><BrandMaterial /></PermissionGate>} />
         <Route path="*" element={<Navigate to="/" />} />
       </Route>
     </Routes>

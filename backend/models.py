@@ -199,6 +199,22 @@ class ShopeeAffCreator(Base):
     roi = Column(Float)
 
 
+class BrandMaterial(Base):
+    __tablename__ = "brand_materials"
+
+    id = Column(String, primary_key=True)
+    sku = Column(String, index=True, nullable=False)
+    sku_key = Column(String, index=True, nullable=False)
+    category = Column(String, nullable=False)  # main | sub
+    media_type = Column(String, nullable=False, default="photo")  # photo | video
+    sub_index = Column(Integer, nullable=True)
+    gcs_object_path = Column(String, nullable=False)
+    mime_type = Column(String, nullable=False)
+    size_bytes = Column(Integer, default=0)
+    uploaded_at = Column(DateTime, server_default=func.now())
+    uploaded_by = Column(String, default="")
+
+
 class SharedQuickLinks(Base):
     """Satu baris global (id=1): Quick Links bersama untuk semua user yang login."""
 

@@ -43,7 +43,8 @@ SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 TOOL_KEYS = [
     "price_checker", "order_planner", "order_review",
     "affiliate_performance", "pre_sales", "affiliate_analyzer", "ads_analyzer",
-    "admin", "product_performance", "livestream_display", "photo_downloader"
+    "admin", "product_performance", "livestream_display", "photo_downloader",
+    "brand_material",
 ]
 
 # TIMEOUT PROTECTION for Google Sheets API
