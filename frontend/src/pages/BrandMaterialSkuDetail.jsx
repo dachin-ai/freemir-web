@@ -3,7 +3,7 @@ import {
     Button, Card, Checkbox, Empty, Flex, Segmented, Space, Table, Tag, Tooltip, Typography,
 } from 'antd';
 import {
-    ArrowLeftOutlined, DownloadOutlined, EditOutlined,
+    ArrowLeftOutlined, CloudUploadOutlined, DownloadOutlined, EditOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -35,6 +35,7 @@ export default function BrandMaterialSkuDetail({
     typeFilter,
     onTypeFilterChange,
     onBack,
+    onUpload,
     skuInfoImageUrl,
     selectedIds,
     onSelect,
@@ -201,9 +202,16 @@ export default function BrandMaterialSkuDetail({
                 subtitle={t('brandMaterial.skuDetailSubtitle')}
                 accent="#0ea5e9"
                 actions={(
-                    <Button icon={<ArrowLeftOutlined />} onClick={onBack}>
-                        {t('brandMaterial.skuDetailBack')}
-                    </Button>
+                    <Space wrap>
+                        {onUpload && (
+                            <Button type="primary" icon={<CloudUploadOutlined />} onClick={onUpload}>
+                                {t('brandMaterial.upload')}
+                            </Button>
+                        )}
+                        <Button icon={<ArrowLeftOutlined />} onClick={onBack}>
+                            {t('brandMaterial.skuDetailBack')}
+                        </Button>
+                    </Space>
                 )}
             />
 

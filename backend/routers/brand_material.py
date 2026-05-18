@@ -190,6 +190,8 @@ async def upload(
         ):
             raise HTTPException(status_code=400, detail=code) from e
         raise HTTPException(status_code=400, detail=code) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e) or "UPLOAD_FAILED") from e
 
 
 @router.post("/bulk-delete", dependencies=[Depends(require_tool_access("brand_material"))])

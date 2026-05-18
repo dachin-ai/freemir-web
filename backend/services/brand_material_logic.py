@@ -512,6 +512,7 @@ def upload_material(
     mime_type: str,
     uploaded_by: str = "",
     preview_bytes: bytes | None = None,
+    note: str | None = None,
 ) -> dict:
     sku_norm = normalize_sku(sku)
     if not sku_norm:

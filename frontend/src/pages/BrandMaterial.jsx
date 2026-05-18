@@ -21,6 +21,7 @@ dayjs.extend(timezone);
 import PageHeader from '../components/PageHeader';
 import { useAuth } from '../context/AuthContext';
 import {
+    listBrandMaterialCoverage,
     uploadBrandMaterial,
     updateBrandMaterial,
     deleteBrandMaterial,
@@ -30,7 +31,7 @@ import {
     storageFileName,
     normalizeSku,
 } from '../utils/brandMaterialStore';
-import { isMediaFile, mediaTypeFromFile } from '../utils/brandMaterialMedia';
+import { isMediaFile, isVideoMime, mediaTypeFromFile } from '../utils/brandMaterialMedia';
 import { downloadMaterialsAsZip } from '../utils/brandMaterialDownload';
 
 import {
@@ -53,6 +54,29 @@ function formatUploadedAt(iso) {
     if (!iso) return null;
     const d = dayjs(iso).tz('Asia/Jakarta');
     return d.isValid() ? `${d.format('DD MMM YYYY, HH:mm')} WIB` : null;
+}
+
+function MediaPreview({ previewUrl, mimeType, alt, style = {} }) {
+    const boxStyle = {
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+        display: 'block',
+        ...style,
+    };
+    if (!previewUrl) return null;
+    if (mimeType && (mimeType.startsWith('video/') || mimeType === 'video' || isVideoMime(mimeType))) {
+        return (
+            <video
+                src={previewUrl}
+                muted
+                playsInline
+                preload="metadata"
+                style={boxStyle}
+            />
+        );
+    }
+    return <img src={previewUrl} alt={alt || ''} style={boxStyle} />;
 }
 
 function SkuField({ value, onChange, skuIndex, placeholder }) {
@@ -122,8 +146,24 @@ export default function BrandMaterial() {
     const [editMediaType, setEditMediaType] = useState('photo');
     const [editNote, setEditNote] = useState('');
     const [editSaving, setEditSaving] = useState(false);
+    const [catalogSkus, setCatalogSkus] = useState([]);
 
     const bumpReload = useCallback(() => setReloadToken((n) => n + 1), []);
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const result = await listBrandMaterialCoverage({ page: 1, pageSize: 200, sku: '' });
+                if (!cancelled) {
+                    setCatalogSkus((result.items || []).map((row) => ({ sku: row.sku })));
+                }
+            } catch {
+                if (!cancelled) setCatalogSkus([]);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [reloadToken]);
 
     const openSkuFolder = useCallback((row) => {
         navigate(`/brand-material/${encodeURIComponent(row.sku)}`, {
@@ -141,11 +181,14 @@ export default function BrandMaterial() {
     );
 
     const skuIndex = useMemo(() => {
-        const seeds = [];
+        const seeds = [...catalogSkus];
         if (activeSku) seeds.push({ sku: activeSku });
+        uploadRows.forEach((row) => {
+            if (row.sku) seeds.push({ sku: row.sku });
+        });
         selectedItems.forEach((item) => seeds.push(item));
         return buildSkuIndex(seeds);
-    }, [activeSku, selectedItems]);
+    }, [catalogSkus, activeSku, uploadRows, selectedItems]);
 
     const refreshAfterChange = useCallback(async () => {
         bumpReload();
@@ -309,10 +352,11 @@ export default function BrandMaterial() {
         let autoSkuCount = 0;
         const newRows = mediaFiles.map((file) => {
             const parsed = parseBrandMaterialFileName(file.name);
-            if (parsed.sku) autoSkuCount += 1;
+            const sku = parsed.sku || (activeSku && isValidFreemirSku(activeSku) ? activeSku : '');
+            if (sku) autoSkuCount += 1;
             return {
                 id: newRowId(),
-                sku: parsed.sku,
+                sku,
                 note: '',
                 category: parsed.category,
                 mediaType: mediaTypeFromFile(file),
@@ -425,8 +469,9 @@ export default function BrandMaterial() {
                 message.error(t('brandMaterial.msgPickMedia'));
             } else if (code === 'TYPE_MIME_MISMATCH') {
                 message.error(t('brandMaterial.msgTypeMismatch'));
-            }
-            else message.error(t('brandMaterial.msgUploadFail'));
+            } else if (code && code !== 'REQUEST_FAILED') {
+                message.error(`${t('brandMaterial.msgUploadFail')}: ${code}`);
+            } else message.error(t('brandMaterial.msgUploadFail'));
         } finally {
             setUploading(false);
         }
@@ -561,6 +606,7 @@ export default function BrandMaterial() {
                     typeFilter={typeFilter}
                     onTypeFilterChange={setTypeFilter}
                     onBack={backToSkuList}
+                    onUpload={openUploadModal}
                     skuInfoImageUrl={skuInfoImageUrl}
                     selectedIds={selectedIds}
                     onSelect={toggleSelect}
