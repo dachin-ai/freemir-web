@@ -15,7 +15,8 @@ from services.price_checker_logic import (
     generate_template_file,
     convert_df_to_excel_multisheet,
     sync_google_sheets_to_vps_postgres,
-    upload_stock_data_to_google_sheet
+    upload_stock_data_to_google_sheet,
+    resolve_photo_maps_for_skus,
 )
 from pydantic import BaseModel
 from datetime import datetime, timezone
@@ -187,17 +188,79 @@ class DirectInput(BaseModel):
     target_price: float
     target_stock: int = 0
 
+
+def _material_preview_response(db, material_id: str) -> Response:
+    from services.brand_material_logic import get_material_preview
+
+    try:
+        data, mime = get_material_preview(db, material_id)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except ValueError as e:
+        code = str(e)
+        if code in ("NOT_FOUND", "FILE_NOT_FOUND", "NO_PREVIEW"):
+            raise HTTPException(status_code=404, detail=code) from e
+        raise HTTPException(status_code=400, detail=code) from e
+
+    return Response(
+        content=data,
+        media_type=mime,
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
+@router.get("/material-preview/{material_id}", dependencies=[Depends(require_tool_access("price_checker"))])
+def material_preview(material_id: str):
+    """Thumbnail for Direct checker — no SKU lookup (use id from calculate-direct)."""
+    db = SessionLocal()
+    try:
+        return _material_preview_response(db, material_id)
+    finally:
+        db.close()
+
+
+@router.get("/sku-photo/{sku}", dependencies=[Depends(require_tool_access("price_checker"))])
+def sku_main_photo(sku: str):
+    """Legacy: resolve SKU → main photo. Prefer /material-preview/{id} when id is known."""
+    import re
+    from services.brand_material_logic import get_brand_main_photo_map
+
+    sku_norm = (sku or "").strip().upper()
+    if not re.match(r"^[A-Z]{2}\d{4}[A-Z]\d{5}$", sku_norm):
+        raise HTTPException(status_code=400, detail="Invalid SKU format")
+
+    db = SessionLocal()
+    try:
+        meta = get_brand_main_photo_map(db, {sku_norm})
+        material_id = (meta.get(sku_norm) or {}).get("materialId")
+        if not material_id:
+            raise HTTPException(status_code=404, detail="NO_MAIN_PHOTO")
+        return _material_preview_response(db, material_id)
+    finally:
+        db.close()
+
+
 @router.post("/calculate-direct", dependencies=[Depends(require_tool_access("price_checker"))])
 def calc_direct(body: DirectInput):
     price_db, name_map, link_map = get_db()
     if not price_db:
         raise HTTPException(status_code=500, detail="Database not loaded")
 
-    # Keep direct checker fast and stable: avoid on-the-fly reverse photo lookup DB queries.
-    # We still return images when they are already available via link_map.
     skus = clean_sku_list(body.sku_string)
-    photo_map = {}
-    price_info = calculate_prices(body.sku_string, price_db, name_map, link_map, photo_map=photo_map)
+    db = SessionLocal()
+    try:
+        brand_photo_meta_map, photo_map = resolve_photo_maps_for_skus(db, set(skus))
+    finally:
+        db.close()
+
+    price_info = calculate_prices(
+        body.sku_string,
+        price_db,
+        name_map,
+        link_map,
+        photo_map=photo_map,
+        brand_photo_meta_map=brand_photo_meta_map,
+    )
     breakdown = generate_breakdown_table(body.sku_string, price_db, name_map)
     
     eval_data = []
@@ -357,10 +420,10 @@ async def calc_batch(
         # Single DB call for all photo maps
         db = SessionLocal()
         try:
-            from services.product_performance_logic import get_sku_photo_map
-            photo_map = get_sku_photo_map(db, all_skus)
+            brand_photo_meta_map, photo_map = resolve_photo_maps_for_skus(db, all_skus)
         except Exception as e:
-            print(f"[ERROR] Failed to get photo map: {e}")
+            print(f"[ERROR] Failed to get photo maps: {e}")
+            brand_photo_meta_map = {}
             photo_map = {}
         finally:
             db.close()
@@ -386,7 +449,14 @@ async def calc_batch(
                     calc_results.append(_invalid_result())
                     continue
                     
-                price_info = calculate_prices(sku_val, price_db, name_map, link_map, photo_map)
+                price_info = calculate_prices(
+                    sku_val,
+                    price_db,
+                    name_map,
+                    link_map,
+                    photo_map=photo_map,
+                    brand_photo_meta_map=brand_photo_meta_map,
+                )
                 calc_results.append(price_info)
                 
             except Exception as e:

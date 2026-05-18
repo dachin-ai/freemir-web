@@ -13,6 +13,12 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from database import SessionLocal
 from models import FreemirPrice, FreemirName
 from services.product_performance_logic import get_sku_photo_map, parse_sku_tokens
+from services.brand_material_logic import (
+    GCS_BUCKET,
+    download_gcs_object_bytes,
+    get_brand_main_photo_map,
+    get_brand_main_photo_url_map,
+)
 
 SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1aS1wpEJ5jIYFYYsZT1U4-gabyb5XwGn4u1-OpRhiucc"
 
@@ -473,39 +479,102 @@ def generate_breakdown_table(sku_string: str, price_db: Dict, name_map: Dict) ->
 
     return breakdown_data
 
-def calculate_prices(sku_string: str, price_db: Dict, name_map: Dict, link_map: Dict, photo_map: Dict = None) -> Dict:
+def resolve_photo_maps_for_skus(db, skus: set) -> tuple[dict, dict]:
+    """
+    Batch-resolve brand main photos + Product Performance fallbacks.
+    Skips expensive PP lookup when every SKU already has a brand main photo.
+    """
+    brand_photo_meta_map = get_brand_main_photo_map(db, skus)
+    need_pp: set = set()
+    for s in skus:
+        key = (s or "").strip().upper()
+        if key and key not in brand_photo_meta_map:
+            need_pp.add(s)
+    photo_map = get_sku_photo_map(db, need_pp) if need_pp else {}
+    return brand_photo_meta_map, photo_map
+
+
+def calculate_prices(
+    sku_string: str,
+    price_db: Dict,
+    name_map: Dict,
+    link_map: Dict,
+    photo_map: Dict = None,
+    brand_photo_map: Dict = None,
+    brand_photo_meta_map: Dict = None,
+) -> Dict:
     skus = clean_sku_list(sku_string)
     sku_count = len(skus)
     result = {}
     sku_items = []
     categories_per_sku = []
-    
-    # Only open DB connection if photo_map not provided
-    if photo_map is None:
+
+    sku_set = set(skus)
+    if photo_map is None or brand_photo_meta_map is None:
         db = SessionLocal()
         try:
-            photo_map = get_sku_photo_map(db, set(skus))
+            if brand_photo_meta_map is None and photo_map is None:
+                brand_photo_meta_map, photo_map = resolve_photo_maps_for_skus(db, sku_set)
+            elif brand_photo_meta_map is None:
+                brand_photo_meta_map = get_brand_main_photo_map(db, sku_set)
+            elif photo_map is None:
+                need_pp = {
+                    s for s in sku_set
+                    if (s or "").strip().upper() not in brand_photo_meta_map
+                }
+                photo_map = get_sku_photo_map(db, need_pp) if need_pp else {}
         finally:
             db.close()
+    photo_map = photo_map or {}
+    brand_photo_meta_map = brand_photo_meta_map or {}
+    if brand_photo_map is None:
+        brand_photo_map = {
+            sku: meta.get("url", "")
+            for sku, meta in brand_photo_meta_map.items()
+            if meta.get("url")
+        }
+    else:
+        brand_photo_map = brand_photo_map or {}
 
     for i, sku in enumerate(skus):
         idx = i + 1
-        raw_name = name_map.get(sku, "") or ""
+        raw_name = name_map.get(sku, "") or name_map.get((sku or "").upper(), "") or ""
         sku_name = _normalize_sku_name(sku, raw_name)
-        sku_link = link_map.get(sku, "") or ""
+        sku_link = link_map.get(sku, "") or link_map.get((sku or "").upper(), "") or ""
+        sku_key = (sku or "").strip().upper()
+        brand_meta = brand_photo_meta_map.get(sku_key) or {}
+        brand_image = brand_photo_map.get(sku_key) or brand_meta.get("url") or None
+        brand_material_id = brand_meta.get("materialId")
+        brand_preview_url = (brand_meta.get("previewUrl") or "").strip() or None
+
         image_url = None
-        if _is_image_url(sku_link):
+        export_link = sku_link
+        image_source = None
+        if brand_material_id:
+            image_source = "brand_material"
+            image_url = brand_preview_url
+            export_link = brand_image or sku_link
+        elif _is_image_url(sku_link):
             image_url = sku_link
         elif photo_map.get(sku):
             image_url = photo_map.get(sku)
 
         result[f"SKU {idx} Name"] = sku_name
-        result[f"SKU {idx} Link"] = sku_link
+        result[f"SKU {idx} Link"] = export_link
+        if image_source is None:
+            if image_url and _is_image_url(sku_link) and image_url == sku_link:
+                image_source = "sku_info"
+            elif image_url:
+                image_source = "product_performance"
+
         sku_items.append({
             "sku": sku,
             "name": sku_name,
             "link": sku_link,
             "image": image_url,
+            "imageSource": image_source,
+            "brandMaterialId": brand_material_id,
+            "previewUrl": brand_preview_url,
             "stock": {st: parse_stock_value(price_db.get(sku, {}).get(st, 0)) for st in STOCK_TYPES}
         })
         category_value = str(price_db.get(sku, {}).get("Category", "")).strip()
@@ -651,20 +720,34 @@ def convert_df_to_excel_multisheet(df: pd.DataFrame, method: str = "Listing", in
         except (UnidentifiedImageError, OSError, ValueError):
             return None
 
+    gcs_public_prefix = f"https://storage.googleapis.com/{GCS_BUCKET}/"
+
     def _get_image_bytes(url: str) -> bytes | None:
         if not include_pictures:
             return None
-        if not _is_image_url(url):
+        if not url:
             return None
         if url in image_cache:
             return image_cache[url]
-        try:
-            resp = requests.get(url, timeout=3)
-            if resp.status_code == 200 and resp.content:
-                image_cache[url] = _make_framed_thumbnail(resp.content)
-            else:
-                image_cache[url] = None
-        except Exception:
+
+        raw_bytes = None
+        if _is_image_url(url):
+            try:
+                resp = requests.get(url, timeout=5)
+                if resp.status_code == 200 and resp.content:
+                    raw_bytes = resp.content
+            except Exception:
+                raw_bytes = None
+
+        if raw_bytes is None and url.startswith(gcs_public_prefix):
+            object_path = url[len(gcs_public_prefix):]
+            from urllib.parse import unquote
+
+            raw_bytes = download_gcs_object_bytes(unquote(object_path))
+
+        if raw_bytes:
+            image_cache[url] = _make_framed_thumbnail(raw_bytes)
+        else:
             image_cache[url] = None
         return image_cache[url]
 

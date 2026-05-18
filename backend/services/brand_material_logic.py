@@ -105,6 +105,96 @@ def _gcs_object_path(sku: str, file_name: str) -> str:
     return f"{GCS_PREFIX}/{safe_sku}/{file_name}"
 
 
+def brand_material_signed_read_url(
+    gcs_object_path: str | None,
+    *,
+    minutes: int = 60,
+) -> str | None:
+    """Time-limited URL so the browser can load thumbnails directly from GCS (faster than API proxy)."""
+    if not gcs_object_path:
+        return None
+    try:
+        blob = get_storage_client().bucket(GCS_BUCKET).blob(gcs_object_path)
+        return blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(minutes=minutes),
+            method="GET",
+        )
+    except Exception:
+        return brand_material_public_url(gcs_object_path)
+
+
+def brand_material_public_url(gcs_object_path: str | None) -> str | None:
+    """HTTPS URL for embedding in Price Checker / Excel (bucket must allow read or use GCS fallback)."""
+    if not gcs_object_path:
+        return None
+    from urllib.parse import quote
+
+    encoded = "/".join(quote(part, safe="") for part in gcs_object_path.split("/"))
+    return f"https://storage.googleapis.com/{GCS_BUCKET}/{encoded}"
+
+
+def download_gcs_object_bytes(gcs_object_path: str | None) -> bytes | None:
+    if not gcs_object_path:
+        return None
+    try:
+        client = get_storage_client()
+        return client.bucket(GCS_BUCKET).blob(gcs_object_path).download_as_bytes()
+    except Exception:
+        return None
+
+
+def get_brand_main_photo_map(db: Session, skus: set) -> dict[str, dict]:
+    """
+    SKU (uppercase) → { materialId, url } for Material Library main photo.
+    url is public GCS (Excel); UI should use materialId + authenticated preview API.
+    """
+    if not skus:
+        return {}
+    keys = {_sku_key(s) for s in skus if s}
+    if not keys:
+        return {}
+
+    rows = (
+        db.query(
+            BrandMaterial.id,
+            BrandMaterial.sku,
+            BrandMaterial.preview_gcs_object_path,
+            BrandMaterial.gcs_object_path,
+        )
+        .filter(
+            BrandMaterial.sku_key.in_(list(keys)),
+            BrandMaterial.category == "main",
+            BrandMaterial.media_type == "photo",
+        )
+        .order_by(BrandMaterial.id.asc())
+        .all()
+    )
+
+    out: dict[str, dict] = {}
+    for row in rows:
+        sku_upper = (row.sku or "").strip().upper()
+        if not sku_upper:
+            continue
+        preview_path = row.preview_gcs_object_path
+        gcs_path = row.gcs_object_path
+        path = preview_path or gcs_path
+        url = brand_material_public_url(path)
+        signed = brand_material_signed_read_url(preview_path) if preview_path else None
+        out[sku_upper] = {
+            "materialId": row.id,
+            "url": url or "",
+            "previewUrl": signed or "",
+        }
+    return out
+
+
+def get_brand_main_photo_url_map(db: Session, skus: set) -> dict[str, str]:
+    """SKU (uppercase) → public image URL (batch Excel export)."""
+    meta = get_brand_main_photo_map(db, skus)
+    return {sku: info["url"] for sku, info in meta.items() if info.get("url")}
+
+
 def get_storage_client() -> storage.Client:
     global _storage_client
     if _storage_client is not None:
@@ -567,9 +657,17 @@ def upload_material(
     row_id = f"bm_{uuid.uuid4().hex[:16]}"
     now = datetime.now(timezone.utc)
     preview_path = None
-    if preview_bytes:
+    preview_payload = preview_bytes
+    if mt == "photo" and not preview_payload:
+        try:
+            preview_payload = _thumbnail_image_bytes(file_bytes)
+        except (UnidentifiedImageError, OSError, ValueError):
+            preview_payload = None
+    if preview_payload:
         preview_path = _preview_object_path(sku_norm, row_id)
-        bucket.blob(preview_path).upload_from_string(preview_bytes, content_type="image/jpeg")
+        bucket.blob(preview_path).upload_from_string(
+            preview_payload, content_type="image/jpeg",
+        )
 
     row = BrandMaterial(
         id=row_id,
@@ -820,10 +918,11 @@ def get_material_preview(db: Session, material_id: str) -> tuple[bytes, str]:
     preview_path = getattr(row, "preview_gcs_object_path", None)
 
     if preview_path:
-        blob = bucket.blob(preview_path)
-        if not blob.exists():
-            raise ValueError("FILE_NOT_FOUND")
-        return _thumbnail_image_bytes(blob.download_as_bytes()), "image/jpeg"
+        try:
+            data = bucket.blob(preview_path).download_as_bytes()
+        except Exception:
+            raise ValueError("FILE_NOT_FOUND") from None
+        return data, "image/jpeg"
 
     mime = (row.mime_type or "").lower()
     mt = getattr(row, "media_type", None) or media_type_from_mime(mime)
@@ -831,21 +930,30 @@ def get_material_preview(db: Session, material_id: str) -> tuple[bytes, str]:
         frame = _ffmpeg_video_frame_jpeg(row.gcs_object_path, bucket)
         if frame:
             _persist_video_preview(db, row, frame, bucket)
-            return _thumbnail_image_bytes(frame), "image/jpeg"
+            return frame, "image/jpeg"
         raise ValueError("NO_PREVIEW")
 
     blob = bucket.blob(row.gcs_object_path)
-    if not blob.exists():
-        raise ValueError("FILE_NOT_FOUND")
-
-    raw = blob.download_as_bytes()
+    try:
+        raw = blob.download_as_bytes()
+    except Exception:
+        raise ValueError("FILE_NOT_FOUND") from None
     if not mime.startswith("image/"):
         raise ValueError("NO_PREVIEW")
 
     try:
-        return _thumbnail_image_bytes(raw), "image/jpeg"
+        thumb = _thumbnail_image_bytes(raw)
     except (UnidentifiedImageError, OSError, ValueError):
         return raw, mime or "application/octet-stream"
+
+    try:
+        ppath = _preview_object_path(row.sku, row.id)
+        bucket.blob(ppath).upload_from_string(thumb, content_type="image/jpeg")
+        row.preview_gcs_object_path = ppath
+        db.commit()
+    except Exception:
+        pass
+    return thumb, "image/jpeg"
 
 
 def get_material_file(db: Session, material_id: str) -> tuple[bytes, str]:

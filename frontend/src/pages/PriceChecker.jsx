@@ -56,6 +56,57 @@ const statCardStyle = (accentColor) => ({
     textAlign: 'center',
 });
 
+/** Prefer Material Library main photo (authenticated API); fallback to public image URL. */
+const MATERIAL_PREVIEW_CACHE_MAX = 80;
+const materialPreviewCache = new Map();
+
+function cacheMaterialPreview(materialId, blobUrl) {
+    if (materialPreviewCache.has(materialId)) {
+        const prev = materialPreviewCache.get(materialId);
+        if (prev !== blobUrl) URL.revokeObjectURL(prev);
+    }
+    materialPreviewCache.set(materialId, blobUrl);
+    if (materialPreviewCache.size > MATERIAL_PREVIEW_CACHE_MAX) {
+        const oldest = materialPreviewCache.keys().next().value;
+        URL.revokeObjectURL(materialPreviewCache.get(oldest));
+        materialPreviewCache.delete(oldest);
+    }
+}
+
+async function fetchMaterialPreviewUrl(materialId) {
+    if (!materialId) return null;
+    if (materialPreviewCache.has(materialId)) {
+        return materialPreviewCache.get(materialId);
+    }
+    const { data } = await api.get(`/price-checker/material-preview/${materialId}`, {
+        responseType: 'blob',
+    });
+    if (!data?.size) return null;
+    const url = URL.createObjectURL(data);
+    cacheMaterialPreview(materialId, url);
+    return url;
+}
+
+function DirectSkuPhoto({ item, previewSrc }) {
+    const src = previewSrc || item.previewUrl || (
+        item.imageSource !== 'brand_material' ? item.image : null
+    );
+    if (src) {
+        return (
+            <img
+                src={src}
+                alt={item.name || item.sku}
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+        );
+    }
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: 12, color: 'var(--text-muted)', textAlign: 'center' }}>
+            <Text style={{ fontSize: 12 }}>No image available</Text>
+        </div>
+    );
+}
+
 /* ─── Main Component ─── */
 const PriceChecker = () => {
     const { t } = useTranslation();
@@ -71,6 +122,7 @@ const PriceChecker = () => {
     const [targetPrice, setTargetPrice] = useState(null);
     const [targetStock, setTargetStock] = useState(null);
     const [directResult, setDirectResult] = useState(null);
+    const [directPreviewBySku, setDirectPreviewBySku] = useState({});
 
     // Batch
     const [fileList, setFileList] = useState([]);
@@ -111,6 +163,38 @@ const PriceChecker = () => {
     useEffect(() => {
         fetchStockUploadStatus();
     }, []);
+
+    useEffect(() => {
+        const items = directResult?.items || [];
+        const brandItems = items.filter(
+            (it) => it.brandMaterialId && !it.previewUrl,
+        );
+        if (!brandItems.length) {
+            setDirectPreviewBySku({});
+            return undefined;
+        }
+
+        let cancelled = false;
+        Promise.all(
+            brandItems.map(async (it) => {
+                try {
+                    const url = await fetchMaterialPreviewUrl(it.brandMaterialId);
+                    return url ? [it.sku, url] : null;
+                } catch {
+                    return null;
+                }
+            }),
+        ).then((pairs) => {
+            if (cancelled) return;
+            const next = {};
+            pairs.forEach((p) => {
+                if (p) next[p[0]] = p[1];
+            });
+            setDirectPreviewBySku(next);
+        });
+
+        return () => { cancelled = true; };
+    }, [directResult]);
 
     const fetchReferenceData = async () => {
         setLoadingDb(true);
@@ -163,7 +247,7 @@ const PriceChecker = () => {
 
     const doCalculateDirect = async () => {
         if (!skuInput) { message.warning(t('priceChecker.msgEnterSku')); return; }
-        setCalcLoading(true); setDirectResult(null);
+        setCalcLoading(true); setDirectResult(null); setDirectPreviewBySku({});
         try {
             const res = await api.post('/price-checker/calculate-direct', {
                 sku_string: skuInput,
@@ -758,13 +842,7 @@ const PriceChecker = () => {
                                                         border: isDark ? '1px solid #1f2937' : '1px solid #cbd5e1',
                                                         boxShadow: isDark ? '0 6px 16px rgba(0,0,0,0.35)' : '0 6px 16px rgba(15,23,42,0.08)',
                                                     }}>
-                                                        {item.image ? (
-                                                            <img src={item.image} alt={item.name || item.sku} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                        ) : (
-                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: 12, color: 'var(--text-muted)', textAlign: 'center' }}>
-                                                                <Text style={{ fontSize: 12 }}>No image available</Text>
-                                                            </div>
-                                                        )}
+                                                        <DirectSkuPhoto item={item} previewSrc={directPreviewBySku[item.sku]} />
                                                     </div>
                                                 </div>
                                                 <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 8 }}>

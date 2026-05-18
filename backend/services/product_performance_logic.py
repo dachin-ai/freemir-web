@@ -199,14 +199,37 @@ def get_sku_photo_map(db: Session, skus: set) -> dict:
     """
     if not skus:
         return {}
-    from sqlalchemy import tuple_ as sql_tuple
+    from sqlalchemy import or_, tuple_ as sql_tuple
 
-    # Build token → (store, pid) from PidStoreMap for relevant tokens only
+    skus = {str(s).strip() for s in skus if s}
     token_to_key: dict[str, tuple] = {}
-    for pm in db.query(PidStoreMap).filter(PidStoreMap.sku.isnot(None)).all():
-        for token in parse_sku_tokens(pm.sku or ""):
-            if token in skus and token not in token_to_key:
-                token_to_key[token] = (pm.store, pm.pid)
+
+    # Fast path: exact match on pid_store_map.sku (single-SKU rows).
+    sku_list = list(skus)
+    chunk_size = 400
+    for i in range(0, len(sku_list), chunk_size):
+        chunk = sku_list[i : i + chunk_size]
+        exact_rows = db.query(PidStoreMap).filter(PidStoreMap.sku.in_(chunk)).all()
+        for pm in exact_rows:
+            for token in parse_sku_tokens(pm.sku or ""):
+                if token in skus and token not in token_to_key:
+                    token_to_key[token] = (pm.store, pm.pid)
+
+    remaining = {s for s in skus if s not in token_to_key}
+    if remaining:
+        # Bundle / combined SKU strings only (avoid full-table scan).
+        bundle_rows = db.query(PidStoreMap).filter(
+            PidStoreMap.sku.isnot(None),
+            or_(
+                PidStoreMap.sku.contains("+"),
+                PidStoreMap.sku.contains(","),
+                PidStoreMap.sku.contains("|"),
+            ),
+        ).all()
+        for pm in bundle_rows:
+            for token in parse_sku_tokens(pm.sku or ""):
+                if token in remaining and token not in token_to_key:
+                    token_to_key[token] = (pm.store, pm.pid)
 
     if not token_to_key:
         return {}
