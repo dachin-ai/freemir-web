@@ -392,7 +392,8 @@ def list_material_coverage(
 
     tokens = _parse_sku_filter_tokens(sku_filter)
     if len(tokens) > 1:
-        q = q.filter(FreemirName.sku.in_(tokens))
+        keys = {_sku_key(t) for t in tokens}
+        q = q.filter(func.lower(FreemirName.sku).in_(list(keys)))
     elif len(tokens) == 1:
         q = q.filter(FreemirName.sku.ilike(f"%{tokens[0]}%"))
 

@@ -101,18 +101,27 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0 }) {
     const [total, setTotal] = useState(0);
     const [loadError, setLoadError] = useState(false);
 
+    const filterTokens = parseSkuFilterInput(skuFilter);
+
     useEffect(() => {
-        const timer = setTimeout(() => setDebouncedSku(skuFilter), 400);
+        const timer = setTimeout(() => {
+            const tokens = parseSkuFilterInput(skuFilter);
+            setDebouncedSku(tokens.length ? tokens.join(' ') : (skuFilter || '').trim().toUpperCase());
+        }, 400);
         return () => clearTimeout(timer);
     }, [skuFilter]);
 
     const loadList = useCallback(async () => {
         setLoading(true);
         setLoadError(false);
+        const tokens = parseSkuFilterInput(debouncedSku);
+        const requestPageSize = tokens.length > 1
+            ? Math.min(Math.max(tokens.length, PAGE_SIZE), 200)
+            : PAGE_SIZE;
         try {
             const result = await listBrandMaterialCoverage({
-                page,
-                pageSize: PAGE_SIZE,
+                page: tokens.length > 1 ? 1 : page,
+                pageSize: requestPageSize,
                 sku: debouncedSku,
             });
             setItems(result.items);
@@ -173,13 +182,21 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0 }) {
         },
         {
             title: t('brandMaterial.skuListColOpen'),
-            width: 120,
+            width: 148,
             render: (_, row) => (
                 row.hasMaterials ? (
                     <Button
-                        type="link"
+                        type="primary"
+                        size="middle"
                         icon={<FolderOpenOutlined />}
                         onClick={() => onOpenSku(row)}
+                        style={{
+                            fontWeight: 600,
+                            minWidth: 108,
+                            height: 36,
+                            borderRadius: 8,
+                            boxShadow: '0 1px 4px rgba(14, 165, 233, 0.35)',
+                        }}
                     >
                         {t('brandMaterial.skuListOpen')}
                     </Button>
@@ -207,20 +224,37 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0 }) {
                 }}
                 styles={{ body: { padding: '16px 18px' } }}
             >
-                <div style={{ flex: '1 1 260px', maxWidth: 360 }}>
+                <div style={{ flex: '1 1 320px', maxWidth: 480 }}>
                     <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
                         {t('brandMaterial.filterSku')}
                     </Text>
-                    <Input
+                    <Input.TextArea
                         allowClear
                         value={skuFilter}
-                        onChange={(e) => setSkuFilter((e.target.value || '').toUpperCase())}
-                        onPressEnter={() => {
-                            const tokens = parseSkuFilterInput(skuFilter);
-                            if (tokens.length) setSkuFilter(tokens.join(' '));
-                        }}
+                        autoSize={{ minRows: 1, maxRows: 4 }}
                         placeholder={t('brandMaterial.filterSkuPh')}
+                        onChange={(e) => setSkuFilter((e.target.value || '').toUpperCase())}
+                        onPaste={(e) => {
+                            const pasted = e.clipboardData?.getData('text') || '';
+                            const tokens = parseSkuFilterInput(pasted);
+                            if (tokens.length === 0) return;
+                            e.preventDefault();
+                            const merged = [...new Set([
+                                ...parseSkuFilterInput(skuFilter),
+                                ...tokens,
+                            ])];
+                            setSkuFilter(merged.join(' '));
+                        }}
+                        onBlur={() => {
+                            const tokens = parseSkuFilterInput(skuFilter);
+                            if (tokens.length > 0) setSkuFilter(tokens.join(' '));
+                        }}
                     />
+                    {filterTokens.length > 1 && (
+                        <Text type="secondary" style={{ fontSize: 11, marginTop: 6, display: 'block' }}>
+                            {t('brandMaterial.filterSkuMulti', { count: filterTokens.length })}
+                        </Text>
+                    )}
                 </div>
             </Card>
 

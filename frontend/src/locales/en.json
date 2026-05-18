@@ -133,6 +133,7 @@
     "refresh": "Refresh",
     "filterSku": "Filter by SKU",
     "filterSkuPh": "SKU — paste multiple (space or new line)…",
+    "filterSkuMulti": "Filtering {{count}} SKUs",
     "filterCategory": "Category",
     "filterAll": "All",
     "catMain": "Main",
@@ -170,9 +171,9 @@
     "msgSkuFromFile": "SKU filled from filename for {{count}} file(s)",
     "msgSkuFromFileNone": "Could not read SKU from filename — use FR0208A45101_1.png style names or type SKU manually",
     "edit": "Edit",
-    "editTitle": "Edit photo",
+    "editTitle": "Edit material",
     "editSave": "Save changes",
-    "deletePhoto": "Delete photo",
+    "deletePhoto": "Delete material",
     "editHint": "Main/Sub applies per SKU and Type (one Main photo and one Main video each). Changing to Main demotes the current Main of the same type to Sub.",
     "msgTypeMismatch": "Type does not match the file (Photo = image, Video = video file).",
     "selectAllFiltered": "Select all in filter ({{count}})",
@@ -213,7 +214,7 @@
     "clearSelection": "Clear selection",
     "msgNothingToDownload": "Nothing to download",
     "msgZipOk": "Downloaded {{count}} file(s) as ZIP",
-    "msgEditOk": "Photo updated",
+    "msgEditOk": "Material updated",
     "msgEditFail": "Could not update photo"
   },
   "priceChecker": {

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Button, Card, Checkbox, Empty, Flex, Segmented, Space, Table, Tag, Typography,
+    Button, Card, Checkbox, Empty, Flex, Segmented, Space, Table, Tag, Tooltip, Typography,
 } from 'antd';
 import {
     ArrowLeftOutlined, DownloadOutlined, EditOutlined,
@@ -164,24 +164,28 @@ export default function BrandMaterialSkuDetail({
         },
         {
             title: t('brandMaterial.tableColActions'),
-            width: 160,
+            width: 88,
             fixed: 'right',
             render: (_, row) => (
                 <Space size={4}>
-                    <Button
-                        size="small"
-                        icon={<DownloadOutlined />}
-                        onClick={() => onDownload(row)}
-                    >
-                        {t('brandMaterial.download')}
-                    </Button>
-                    <Button
-                        size="small"
-                        icon={<EditOutlined />}
-                        onClick={() => onEdit(row)}
-                    >
-                        {t('brandMaterial.edit')}
-                    </Button>
+                    <Tooltip title={t('brandMaterial.download')}>
+                        <Button
+                            type="text"
+                            size="small"
+                            icon={<DownloadOutlined />}
+                            onClick={() => onDownload(row)}
+                            aria-label={t('brandMaterial.download')}
+                        />
+                    </Tooltip>
+                    <Tooltip title={t('brandMaterial.edit')}>
+                        <Button
+                            type="text"
+                            size="small"
+                            icon={<EditOutlined />}
+                            onClick={() => onEdit(row)}
+                            aria-label={t('brandMaterial.edit')}
+                        />
+                    </Tooltip>
                 </Space>
             ),
         },

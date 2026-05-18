@@ -133,6 +133,7 @@
     "refresh": "刷新",
     "filterSku": "按 SKU 筛选",
     "filterSkuPh": "SKU — 可粘贴多个（空格或换行）…",
+    "filterSkuMulti": "筛选 {{count}} 个 SKU",
     "filterCategory": "类别",
     "filterAll": "全部",
     "catMain": "主图",
@@ -171,9 +172,9 @@
     "msgSkuFromFile": "已从文件名填入 {{count}} 个 SKU",
     "msgSkuFromFileNone": "无法从文件名识别 SKU — 请使用 FR0208A45101_1.png 格式或手动填写",
     "edit": "编辑",
-    "editTitle": "编辑图片",
+    "editTitle": "编辑素材",
     "editSave": "保存更改",
-    "deletePhoto": "删除图片",
+    "deletePhoto": "删除素材",
     "editHint": "主/副图按 SKU 与类型分别计算（每个 SKU 可各有一张主图和一个主视频）。改为主图时，同类型的旧主图将变为副图。",
     "msgTypeMismatch": "类型与文件不匹配（图片=Photo，视频=Video）。",
     "selectAllFiltered": "全选筛选结果 ({{count}})",
@@ -214,7 +215,7 @@
     "clearSelection": "清除选择",
     "msgNothingToDownload": "没有可下载的内容",
     "msgZipOk": "已下载 {{count}} 个文件 ZIP",
-    "msgEditOk": "图片已更新",
+    "msgEditOk": "素材已更新",
     "msgEditFail": "更新失败"
   },
   "priceChecker": {

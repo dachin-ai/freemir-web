@@ -262,6 +262,7 @@ export default function BrandMaterial() {
                 sku,
                 category: editCategory,
                 mediaType: editMediaType,
+                note: editNote,
             });
             message.success(t('brandMaterial.msgEditOk'));
             closeEdit();

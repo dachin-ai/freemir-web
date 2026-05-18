@@ -133,6 +133,7 @@
     "refresh": "Muat ulang",
     "filterSku": "Filter SKU",
     "filterSkuPh": "SKU — tempel banyak (spasi atau baris baru)…",
+    "filterSkuMulti": "Memfilter {{count}} SKU",
     "filterCategory": "Kategori",
     "filterAll": "Semua",
     "catMain": "Main",
@@ -170,9 +171,9 @@
     "msgSkuFromFile": "SKU diisi dari nama file untuk {{count}} file",
     "msgSkuFromFileNone": "SKU tidak terbaca dari nama file — pakai format FR0208A45101_1.png atau ketik manual",
     "edit": "Edit",
-    "editTitle": "Edit foto",
+    "editTitle": "Edit material",
     "editSave": "Simpan perubahan",
-    "deletePhoto": "Hapus foto",
+    "deletePhoto": "Hapus material",
     "editHint": "Main/Sub per SKU dan Tipe (satu Main photo & satu Main video). Ubah ke Main menurunkan Main lama dengan tipe yang sama ke Sub.",
     "msgTypeMismatch": "Tipe tidak cocok dengan file (Photo = gambar, Video = file video).",
     "selectAllFiltered": "Pilih semua hasil filter ({{count}})",
@@ -213,7 +214,7 @@
     "clearSelection": "Hapus pilihan",
     "msgNothingToDownload": "Tidak ada yang diunduh",
     "msgZipOk": "{{count}} file diunduh sebagai ZIP",
-    "msgEditOk": "Foto diperbarui",
+    "msgEditOk": "Material diperbarui",
     "msgEditFail": "Gagal memperbarui foto"
   },
   "priceChecker": {
