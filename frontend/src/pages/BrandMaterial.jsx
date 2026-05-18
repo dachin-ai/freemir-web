@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    AutoComplete, Button, Card, Checkbox, Col, Empty, Flex, Modal, Row, Segmented, Select, Space,
+    AutoComplete, Button, Card, Checkbox, Col, Empty, Flex, Input, Modal, Pagination, Row, Segmented, Select, Space,
     Tag, Typography, Upload, message, Popconfirm, Table, Tooltip,
 } from 'antd';
 import {
@@ -8,6 +8,12 @@ import {
     SearchOutlined, ReloadOutlined, MinusCircleOutlined, InboxOutlined,
     EditOutlined, FileZipOutlined,
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 import { useTranslation } from 'react-i18next';
 import PageHeader from '../components/PageHeader';
 import { useAuth } from '../context/AuthContext';
@@ -17,6 +23,7 @@ import {
     uploadBrandMaterial,
     updateBrandMaterial,
     deleteBrandMaterial,
+    deleteBrandMaterialsBulk,
     getBrandMaterialBlob,
     displayLabel,
     storageFileName,
@@ -40,9 +47,16 @@ import {
 
 const { Text, Paragraph } = Typography;
 const { Dragger } = Upload;
+const PAGE_SIZE = 30;
 
 function newRowId() {
     return `row_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function formatUploadedAt(iso) {
+    if (!iso) return null;
+    const d = dayjs(iso).tz('Asia/Jakarta');
+    return d.isValid() ? `${d.format('DD MMM YYYY, HH:mm')} WIB` : null;
 }
 
 function MediaPreview({ previewUrl, mimeType, alt, style = {} }) {
@@ -91,7 +105,7 @@ function MaterialCard({
                 <div style={{ position: 'relative' }}>
                     <Checkbox
                         checked={selected}
-                        onChange={(e) => onSelect(item.id, e.target.checked)}
+                        onChange={(e) => onSelect(item.id, e.target.checked, item)}
                         style={{
                             position: 'absolute',
                             top: 8,
@@ -199,15 +213,22 @@ export default function BrandMaterial() {
     const [loading, setLoading] = useState(true);
     const [previewMap, setPreviewMap] = useState({});
     const [skuFilter, setSkuFilter] = useState('');
+    const [debouncedSku, setDebouncedSku] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('all');
     const [typeFilter, setTypeFilter] = useState('all');
+    const [page, setPage] = useState(1);
+    const [total, setTotal] = useState(0);
     const [uploadOpen, setUploadOpen] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [uploadRows, setUploadRows] = useState([]);
     const [rowPreviews, setRowPreviews] = useState({});
     const bucketSeenUids = useRef(new Set());
     const [selectedIds, setSelectedIds] = useState(() => new Set());
+    const [selectedMeta, setSelectedMeta] = useState(() => new Map());
     const [bulkDownloading, setBulkDownloading] = useState(false);
+    const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+    const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState('');
+    const [bulkDeleting, setBulkDeleting] = useState(false);
     const [editOpen, setEditOpen] = useState(false);
     const [editItem, setEditItem] = useState(null);
     const [editSku, setEditSku] = useState('');
@@ -244,13 +265,29 @@ export default function BrandMaterial() {
         setSkuFilter(merged.join(' '));
     }, [skuFilter]);
 
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSku(skuFilter), 400);
+        return () => clearTimeout(timer);
+    }, [skuFilter]);
+
+    useEffect(() => {
+        setPage(1);
+    }, [debouncedSku, categoryFilter, typeFilter]);
+
     const loadCatalog = useCallback(async () => {
         setLoading(true);
         try {
-            const rows = await listBrandMaterials();
-            setItems(rows);
+            const result = await listBrandMaterials({
+                page,
+                pageSize: PAGE_SIZE,
+                sku: debouncedSku,
+                category: categoryFilter,
+                mediaType: typeFilter,
+            });
+            setItems(result.items);
+            setTotal(result.total);
             const urls = {};
-            await Promise.all(rows.map(async (row) => {
+            await Promise.all(result.items.map(async (row) => {
                 const blob = await getBrandMaterialBlob(row.id);
                 if (blob) urls[row.id] = URL.createObjectURL(blob);
             }));
@@ -263,7 +300,7 @@ export default function BrandMaterial() {
         } finally {
             setLoading(false);
         }
-    }, [t]);
+    }, [t, page, debouncedSku, categoryFilter, typeFilter]);
 
     useEffect(() => {
         loadCatalog();
@@ -275,32 +312,14 @@ export default function BrandMaterial() {
         };
     }, [loadCatalog]);
 
-    const filtered = useMemo(() => {
-        const tokenSet = skuFilterTokens.length > 0
-            ? new Set(skuFilterTokens.map((s) => s.toLowerCase()))
-            : null;
-        const q = skuFilter.trim().toLowerCase();
-        return items.filter((item) => {
-            if (categoryFilter !== 'all' && item.category !== categoryFilter) return false;
-            if (typeFilter !== 'all' && item.mediaType !== typeFilter) return false;
-            const sku = normalizeSku(item.sku).toLowerCase();
-            if (tokenSet) {
-                if (!tokenSet.has(sku)) return false;
-            } else if (q && !sku.includes(q)) {
-                return false;
-            }
-            return true;
-        });
-    }, [items, skuFilter, skuFilterTokens, categoryFilter, typeFilter]);
-
     const selectedItems = useMemo(
-        () => items.filter((i) => selectedIds.has(i.id)),
-        [items, selectedIds],
+        () => Array.from(selectedMeta.values()),
+        [selectedMeta],
     );
 
-    const allFilteredSelected = filtered.length > 0
-        && filtered.every((i) => selectedIds.has(i.id));
-    const someFilteredSelected = filtered.some((i) => selectedIds.has(i.id));
+    const allPageSelected = items.length > 0
+        && items.every((i) => selectedIds.has(i.id));
+    const somePageSelected = items.some((i) => selectedIds.has(i.id));
 
     useEffect(() => {
         const valid = new Set(items.map((i) => i.id));
@@ -310,23 +329,92 @@ export default function BrandMaterial() {
         });
     }, [items]);
 
-    const toggleSelect = (id, checked) => {
+    const toggleSelect = (id, checked, item) => {
         setSelectedIds((prev) => {
             const next = new Set(prev);
             if (checked) next.add(id);
             else next.delete(id);
             return next;
         });
-    };
-
-    const toggleSelectAllFiltered = (checked) => {
-        setSelectedIds((prev) => {
-            const next = new Set(prev);
-            if (checked) filtered.forEach((i) => next.add(i.id));
-            else filtered.forEach((i) => next.delete(i.id));
+        setSelectedMeta((prev) => {
+            const next = new Map(prev);
+            if (checked && item) next.set(id, item);
+            else next.delete(id);
             return next;
         });
     };
+
+    const toggleSelectAllPage = (checked) => {
+        setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (checked) items.forEach((i) => next.add(i.id));
+            else items.forEach((i) => next.delete(i.id));
+            return next;
+        });
+        setSelectedMeta((prev) => {
+            const next = new Map(prev);
+            if (checked) items.forEach((i) => next.set(i.id, i));
+            else items.forEach((i) => next.delete(i.id));
+            return next;
+        });
+    };
+
+    const clearSelection = () => {
+        setSelectedIds(new Set());
+        setSelectedMeta(new Map());
+    };
+
+    const bulkDeletePhrase = t('brandMaterial.bulkDeletePhrase');
+
+    const openBulkDeleteModal = () => {
+        if (selectedItems.length === 0) return;
+        setBulkDeleteConfirm('');
+        setBulkDeleteOpen(true);
+    };
+
+    const closeBulkDeleteModal = () => {
+        setBulkDeleteOpen(false);
+        setBulkDeleteConfirm('');
+    };
+
+    const handleBulkDelete = async () => {
+        if (bulkDeleteConfirm !== bulkDeletePhrase) return;
+        const toDelete = [...selectedItems];
+        setBulkDeleting(true);
+        try {
+            const { deleted } = await deleteBrandMaterialsBulk(toDelete.map((item) => item.id));
+            if (!deleted) {
+                message.error(t('brandMaterial.msgBulkDeleteFail'));
+                return;
+            }
+            message.success(t('brandMaterial.msgBulkDeleted', { count: deleted }));
+            clearSelection();
+            closeBulkDeleteModal();
+            await loadCatalog();
+            logActivity('Material Library (Bulk Delete)');
+        } catch {
+            message.error(t('brandMaterial.msgBulkDeleteFail'));
+        } finally {
+            setBulkDeleting(false);
+        }
+    };
+
+    const renderCatalogPagination = (marginStyle = {}) => (
+        <div style={{ display: 'flex', justifyContent: 'center', ...marginStyle }}>
+            <Pagination
+                current={page}
+                pageSize={PAGE_SIZE}
+                total={total}
+                onChange={(p) => setPage(p)}
+                showSizeChanger={false}
+                showTotal={(count, range) => t('brandMaterial.pageTotal', {
+                    from: range[0],
+                    to: range[1],
+                    total: count,
+                })}
+            />
+        </div>
+    );
 
     const handleDownloadList = async (list, zipLabel) => {
         if (!list.length) {
@@ -522,7 +610,6 @@ export default function BrandMaterial() {
                     category: row.category,
                     mediaType: row.mediaType || mediaTypeFromFile(row.file),
                     file: row.file,
-                    uploadedBy: user?.username || '',
                 });
                 ok += 1;
             }
@@ -725,7 +812,7 @@ export default function BrandMaterial() {
                         </Flex>
                     </Flex>
 
-                    {filtered.length > 0 && (
+                    {total > 0 && (
                         <Flex
                             wrap
                             gap={12}
@@ -738,11 +825,11 @@ export default function BrandMaterial() {
                             }}
                         >
                             <Checkbox
-                                checked={allFilteredSelected}
-                                indeterminate={someFilteredSelected && !allFilteredSelected}
-                                onChange={(e) => toggleSelectAllFiltered(e.target.checked)}
+                                checked={allPageSelected}
+                                indeterminate={somePageSelected && !allPageSelected}
+                                onChange={(e) => toggleSelectAllPage(e.target.checked)}
                             >
-                                {t('brandMaterial.selectAllFiltered', { count: filtered.length })}
+                                {t('brandMaterial.selectAllPage', { count: items.length })}
                             </Checkbox>
                             <Button
                                 icon={<FileZipOutlined />}
@@ -752,12 +839,21 @@ export default function BrandMaterial() {
                             >
                                 {t('brandMaterial.downloadMaterial')}
                             </Button>
+                            <Button
+                                danger
+                                icon={<DeleteOutlined />}
+                                disabled={selectedItems.length === 0}
+                                onClick={openBulkDeleteModal}
+                                style={{ marginLeft: 20 }}
+                            >
+                                {t('brandMaterial.deleteMaterial')}
+                            </Button>
                             {selectedItems.length > 0 && (
                                 <>
                                     <Text type="secondary" style={{ fontSize: 12 }}>
                                         {t('brandMaterial.selectedCount', { count: selectedItems.length })}
                                     </Text>
-                                    <Button type="link" size="small" onClick={() => setSelectedIds(new Set())}>
+                                    <Button type="link" size="small" onClick={clearSelection}>
                                         {t('brandMaterial.clearSelection')}
                                     </Button>
                                 </>
@@ -769,25 +865,66 @@ export default function BrandMaterial() {
 
             {loading ? (
                 <Card loading style={{ borderRadius: 12 }} />
-            ) : filtered.length === 0 ? (
+            ) : total === 0 ? (
                 <Empty description={t('brandMaterial.empty')} />
             ) : (
-                <Row gutter={[16, 16]}>
-                    {filtered.map((item) => (
-                        <Col key={item.id} xs={12} sm={8} md={6} lg={4}>
-                            <MaterialCard
-                                item={item}
-                                previewUrl={previewMap[item.id]}
-                                selected={selectedIds.has(item.id)}
-                                onSelect={toggleSelect}
-                                onDownload={handleDownload}
-                                onEdit={openEdit}
-                                t={t}
-                            />
-                        </Col>
-                    ))}
-                </Row>
+                <>
+                    {renderCatalogPagination({ marginBottom: 16 })}
+                    <Row gutter={[16, 16]}>
+                        {items.map((item) => (
+                            <Col key={item.id} xs={12} sm={8} md={6} lg={4}>
+                                <MaterialCard
+                                    item={item}
+                                    previewUrl={previewMap[item.id]}
+                                    selected={selectedIds.has(item.id)}
+                                    onSelect={toggleSelect}
+                                    onDownload={handleDownload}
+                                    onEdit={openEdit}
+                                    t={t}
+                                />
+                            </Col>
+                        ))}
+                    </Row>
+                    {renderCatalogPagination({ marginTop: 24 })}
+                </>
             )}
+
+            <Modal
+                title={t('brandMaterial.bulkDeleteTitle')}
+                open={bulkDeleteOpen}
+                onCancel={closeBulkDeleteModal}
+                destroyOnClose
+                okText={t('brandMaterial.bulkDeleteSubmit')}
+                cancelText={t('brandMaterial.cancel')}
+                okButtonProps={{
+                    danger: true,
+                    disabled: bulkDeleteConfirm !== bulkDeletePhrase,
+                }}
+                confirmLoading={bulkDeleting}
+                onOk={handleBulkDelete}
+            >
+                <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                    <Paragraph style={{ marginBottom: 0 }}>
+                        {t('brandMaterial.bulkDeleteDesc', { count: selectedItems.length })}
+                    </Paragraph>
+                    <div>
+                        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+                            {t('brandMaterial.bulkDeleteTypeLabel')}
+                        </Text>
+                        <Text copyable code style={{ fontSize: 14 }}>
+                            {bulkDeletePhrase}
+                        </Text>
+                    </div>
+                    <Input
+                        value={bulkDeleteConfirm}
+                        onChange={(e) => setBulkDeleteConfirm(e.target.value)}
+                        placeholder={bulkDeletePhrase}
+                        onPressEnter={() => {
+                            if (bulkDeleteConfirm === bulkDeletePhrase) handleBulkDelete();
+                        }}
+                    />
+                </Space>
+            </Modal>
 
             <Modal
                 title={t('brandMaterial.editTitle')}
@@ -864,6 +1001,30 @@ export default function BrandMaterial() {
                                     { value: 'video', label: t('brandMaterial.typeVideo') },
                                 ]}
                             />
+                        </div>
+                        <div
+                            style={{
+                                padding: '10px 12px',
+                                borderRadius: 8,
+                                border: '1px solid var(--border)',
+                                background: 'var(--bg-subtle, rgba(0,0,0,0.02))',
+                            }}
+                        >
+                            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+                                {t('brandMaterial.metaTitle')}
+                            </Text>
+                            <Space direction="vertical" size={4}>
+                                <Text style={{ fontSize: 13 }}>
+                                    {t('brandMaterial.metaUploadedBy')}:{' '}
+                                    <Text strong>{editItem.uploadedBy?.trim() || '—'}</Text>
+                                </Text>
+                                <Text style={{ fontSize: 13 }}>
+                                    {t('brandMaterial.metaUploadedAt')}:{' '}
+                                    <Text strong>
+                                        {formatUploadedAt(editItem.uploadedAt) || '—'}
+                                    </Text>
+                                </Text>
+                            </Space>
                         </div>
                     </Space>
                 )}

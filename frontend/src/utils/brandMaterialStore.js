@@ -38,9 +38,28 @@ function apiErrorCode(err) {
     return err?.message || 'REQUEST_FAILED';
 }
 
-export async function listBrandMaterials() {
-    const { data } = await api.get('/brand-material');
-    return (data.items || []).map(mapItem);
+export async function listBrandMaterials({
+    page = 1,
+    pageSize = 30,
+    sku = '',
+    category = 'all',
+    mediaType = 'all',
+} = {}) {
+    const { data } = await api.get('/brand-material', {
+        params: {
+            page,
+            page_size: pageSize,
+            sku,
+            category,
+            media_type: mediaType,
+        },
+    });
+    return {
+        items: (data.items || []).map(mapItem),
+        total: data.total ?? 0,
+        page: data.page ?? page,
+        pageSize: data.pageSize ?? pageSize,
+    };
 }
 
 export async function getBrandMaterialBlob(id) {
@@ -49,7 +68,7 @@ export async function getBrandMaterialBlob(id) {
 }
 
 export async function uploadBrandMaterial({
-    sku, category, mediaType, file, uploadedBy = '',
+    sku, category, mediaType, file,
 }) {
     const skuNorm = normalizeSku(sku);
     if (!skuNorm) throw new Error('SKU_REQUIRED');
@@ -60,7 +79,6 @@ export async function uploadBrandMaterial({
     form.append('category', category || 'sub');
     form.append('mediaType', mediaType || 'photo');
     form.append('file', file);
-    if (uploadedBy) form.append('uploaded_by', uploadedBy);
 
     try {
         const { data } = await api.post('/brand-material/upload', form, {
@@ -92,6 +110,18 @@ export async function updateBrandMaterial(id, { sku, category, mediaType }) {
 export async function deleteBrandMaterial(id) {
     try {
         await api.delete(`/brand-material/${id}`);
+    } catch (err) {
+        throw new Error(apiErrorCode(err));
+    }
+}
+
+export async function deleteBrandMaterialsBulk(ids) {
+    try {
+        const { data } = await api.post('/brand-material/bulk-delete', { ids });
+        return {
+            deleted: data.deleted ?? 0,
+            notFound: data.notFound ?? [],
+        };
     } catch (err) {
         throw new Error(apiErrorCode(err));
     }

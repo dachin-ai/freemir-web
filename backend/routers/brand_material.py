@@ -9,12 +9,14 @@ from database import SessionLocal
 from models import BrandMaterial
 from services.brand_material_logic import (
     delete_material,
+    delete_materials_bulk,
     get_material_file,
     list_materials,
     storage_file_name,
     update_material,
     upload_material,
 )
+from services.auth_logic import get_user_auth_claims_from_db
 from services.permission_guard import require_tool_access
 
 router = APIRouter(prefix="/api/brand-material", tags=["brand-material"])
@@ -36,6 +38,22 @@ class UpdateBody(BaseModel):
     mediaType: str = Field(pattern=r"^(photo|video)$")
 
 
+class BulkDeleteBody(BaseModel):
+    ids: list[str] = Field(..., min_length=1, max_length=200)
+
+
+def _uploader_display_name(user: dict) -> str:
+    """Admin-assigned display name from DB; not login username."""
+    username = (user.get("username") or "").strip()
+    if username:
+        claims = get_user_auth_claims_from_db(username)
+        if claims:
+            name = (claims.get("name") or "").strip()
+            if name:
+                return name
+    return (user.get("name") or user.get("username") or "").strip()
+
+
 def _validate_sku(sku: str) -> str:
     s = (sku or "").strip().upper()
     if not SKU_PATTERN.match(s):
@@ -44,9 +62,23 @@ def _validate_sku(sku: str) -> str:
 
 
 @router.get("", dependencies=[Depends(require_tool_access("brand_material"))])
-def list_catalog(db: Session = Depends(get_db)):
+def list_catalog(
+    page: int = 1,
+    page_size: int = 30,
+    sku: str = "",
+    category: str = "all",
+    media_type: str = "all",
+    db: Session = Depends(get_db),
+):
     try:
-        return {"items": list_materials(db)}
+        return list_materials(
+            db,
+            page=page,
+            page_size=page_size,
+            sku_filter=sku,
+            category=category,
+            media_type=media_type,
+        )
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
 
@@ -67,7 +99,7 @@ async def upload(
 
     content = await file.read()
     mime = file.content_type or "image/jpeg"
-    username = user.get("username") or user.get("sub") or ""
+    uploader_name = _uploader_display_name(user)
 
     try:
         item = upload_material(
@@ -77,7 +109,7 @@ async def upload(
             media_type=mediaType,
             file_bytes=content,
             mime_type=mime,
-            uploaded_by=username,
+            uploaded_by=uploader_name,
         )
         return {"item": item}
     except FileNotFoundError as e:
@@ -90,6 +122,14 @@ async def upload(
         ):
             raise HTTPException(status_code=400, detail=code) from e
         raise HTTPException(status_code=400, detail=code) from e
+
+
+@router.post("/bulk-delete", dependencies=[Depends(require_tool_access("brand_material"))])
+def bulk_remove(body: BulkDeleteBody, db: Session = Depends(get_db)):
+    try:
+        return delete_materials_bulk(db, body.ids)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
 
 
 @router.patch("/{material_id}", dependencies=[Depends(require_tool_access("brand_material"))])

@@ -7,17 +7,21 @@ from __future__ import annotations
 import os
 import re
 import uuid
-from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from google.cloud import storage
 from google.oauth2 import service_account
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from models import BrandMaterial
 
 GCS_BUCKET = os.getenv("GCS_BUCKET", "dachin-ai-picture")
 GCS_PREFIX = os.getenv("GCS_BRAND_MATERIAL_PREFIX", "brand-material")
+JAKARTA_TZ = ZoneInfo("Asia/Jakarta")
 
 if os.path.exists("/etc/secrets/credentials.json"):
     CREDENTIALS_FILE = "/etc/secrets/credentials.json"
@@ -105,6 +109,14 @@ def get_storage_client() -> storage.Client:
     return _storage_client
 
 
+def _uploaded_at_jakarta_iso(dt: Optional[datetime]) -> Optional[str]:
+    """Naive DB datetimes are treated as UTC; API returns Asia/Jakarta offset."""
+    if not dt:
+        return None
+    aware = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+    return aware.astimezone(JAKARTA_TZ).isoformat()
+
+
 def _row_to_dict(row: BrandMaterial) -> dict:
     mt = getattr(row, "media_type", None) or media_type_from_mime(row.mime_type)
     return {
@@ -115,23 +127,69 @@ def _row_to_dict(row: BrandMaterial) -> dict:
         "subIndex": row.sub_index,
         "mimeType": row.mime_type,
         "sizeBytes": row.size_bytes,
-        "uploadedAt": row.uploaded_at.isoformat() if row.uploaded_at else None,
+        "uploadedAt": _uploaded_at_jakarta_iso(row.uploaded_at),
         "uploadedBy": row.uploaded_by or "",
     }
 
 
-def list_materials(db: Session) -> list[dict]:
-    rows = db.query(BrandMaterial).all()
-    rows.sort(
-        key=lambda r: (
-            _sku_key(r.sku),
-            getattr(r, "media_type", "photo") or "photo",
-            0 if r.category == "main" else 1,
-            r.sub_index or 0,
-            r.id,
+def _parse_sku_filter_tokens(sku_filter: str) -> list[str]:
+    raw = (sku_filter or "").strip()
+    if not raw:
+        return []
+    parts = re.split(r"[\s,;\n\r]+", raw)
+    return [p.strip().upper() for p in parts if p.strip()]
+
+
+def list_materials(
+    db: Session,
+    *,
+    page: int = 1,
+    page_size: int = 30,
+    sku_filter: str = "",
+    category: str = "all",
+    media_type: str = "all",
+) -> dict:
+    q = db.query(BrandMaterial)
+
+    cat = (category or "all").strip().lower()
+    if cat in ("main", "sub"):
+        q = q.filter(BrandMaterial.category == cat)
+
+    mt = (media_type or "all").strip().lower()
+    if mt in ("photo", "video"):
+        q = q.filter(BrandMaterial.media_type == mt)
+
+    tokens = _parse_sku_filter_tokens(sku_filter)
+    if len(tokens) > 1:
+        keys = [_sku_key(t) for t in tokens]
+        q = q.filter(BrandMaterial.sku_key.in_(keys))
+    elif len(tokens) == 1:
+        q = q.filter(BrandMaterial.sku.ilike(f"%{tokens[0]}%"))
+
+    total = q.count()
+    page = max(1, int(page or 1))
+    page_size = min(max(1, int(page_size or 30)), 100)
+
+    order_cat = case((BrandMaterial.category == "main", 0), else_=1)
+    rows = (
+        q.order_by(
+            BrandMaterial.sku_key.asc(),
+            BrandMaterial.media_type.asc(),
+            order_cat.asc(),
+            BrandMaterial.sub_index.asc().nullsfirst(),
+            BrandMaterial.id.asc(),
         )
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
     )
-    return [_row_to_dict(r) for r in rows]
+
+    return {
+        "items": [_row_to_dict(r) for r in rows],
+        "total": total,
+        "page": page,
+        "pageSize": page_size,
+    }
 
 
 def _renumber_subs(db: Session, sku: str, media_type: str) -> None:
@@ -232,7 +290,7 @@ def upload_material(
     blob.upload_from_string(file_bytes, content_type=mime_type)
 
     row_id = f"bm_{uuid.uuid4().hex[:16]}"
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     row = BrandMaterial(
         id=row_id,
         sku=sku_norm,
@@ -329,6 +387,58 @@ def update_material(
     return _row_to_dict(row)
 
 
+def _delete_gcs_objects_parallel(object_paths: list[str]) -> None:
+    paths = [p for p in object_paths if p]
+    if not paths:
+        return
+    try:
+        client = get_storage_client()
+        bucket = client.bucket(GCS_BUCKET)
+    except Exception as e:
+        print(f"[BrandMaterial] GCS client unavailable for bulk delete: {e}")
+        return
+
+    def _delete_one(path: str) -> None:
+        try:
+            bucket.blob(path).delete()
+        except Exception as e:
+            print(f"[BrandMaterial] GCS delete warning for {path}: {e}")
+
+    workers = min(12, max(1, len(paths)))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        list(executor.map(_delete_one, paths))
+
+
+def delete_materials_bulk(db: Session, material_ids: list[str]) -> dict:
+    """Delete many materials in one request — parallel GCS, single DB commit."""
+    ids = list(dict.fromkeys(i.strip() for i in material_ids if i and str(i).strip()))
+    if not ids:
+        return {"deleted": 0, "notFound": []}
+
+    rows = db.query(BrandMaterial).filter(BrandMaterial.id.in_(ids)).all()
+    if not rows:
+        return {"deleted": 0, "notFound": ids}
+
+    found_ids = {r.id for r in rows}
+    _delete_gcs_objects_parallel([r.gcs_object_path for r in rows])
+
+    affected: set[tuple[str, str]] = set()
+    for row in rows:
+        mt = getattr(row, "media_type", None) or media_type_from_mime(row.mime_type)
+        affected.add((row.sku, mt))
+        db.delete(row)
+
+    db.commit()
+
+    for sku, mt in affected:
+        _renumber_subs(db, sku, mt)
+
+    return {
+        "deleted": len(rows),
+        "notFound": [i for i in ids if i not in found_ids],
+    }
+
+
 def delete_material(db: Session, material_id: str) -> None:
     row = db.query(BrandMaterial).filter(BrandMaterial.id == material_id).first()
     if not row:
@@ -336,12 +446,7 @@ def delete_material(db: Session, material_id: str) -> None:
 
     sku = row.sku
     mt = getattr(row, "media_type", None) or media_type_from_mime(row.mime_type)
-    try:
-        client = get_storage_client()
-        bucket = client.bucket(GCS_BUCKET)
-        bucket.blob(row.gcs_object_path).delete()
-    except Exception as e:
-        print(f"[BrandMaterial] GCS delete warning for {material_id}: {e}")
+    _delete_gcs_objects_parallel([row.gcs_object_path])
 
     db.delete(row)
     db.commit()
