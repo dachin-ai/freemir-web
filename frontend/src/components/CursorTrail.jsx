@@ -1,14 +1,15 @@
 import { useEffect, useRef } from 'react';
 import { useTheme } from '../context/ThemeContext';
 
-const DOTS = 10;
-const LERP = 0.32;
-
-/** Sizes & opacity: index 0 = at cursor (largest), 9 = tail (smallest). */
-const SIZES = [11, 10, 9, 8, 7, 6, 5.5, 4.5, 3.5, 3];
+/** Fewer dots + no gradients ≈ ~10× less work per frame than the old 10-dot trail. */
+const DOTS = 3;
+const LERP = 0.38;
+const SIZES = [9, 6, 4];
+const MAX_FPS_MS = 32;
+const IDLE_MS = 220;
 
 /**
- * Ten circles that chase the cursor — tail follows head, big → small.
+ * Lightweight cursor tail — stops animating when the pointer is still.
  */
 export default function CursorTrail() {
     const canvasRef = useRef(null);
@@ -22,73 +23,88 @@ export default function CursorTrail() {
         const canvas = canvasRef.current;
         if (!canvas) return undefined;
 
-        const ctx = canvas.getContext('2d', { alpha: true });
+        const ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
         const style = isDark
-            ? { rgb: '147, 197, 253', alphas: [0.55, 0.5, 0.45, 0.4, 0.35, 0.28, 0.22, 0.16, 0.11, 0.07] }
-            : { rgb: '14, 165, 233', alphas: [0.42, 0.36, 0.3, 0.25, 0.2, 0.16, 0.12, 0.09, 0.06, 0.04] };
+            ? { rgb: '147, 197, 253', alphas: [0.5, 0.28, 0.14] }
+            : { rgb: '14, 165, 233', alphas: [0.38, 0.22, 0.1] };
 
         const target = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
         const chain = Array.from({ length: DOTS }, () => ({ x: target.x, y: target.y }));
         let rafId = 0;
-        let visible = false;
+        let active = false;
+        let lastFrame = 0;
+        let idleTimer = 0;
 
         const resize = () => {
-            const dpr = Math.min(window.devicePixelRatio || 1, 2);
             const w = window.innerWidth;
             const h = window.innerHeight;
-            canvas.width = Math.floor(w * dpr);
-            canvas.height = Math.floor(h * dpr);
+            canvas.width = w;
+            canvas.height = h;
             canvas.style.width = `${w}px`;
             canvas.style.height = `${h}px`;
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
         };
         resize();
         window.addEventListener('resize', resize, { passive: true });
 
+        const schedule = () => {
+            if (!rafId) rafId = requestAnimationFrame(draw);
+        };
+
         const onMove = (e) => {
             target.x = e.clientX;
             target.y = e.clientY;
-            visible = true;
+            active = true;
+            window.clearTimeout(idleTimer);
+            idleTimer = window.setTimeout(() => {
+                active = false;
+            }, IDLE_MS);
+            schedule();
         };
 
         const step = (a, b) => a + (b - a) * LERP;
 
-        const draw = () => {
-            const w = window.innerWidth;
-            const h = window.innerHeight;
-            ctx.clearRect(0, 0, w, h);
+        const draw = (now) => {
+            rafId = 0;
 
-            if (visible) {
-                chain[0].x = step(chain[0].x, target.x);
-                chain[0].y = step(chain[0].y, target.y);
-                for (let i = 1; i < DOTS; i += 1) {
-                    chain[i].x = step(chain[i].x, chain[i - 1].x);
-                    chain[i].y = step(chain[i].y, chain[i - 1].y);
-                }
-
-                for (let i = DOTS - 1; i >= 0; i -= 1) {
-                    const p = chain[i];
-                    const r = SIZES[i];
-                    const a = style.alphas[i];
-                    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
-                    g.addColorStop(0, `rgba(${style.rgb}, ${a})`);
-                    g.addColorStop(0.65, `rgba(${style.rgb}, ${a * 0.45})`);
-                    g.addColorStop(1, `rgba(${style.rgb}, 0)`);
-                    ctx.fillStyle = g;
-                    ctx.beginPath();
-                    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-                    ctx.fill();
-                }
+            if (!active) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                return;
             }
 
-            rafId = requestAnimationFrame(draw);
+            if (now - lastFrame < MAX_FPS_MS) {
+                schedule();
+                return;
+            }
+            lastFrame = now;
+
+            const w = canvas.width;
+            const h = canvas.height;
+            ctx.clearRect(0, 0, w, h);
+
+            chain[0].x = step(chain[0].x, target.x);
+            chain[0].y = step(chain[0].y, target.y);
+            for (let i = 1; i < DOTS; i += 1) {
+                chain[i].x = step(chain[i].x, chain[i - 1].x);
+                chain[i].y = step(chain[i].y, chain[i - 1].y);
+            }
+
+            for (let i = DOTS - 1; i >= 0; i -= 1) {
+                const p = chain[i];
+                ctx.fillStyle = `rgba(${style.rgb}, ${style.alphas[i]})`;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, SIZES[i], 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            schedule();
         };
 
-        rafId = requestAnimationFrame(draw);
         window.addEventListener('mousemove', onMove, { passive: true });
 
         return () => {
-            cancelAnimationFrame(rafId);
+            window.clearTimeout(idleTimer);
+            if (rafId) cancelAnimationFrame(rafId);
             window.removeEventListener('resize', resize);
             window.removeEventListener('mousemove', onMove);
         };
