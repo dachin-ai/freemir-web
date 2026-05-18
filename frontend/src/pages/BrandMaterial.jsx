@@ -4,17 +4,17 @@ import {
     Tag, Typography, Upload, message, Popconfirm, Table, Tooltip,
 } from 'antd';
 import {
-    CloudUploadOutlined, DownloadOutlined, DeleteOutlined, PlusOutlined,
-    SearchOutlined, ReloadOutlined, MinusCircleOutlined, InboxOutlined,
+    CloudUploadOutlined, DownloadOutlined, DeleteOutlined,
+    ReloadOutlined, MinusCircleOutlined, InboxOutlined,
     EditOutlined, FileZipOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
+import { useTranslation } from 'react-i18next';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
-import { useTranslation } from 'react-i18next';
 import PageHeader from '../components/PageHeader';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -207,7 +207,7 @@ function SkuField({ value, onChange, skuIndex, placeholder }) {
 
 export default function BrandMaterial() {
     const { t } = useTranslation();
-    const { user, logActivity } = useAuth();
+    const { logActivity } = useAuth();
     const { isDark } = useTheme();
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -270,9 +270,8 @@ export default function BrandMaterial() {
         return () => clearTimeout(timer);
     }, [skuFilter]);
 
-    useEffect(() => {
-        setPage(1);
-    }, [debouncedSku, categoryFilter, typeFilter]);
+    const filterKey = `${debouncedSku}|${categoryFilter}|${typeFilter}`;
+    const prevFilterKeyRef = useRef(filterKey);
 
     const loadCatalog = useCallback(async () => {
         setLoading(true);
@@ -303,14 +302,22 @@ export default function BrandMaterial() {
     }, [t, page, debouncedSku, categoryFilter, typeFilter]);
 
     useEffect(() => {
+        if (prevFilterKeyRef.current !== filterKey) {
+            prevFilterKeyRef.current = filterKey;
+            if (page !== 1) {
+                setPage(1);
+                return;
+            }
+        }
         loadCatalog();
-        return () => {
-            setPreviewMap((prev) => {
-                Object.values(prev).forEach((u) => URL.revokeObjectURL(u));
-                return {};
-            });
-        };
-    }, [loadCatalog]);
+    }, [filterKey, page, loadCatalog]);
+
+    useEffect(() => () => {
+        setPreviewMap((prev) => {
+            Object.values(prev).forEach((u) => URL.revokeObjectURL(u));
+            return {};
+        });
+    }, []);
 
     const selectedItems = useMemo(
         () => Array.from(selectedMeta.values()),

@@ -30,6 +30,7 @@ import PhotoDownloader from './pages/PhotoDownloader';
 import BrandMaterial from './pages/BrandMaterial';
 import QuickLinks from './pages/QuickLinks';
 import PermissionGate from './components/PermissionGate';
+import CursorTrail from './components/CursorTrail';
 import { useTranslation } from 'react-i18next';
 
 const antdLocales = { en: enUS, zh: zhCN, id: idID };
@@ -110,6 +111,7 @@ function AppContent() {
       }}
     >
       <Router>
+        <CursorTrail />
         <AuthProvider>
           <ProtectedApp />
         </AuthProvider>
