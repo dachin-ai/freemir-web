@@ -221,7 +221,11 @@ const MainLayout = () => {
 
         {/* Navigation */}
         <Menu
-          selectedKeys={[location.pathname]}
+          selectedKeys={[
+            location.pathname.startsWith('/brand-material')
+              ? '/brand-material'
+              : location.pathname,
+          ]}
           defaultOpenKeys={openKeys}
           mode="inline"
           items={menuItems}

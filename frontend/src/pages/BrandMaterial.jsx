@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    AutoComplete, Button, Card, Checkbox, Col, Empty, Flex, Input, Modal, Pagination, Row, Segmented, Select, Space,
+    AutoComplete, Button, Card, Checkbox, Empty, Flex, Input, Modal, Segmented, Select, Space,
     Tag, Typography, Upload, message, Popconfirm, Table, Tooltip,
 } from 'antd';
 import {
@@ -12,14 +12,15 @@ import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import { useTranslation } from 'react-i18next';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import BrandMaterialSkuDetail from './BrandMaterialSkuDetail';
+import BrandMaterialSkuList from './BrandMaterialSkuList';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 import PageHeader from '../components/PageHeader';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
 import {
-    listBrandMaterials,
     uploadBrandMaterial,
     updateBrandMaterial,
     deleteBrandMaterial,
@@ -29,25 +30,20 @@ import {
     storageFileName,
     normalizeSku,
 } from '../utils/brandMaterialStore';
-import { isMediaFile, isVideoMime, mediaTypeFromFile } from '../utils/brandMaterialMedia';
+import { isMediaFile, mediaTypeFromFile } from '../utils/brandMaterialMedia';
 import { downloadMaterialsAsZip } from '../utils/brandMaterialDownload';
 
-function itemIsVideo(item) {
-    return item.mediaType === 'video' || isVideoMime(item.mimeType);
-}
 import {
     buildSkuIndex,
     searchSkuIndex,
     normalizeSkuInput,
     isValidFreemirSku,
     parseBrandMaterialFileName,
-    parseSkuFilterInput,
     SKU_LENGTH,
 } from '../utils/skuIndex';
 
 const { Text, Paragraph } = Typography;
 const { Dragger } = Upload;
-const PAGE_SIZE = 30;
 
 function newRowId() {
     return `row_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -57,113 +53,6 @@ function formatUploadedAt(iso) {
     if (!iso) return null;
     const d = dayjs(iso).tz('Asia/Jakarta');
     return d.isValid() ? `${d.format('DD MMM YYYY, HH:mm')} WIB` : null;
-}
-
-function MediaPreview({ previewUrl, mimeType, alt, style = {} }) {
-    const boxStyle = {
-        width: '100%',
-        height: '100%',
-        objectFit: 'contain',
-        ...style,
-    };
-    if (!previewUrl) return null;
-    if (mimeType && (mimeType.startsWith('video/') || mimeType === 'video')) {
-        return (
-            <video
-                src={previewUrl}
-                controls
-                muted
-                playsInline
-                preload="metadata"
-                style={boxStyle}
-            />
-        );
-    }
-    return <img src={previewUrl} alt={alt} style={boxStyle} />;
-}
-
-function MaterialCard({
-    item, previewUrl, selected, onSelect, onDownload, onEdit, t,
-}) {
-    const { isDark } = useTheme();
-    const selectChipBg = isDark ? 'rgba(71, 85, 105, 0.92)' : 'rgba(226, 232, 240, 0.96)';
-    const previewBg = isDark ? 'rgba(30, 41, 59, 0.55)' : 'rgba(241, 245, 249, 0.95)';
-
-    return (
-        <Card
-            hoverable
-            style={{
-                borderRadius: 12,
-                border: selected
-                    ? `2px solid ${isDark ? '#38bdf8' : '#0284c7'}`
-                    : '1px solid var(--border)',
-                background: 'var(--bg-card)',
-                overflow: 'hidden',
-            }}
-            styles={{ body: { padding: 12 } }}
-            cover={(
-                <div style={{ position: 'relative' }}>
-                    <Checkbox
-                        checked={selected}
-                        onChange={(e) => onSelect(item.id, e.target.checked, item)}
-                        style={{
-                            position: 'absolute',
-                            top: 8,
-                            right: 8,
-                            zIndex: 2,
-                            padding: 4,
-                            background: selectChipBg,
-                            borderRadius: 4,
-                            border: isDark ? 'none' : '1px solid rgba(148, 163, 184, 0.35)',
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                    />
-                    <div style={{
-                        width: '100%',
-                        aspectRatio: '1 / 1',
-                        background: previewBg,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        overflow: 'hidden',
-                    }}>
-                        {previewUrl ? (
-                            <MediaPreview
-                                previewUrl={previewUrl}
-                                mimeType={itemIsVideo(item) ? 'video/mp4' : item.mimeType}
-                                alt={displayLabel(item, t)}
-                            />
-                        ) : (
-                            <Text type="secondary">{t('brandMaterial.noPreview')}</Text>
-                        )}
-                    </div>
-                </div>
-            )}
-        >
-            <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                <Space wrap size={4}>
-                    <Tag color="geekblue" style={{ margin: 0 }}>{item.sku}</Tag>
-                    <Tag color={item.category === 'main' ? 'green' : 'blue'} style={{ margin: 0 }}>
-                        {displayLabel(item, t)}
-                    </Tag>
-                    <Tag
-                        color={itemIsVideo(item) ? 'purple' : 'cyan'}
-                        style={{ margin: 0 }}
-                    >
-                        {itemIsVideo(item) ? t('brandMaterial.typeVideo') : t('brandMaterial.typePhoto')}
-                    </Tag>
-                </Space>
-                <Space wrap>
-                    <Button size="small" icon={<DownloadOutlined />} onClick={() => onDownload(item)}>
-                        {t('brandMaterial.download')}
-                    </Button>
-                    <Button size="small" icon={<EditOutlined />} onClick={() => onEdit(item)}>
-                        {t('brandMaterial.edit')}
-                    </Button>
-                </Space>
-            </Space>
-        </Card>
-    );
 }
 
 function SkuField({ value, onChange, skuIndex, placeholder }) {
@@ -207,17 +96,14 @@ function SkuField({ value, onChange, skuIndex, placeholder }) {
 
 export default function BrandMaterial() {
     const { t } = useTranslation();
+    const { sku: skuParam } = useParams();
+    const navigate = useNavigate();
+    const location = useLocation();
+    const activeSku = skuParam ? normalizeSkuInput(skuParam) : null;
+    const skuInfoImageUrl = location.state?.skuInfoImageUrl || '';
     const { logActivity } = useAuth();
-    const { isDark } = useTheme();
-    const [items, setItems] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [previewMap, setPreviewMap] = useState({});
-    const [skuFilter, setSkuFilter] = useState('');
-    const [debouncedSku, setDebouncedSku] = useState('');
-    const [categoryFilter, setCategoryFilter] = useState('all');
     const [typeFilter, setTypeFilter] = useState('all');
-    const [page, setPage] = useState(1);
-    const [total, setTotal] = useState(0);
+    const [reloadToken, setReloadToken] = useState(0);
     const [uploadOpen, setUploadOpen] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [uploadRows, setUploadRows] = useState([]);
@@ -234,107 +120,36 @@ export default function BrandMaterial() {
     const [editSku, setEditSku] = useState('');
     const [editCategory, setEditCategory] = useState('sub');
     const [editMediaType, setEditMediaType] = useState('photo');
+    const [editNote, setEditNote] = useState('');
     const [editSaving, setEditSaving] = useState(false);
 
-    const skuIndex = useMemo(() => buildSkuIndex(items), [items]);
+    const bumpReload = useCallback(() => setReloadToken((n) => n + 1), []);
 
-    const skuFilterTokens = useMemo(() => parseSkuFilterInput(skuFilter), [skuFilter]);
-
-    const filterSkuSearchQuery = useMemo(() => {
-        const parts = skuFilter.trim().split(/\s+/).filter(Boolean);
-        return parts[parts.length - 1] || '';
-    }, [skuFilter]);
-
-    const filterSkuOptions = useMemo(
-        () => searchSkuIndex(skuIndex, filterSkuSearchQuery).map((s) => ({ value: s })),
-        [skuIndex, filterSkuSearchQuery],
-    );
-
-    const applySkuFilterValue = useCallback((raw) => {
-        const tokens = parseSkuFilterInput(raw);
-        if (tokens.length > 0) return tokens.join(' ');
-        return (raw || '').toUpperCase();
-    }, []);
-
-    const handleSkuFilterPaste = useCallback((e) => {
-        const pasted = e.clipboardData?.getData('text') || '';
-        const tokens = parseSkuFilterInput(pasted);
-        if (tokens.length === 0) return;
-        e.preventDefault();
-        const merged = [...new Set([...parseSkuFilterInput(skuFilter), ...tokens])];
-        setSkuFilter(merged.join(' '));
-    }, [skuFilter]);
-
-    useEffect(() => {
-        const timer = setTimeout(() => setDebouncedSku(skuFilter), 400);
-        return () => clearTimeout(timer);
-    }, [skuFilter]);
-
-    const filterKey = `${debouncedSku}|${categoryFilter}|${typeFilter}`;
-    const prevFilterKeyRef = useRef(filterKey);
-
-    const loadCatalog = useCallback(async () => {
-        setLoading(true);
-        try {
-            const result = await listBrandMaterials({
-                page,
-                pageSize: PAGE_SIZE,
-                sku: debouncedSku,
-                category: categoryFilter,
-                mediaType: typeFilter,
-            });
-            setItems(result.items);
-            setTotal(result.total);
-            const urls = {};
-            await Promise.all(result.items.map(async (row) => {
-                const blob = await getBrandMaterialBlob(row.id);
-                if (blob) urls[row.id] = URL.createObjectURL(blob);
-            }));
-            setPreviewMap((prev) => {
-                Object.values(prev).forEach((u) => URL.revokeObjectURL(u));
-                return urls;
-            });
-        } catch {
-            message.error(t('brandMaterial.msgLoadFail'));
-        } finally {
-            setLoading(false);
-        }
-    }, [t, page, debouncedSku, categoryFilter, typeFilter]);
-
-    useEffect(() => {
-        if (prevFilterKeyRef.current !== filterKey) {
-            prevFilterKeyRef.current = filterKey;
-            if (page !== 1) {
-                setPage(1);
-                return;
-            }
-        }
-        loadCatalog();
-    }, [filterKey, page, loadCatalog]);
-
-    useEffect(() => () => {
-        setPreviewMap((prev) => {
-            Object.values(prev).forEach((u) => URL.revokeObjectURL(u));
-            return {};
+    const openSkuFolder = useCallback((row) => {
+        navigate(`/brand-material/${encodeURIComponent(row.sku)}`, {
+            state: { skuInfoImageUrl: row.skuInfoImageUrl || '' },
         });
-    }, []);
+    }, [navigate]);
+
+    const backToSkuList = useCallback(() => {
+        navigate('/brand-material');
+    }, [navigate]);
 
     const selectedItems = useMemo(
         () => Array.from(selectedMeta.values()),
         [selectedMeta],
     );
 
-    const allPageSelected = items.length > 0
-        && items.every((i) => selectedIds.has(i.id));
-    const somePageSelected = items.some((i) => selectedIds.has(i.id));
+    const skuIndex = useMemo(() => {
+        const seeds = [];
+        if (activeSku) seeds.push({ sku: activeSku });
+        selectedItems.forEach((item) => seeds.push(item));
+        return buildSkuIndex(seeds);
+    }, [activeSku, selectedItems]);
 
-    useEffect(() => {
-        const valid = new Set(items.map((i) => i.id));
-        setSelectedIds((prev) => {
-            const next = new Set([...prev].filter((id) => valid.has(id)));
-            return next.size === prev.size ? prev : next;
-        });
-    }, [items]);
+    const refreshAfterChange = useCallback(async () => {
+        bumpReload();
+    }, [bumpReload]);
 
     const toggleSelect = (id, checked, item) => {
         setSelectedIds((prev) => {
@@ -347,21 +162,6 @@ export default function BrandMaterial() {
             const next = new Map(prev);
             if (checked && item) next.set(id, item);
             else next.delete(id);
-            return next;
-        });
-    };
-
-    const toggleSelectAllPage = (checked) => {
-        setSelectedIds((prev) => {
-            const next = new Set(prev);
-            if (checked) items.forEach((i) => next.add(i.id));
-            else items.forEach((i) => next.delete(i.id));
-            return next;
-        });
-        setSelectedMeta((prev) => {
-            const next = new Map(prev);
-            if (checked) items.forEach((i) => next.set(i.id, i));
-            else items.forEach((i) => next.delete(i.id));
             return next;
         });
     };
@@ -397,7 +197,7 @@ export default function BrandMaterial() {
             message.success(t('brandMaterial.msgBulkDeleted', { count: deleted }));
             clearSelection();
             closeBulkDeleteModal();
-            await loadCatalog();
+            await refreshAfterChange();
             logActivity('Material Library (Bulk Delete)');
         } catch {
             message.error(t('brandMaterial.msgBulkDeleteFail'));
@@ -405,23 +205,6 @@ export default function BrandMaterial() {
             setBulkDeleting(false);
         }
     };
-
-    const renderCatalogPagination = (marginStyle = {}) => (
-        <div style={{ display: 'flex', justifyContent: 'center', ...marginStyle }}>
-            <Pagination
-                current={page}
-                pageSize={PAGE_SIZE}
-                total={total}
-                onChange={(p) => setPage(p)}
-                showSizeChanger={false}
-                showTotal={(count, range) => t('brandMaterial.pageTotal', {
-                    from: range[0],
-                    to: range[1],
-                    total: count,
-                })}
-            />
-        </div>
-    );
 
     const handleDownloadList = async (list, zipLabel) => {
         if (!list.length) {
@@ -447,8 +230,9 @@ export default function BrandMaterial() {
     const openEdit = (item) => {
         setEditItem(item);
         setEditSku(item.sku);
-        setEditCategory(item.category);
+        setEditNote(item.note || '');
         setEditMediaType(item.mediaType || 'photo');
+        setEditCategory(item.category);
         setEditOpen(true);
     };
 
@@ -458,6 +242,7 @@ export default function BrandMaterial() {
         setEditSku('');
         setEditCategory('sub');
         setEditMediaType('photo');
+        setEditNote('');
     };
 
     const handleSaveEdit = async () => {
@@ -480,7 +265,10 @@ export default function BrandMaterial() {
             });
             message.success(t('brandMaterial.msgEditOk'));
             closeEdit();
-            await loadCatalog();
+            await refreshAfterChange();
+            if (activeSku && sku !== activeSku) {
+                navigate(`/brand-material/${encodeURIComponent(sku)}`);
+            }
             logActivity('Material Library (Edit)');
         } catch (e) {
             const code = e?.message;
@@ -524,6 +312,7 @@ export default function BrandMaterial() {
             return {
                 id: newRowId(),
                 sku: parsed.sku,
+                note: '',
                 category: parsed.category,
                 mediaType: mediaTypeFromFile(file),
                 file,
@@ -583,7 +372,10 @@ export default function BrandMaterial() {
             await deleteBrandMaterial(id);
             message.success(t('brandMaterial.msgDeleted'));
             closeEdit();
-            await loadCatalog();
+            await refreshAfterChange();
+            if (activeSku) {
+                navigate('/brand-material');
+            }
         } catch {
             message.error(t('brandMaterial.msgDeleteFail'));
         }
@@ -616,13 +408,14 @@ export default function BrandMaterial() {
                     sku: row.sku,
                     category: row.category,
                     mediaType: row.mediaType || mediaTypeFromFile(row.file),
+                    note: row.note,
                     file: row.file,
                 });
                 ok += 1;
             }
             message.success(t('brandMaterial.msgBatchOk', { count: ok }));
             closeUploadModal();
-            await loadCatalog();
+            await refreshAfterChange();
             logActivity('Material Library (Upload)');
         } catch (e) {
             const code = e?.message;
@@ -664,13 +457,26 @@ export default function BrandMaterial() {
         },
         {
             title: t('brandMaterial.fieldSku'),
-            width: 200,
+            width: 168,
             render: (_, row) => (
                 <SkuField
                     value={row.sku}
                     skuIndex={skuIndex}
                     placeholder={t('brandMaterial.fieldSkuPh')}
                     onChange={(sku) => updateRow(row.id, { sku })}
+                />
+            ),
+        },
+        {
+            title: t('brandMaterial.fieldNote'),
+            width: 180,
+            render: (_, row) => (
+                <Input
+                    size="small"
+                    value={row.note || ''}
+                    maxLength={500}
+                    placeholder={t('brandMaterial.fieldNotePh')}
+                    onChange={(e) => updateRow(row.id, { note: e.target.value })}
                 />
             ),
         },
@@ -720,179 +526,64 @@ export default function BrandMaterial() {
         },
     ];
 
+    const bulkToolbarExtras = (
+        <Flex wrap gap={8} align="center">
+            <Button
+                icon={<FileZipOutlined />}
+                loading={bulkDownloading}
+                disabled={selectedItems.length === 0}
+                onClick={() => handleDownloadList(selectedItems, 'selected')}
+            >
+                {t('brandMaterial.downloadMaterial')}
+            </Button>
+            <Button
+                danger
+                icon={<DeleteOutlined />}
+                disabled={selectedItems.length === 0}
+                onClick={openBulkDeleteModal}
+            >
+                {t('brandMaterial.deleteMaterial')}
+            </Button>
+            {selectedItems.length > 0 && (
+                <Button type="link" size="small" onClick={clearSelection}>
+                    {t('brandMaterial.clearSelection')}
+                </Button>
+            )}
+        </Flex>
+    );
+
     return (
         <div>
-            <PageHeader
-                title={t('brandMaterial.title')}
-                subtitle={t('brandMaterial.subtitle')}
-                accent="#0ea5e9"
-            />
-
-            <Card
-                style={{
-                    marginBottom: 24,
-                    borderRadius: 12,
-                    border: '1px solid var(--border)',
-                    background: 'var(--bg-card)',
-                }}
-                styles={{ body: { padding: '16px 18px' } }}
-            >
-                <Flex vertical gap={12}>
-                    <Flex
-                        wrap="wrap"
-                        gap={12}
-                        align="flex-end"
-                        justify="space-between"
-                    >
-                        <Flex wrap gap={12} align="flex-end" style={{ flex: 1, minWidth: 0 }}>
-                            <Flex vertical style={{ flex: '1 1 220px', maxWidth: 300, minWidth: 160 }}>
-                                <Text type="secondary" style={{ fontSize: 12, marginBottom: 6 }}>
-                                    {t('brandMaterial.filterSku')}
-                                </Text>
-                                <AutoComplete
-                                    allowClear
-                                    style={{ width: '100%' }}
-                                    value={skuFilter}
-                                    options={filterSkuOptions}
-                                    onChange={(v) => setSkuFilter((v || '').toUpperCase())}
-                                    onSelect={(value) => {
-                                        const parts = skuFilter.trim().split(/\s+/).filter(Boolean);
-                                        if (parts.length > 1) {
-                                            parts[parts.length - 1] = value;
-                                            setSkuFilter(parts.join(' '));
-                                        } else {
-                                            setSkuFilter(value);
-                                        }
-                                    }}
-                                    onPaste={handleSkuFilterPaste}
-                                    onBlur={() => {
-                                        const normalized = applySkuFilterValue(skuFilter);
-                                        if (normalized !== skuFilter) setSkuFilter(normalized);
-                                    }}
-                                    placeholder={t('brandMaterial.filterSkuPh')}
-                                    filterOption={false}
-                                />
-                            </Flex>
-                            <Flex vertical style={{ flex: '0 1 200px', minWidth: 168 }}>
-                                <Text type="secondary" style={{ fontSize: 12, marginBottom: 6 }}>
-                                    {t('brandMaterial.filterCategory')}
-                                </Text>
-                                <Segmented
-                                    block
-                                    value={categoryFilter}
-                                    onChange={setCategoryFilter}
-                                    options={[
-                                        { value: 'all', label: t('brandMaterial.filterAll') },
-                                        { value: 'main', label: t('brandMaterial.catMain') },
-                                        { value: 'sub', label: t('brandMaterial.catSub') },
-                                    ]}
-                                />
-                            </Flex>
-                            <Flex vertical style={{ flex: '0 1 200px', minWidth: 168 }}>
-                                <Text type="secondary" style={{ fontSize: 12, marginBottom: 6 }}>
-                                    {t('brandMaterial.filterType')}
-                                </Text>
-                                <Segmented
-                                    block
-                                    value={typeFilter}
-                                    onChange={setTypeFilter}
-                                    options={[
-                                        { value: 'all', label: t('brandMaterial.filterAll') },
-                                        { value: 'photo', label: t('brandMaterial.typePhoto') },
-                                        { value: 'video', label: t('brandMaterial.typeVideo') },
-                                    ]}
-                                />
-                            </Flex>
-                        </Flex>
-                        <Flex gap={8} align="center" style={{ flex: '0 0 auto' }}>
+            {activeSku ? (
+                <BrandMaterialSkuDetail
+                    sku={activeSku}
+                    typeFilter={typeFilter}
+                    onTypeFilterChange={setTypeFilter}
+                    onBack={backToSkuList}
+                    skuInfoImageUrl={skuInfoImageUrl}
+                    selectedIds={selectedIds}
+                    onSelect={toggleSelect}
+                    onDownload={handleDownload}
+                    onEdit={openEdit}
+                    reloadToken={reloadToken}
+                    toolbarExtras={bulkToolbarExtras}
+                />
+            ) : (
+                <>
+                    <PageHeader
+                        title={t('brandMaterial.title')}
+                        subtitle={t('brandMaterial.subtitle')}
+                        accent="#0ea5e9"
+                        actions={(
                             <Button type="primary" icon={<CloudUploadOutlined />} onClick={openUploadModal}>
                                 {t('brandMaterial.upload')}
                             </Button>
-                            <Tooltip title={t('brandMaterial.refresh')}>
-                                <Button
-                                    icon={<ReloadOutlined />}
-                                    loading={loading}
-                                    onClick={loadCatalog}
-                                    aria-label={t('brandMaterial.refresh')}
-                                />
-                            </Tooltip>
-                        </Flex>
-                    </Flex>
-
-                    {total > 0 && (
-                        <Flex
-                            wrap
-                            gap={12}
-                            align="center"
-                            style={{
-                                padding: '8px 12px',
-                                borderRadius: 8,
-                                border: '1px solid var(--border)',
-                                background: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(248, 250, 252, 0.9)',
-                            }}
-                        >
-                            <Checkbox
-                                checked={allPageSelected}
-                                indeterminate={somePageSelected && !allPageSelected}
-                                onChange={(e) => toggleSelectAllPage(e.target.checked)}
-                            >
-                                {t('brandMaterial.selectAllPage', { count: items.length })}
-                            </Checkbox>
-                            <Button
-                                icon={<FileZipOutlined />}
-                                loading={bulkDownloading}
-                                disabled={selectedItems.length === 0}
-                                onClick={() => handleDownloadList(selectedItems, 'selected')}
-                            >
-                                {t('brandMaterial.downloadMaterial')}
-                            </Button>
-                            <Button
-                                danger
-                                icon={<DeleteOutlined />}
-                                disabled={selectedItems.length === 0}
-                                onClick={openBulkDeleteModal}
-                                style={{ marginLeft: 20 }}
-                            >
-                                {t('brandMaterial.deleteMaterial')}
-                            </Button>
-                            {selectedItems.length > 0 && (
-                                <>
-                                    <Text type="secondary" style={{ fontSize: 12 }}>
-                                        {t('brandMaterial.selectedCount', { count: selectedItems.length })}
-                                    </Text>
-                                    <Button type="link" size="small" onClick={clearSelection}>
-                                        {t('brandMaterial.clearSelection')}
-                                    </Button>
-                                </>
-                            )}
-                        </Flex>
-                    )}
-                </Flex>
-            </Card>
-
-            {loading ? (
-                <Card loading style={{ borderRadius: 12 }} />
-            ) : total === 0 ? (
-                <Empty description={t('brandMaterial.empty')} />
-            ) : (
-                <>
-                    {renderCatalogPagination({ marginBottom: 16 })}
-                    <Row gutter={[16, 16]}>
-                        {items.map((item) => (
-                            <Col key={item.id} xs={12} sm={8} md={6} lg={4}>
-                                <MaterialCard
-                                    item={item}
-                                    previewUrl={previewMap[item.id]}
-                                    selected={selectedIds.has(item.id)}
-                                    onSelect={toggleSelect}
-                                    onDownload={handleDownload}
-                                    onEdit={openEdit}
-                                    t={t}
-                                />
-                            </Col>
-                        ))}
-                    </Row>
-                    {renderCatalogPagination({ marginTop: 24 })}
+                        )}
+                    />
+                    <BrandMaterialSkuList
+                        onOpenSku={openSkuFolder}
+                        reloadToken={reloadToken}
+                    />
                 </>
             )}
 
@@ -980,20 +671,16 @@ export default function BrandMaterial() {
                         </div>
                         <div>
                             <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
-                                {t('brandMaterial.fieldCategory')}
+                                {t('brandMaterial.fieldNote')}
                             </Text>
-                            <Segmented
-                                block
-                                value={editCategory}
-                                onChange={setEditCategory}
-                                options={[
-                                    { value: 'sub', label: t('brandMaterial.catSub') },
-                                    { value: 'main', label: t('brandMaterial.catMain') },
-                                ]}
+                            <Input.TextArea
+                                value={editNote}
+                                maxLength={500}
+                                showCount
+                                autoSize={{ minRows: 2, maxRows: 4 }}
+                                placeholder={t('brandMaterial.fieldNotePh')}
+                                onChange={(e) => setEditNote(e.target.value)}
                             />
-                            <Paragraph type="secondary" style={{ margin: '8px 0 0', fontSize: 11 }}>
-                                {t('brandMaterial.editHint')}
-                            </Paragraph>
                         </div>
                         <div>
                             <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
@@ -1008,6 +695,23 @@ export default function BrandMaterial() {
                                     { value: 'video', label: t('brandMaterial.typeVideo') },
                                 ]}
                             />
+                        </div>
+                        <div>
+                            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+                                {t('brandMaterial.fieldCategory')}
+                            </Text>
+                            <Segmented
+                                block
+                                value={editCategory}
+                                onChange={setEditCategory}
+                                options={[
+                                    { value: 'sub', label: t('brandMaterial.catSub') },
+                                    { value: 'main', label: t('brandMaterial.catMain') },
+                                ]}
+                            />
+                            <Paragraph type="secondary" style={{ margin: '8px 0 0', fontSize: 11 }}>
+                                {t('brandMaterial.editHint')}
+                            </Paragraph>
                         </div>
                         <div
                             style={{
@@ -1087,7 +791,7 @@ export default function BrandMaterial() {
                         rowKey="id"
                         dataSource={uploadRows}
                         columns={uploadTableColumns}
-                        scroll={{ x: 520 }}
+                        scroll={{ x: 700 }}
                         style={{ marginBottom: 16 }}
                     />
                 ) : (

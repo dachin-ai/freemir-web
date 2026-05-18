@@ -4,20 +4,26 @@ Brand Material — metadata in PostgreSQL, files in Google Cloud Storage.
 
 from __future__ import annotations
 
+import io
 import os
 import re
+import shutil
+import subprocess
 import uuid
+from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 
+from PIL import Image, ImageOps, UnidentifiedImageError
+
 from google.cloud import storage
 from google.oauth2 import service_account
-from sqlalchemy import case
+from sqlalchemy import case, exists, func, select
 from sqlalchemy.orm import Session
 
-from models import BrandMaterial
+from models import BrandMaterial, FreemirName
 
 GCS_BUCKET = os.getenv("GCS_BUCKET", "dachin-ai-picture")
 GCS_PREFIX = os.getenv("GCS_BRAND_MATERIAL_PREFIX", "brand-material")
@@ -53,6 +59,13 @@ def _sku_key(sku: str) -> str:
 
 def normalize_sku(sku: str) -> str:
     return (sku or "").strip()
+
+
+NOTE_MAX_LEN = 500
+
+
+def normalize_note(note: str | None) -> str:
+    return (note or "").strip()[:NOTE_MAX_LEN]
 
 
 def is_allowed_media_mime(mime_type: str) -> bool:
@@ -129,6 +142,9 @@ def _row_to_dict(row: BrandMaterial) -> dict:
         "sizeBytes": row.size_bytes,
         "uploadedAt": _uploaded_at_jakarta_iso(row.uploaded_at),
         "uploadedBy": row.uploaded_by or "",
+        "note": getattr(row, "note", None) or "",
+        "gcsObjectPath": row.gcs_object_path,
+        "hasPreview": bool(getattr(row, "preview_gcs_object_path", None)),
     }
 
 
@@ -192,6 +208,257 @@ def list_materials(
     }
 
 
+def _row_media_type(row: BrandMaterial) -> str:
+    return getattr(row, "media_type", None) or media_type_from_mime(row.mime_type)
+
+
+def _pick_cover_row(rows: list[BrandMaterial], media_type: str = "all") -> Optional[BrandMaterial]:
+    """Cover prefers Main; falls back to Sub when no Main for the filtered type."""
+    if not rows:
+        return None
+
+    mt = (media_type or "all").strip().lower()
+
+    def pick_typed(want_mt: str) -> Optional[BrandMaterial]:
+        for cat in ("main", "sub"):
+            for row in rows:
+                if row.category == cat and _row_media_type(row) == want_mt:
+                    return row
+        return None
+
+    if mt == "photo":
+        return pick_typed("photo")
+    if mt == "video":
+        return pick_typed("video")
+
+    for pred in (
+        lambda r: r.category == "main" and _row_media_type(r) == "photo",
+        lambda r: r.category == "main" and _row_media_type(r) == "video",
+        lambda r: r.category == "main",
+        lambda r: r.category == "sub" and _row_media_type(r) == "photo",
+        lambda r: r.category == "sub" and _row_media_type(r) == "video",
+    ):
+        for row in rows:
+            if pred(row):
+                return row
+    return rows[0]
+
+
+def _folder_children(rows: list[BrandMaterial]) -> list[BrandMaterial]:
+    subs = [r for r in rows if r.category == "sub"]
+    return sorted(subs, key=lambda r: (r.sub_index or 0, r.id))
+
+
+def list_material_folders(
+    db: Session,
+    *,
+    page: int = 1,
+    page_size: int = 24,
+    sku_filter: str = "",
+    media_type: str = "all",
+) -> dict:
+    """Paginate by SKU — each folder has a cover (Main preferred, else Sub)."""
+    q = db.query(BrandMaterial)
+
+    mt = (media_type or "all").strip().lower()
+    if mt in ("photo", "video"):
+        q = q.filter(BrandMaterial.media_type == mt)
+
+    tokens = _parse_sku_filter_tokens(sku_filter)
+    if len(tokens) > 1:
+        keys = [_sku_key(t) for t in tokens]
+        q = q.filter(BrandMaterial.sku_key.in_(keys))
+    elif len(tokens) == 1:
+        q = q.filter(BrandMaterial.sku.ilike(f"%{tokens[0]}%"))
+
+    sku_groups = (
+        q.with_entities(
+            BrandMaterial.sku_key,
+            func.max(BrandMaterial.sku).label("sku"),
+        )
+        .group_by(BrandMaterial.sku_key)
+        .order_by(BrandMaterial.sku_key.asc())
+    )
+
+    total = sku_groups.count()
+    page = max(1, int(page or 1))
+    page_size = min(max(1, int(page_size or 24)), 60)
+
+    page_rows = (
+        sku_groups.offset((page - 1) * page_size).limit(page_size).all()
+    )
+
+    order_cat = case((BrandMaterial.category == "main", 0), else_=1)
+    folders = []
+    for sku_key, sku in page_rows:
+        materials = (
+            db.query(BrandMaterial)
+            .filter(BrandMaterial.sku_key == sku_key)
+            .order_by(
+                BrandMaterial.media_type.asc(),
+                order_cat.asc(),
+                BrandMaterial.sub_index.asc().nullsfirst(),
+                BrandMaterial.id.asc(),
+            )
+            .all()
+        )
+        cover = _pick_cover_row(materials, mt)
+        children = _folder_children(materials)
+        folders.append(
+            {
+                "sku": sku or (materials[0].sku if materials else ""),
+                "cover": _row_to_dict(cover) if cover else None,
+                "children": [_row_to_dict(c) for c in children],
+                "itemCount": len(materials),
+            }
+        )
+
+    return {
+        "folders": folders,
+        "total": total,
+        "page": page,
+        "pageSize": page_size,
+    }
+
+
+def list_materials_by_sku(
+    db: Session,
+    sku: str,
+    *,
+    media_type: str = "all",
+) -> dict:
+    """All materials for one SKU (detail page)."""
+    sku_norm = normalize_sku(sku).upper()
+    if not sku_norm:
+        raise ValueError("SKU_REQUIRED")
+
+    key = _sku_key(sku_norm)
+    q = db.query(BrandMaterial).filter(BrandMaterial.sku_key == key)
+
+    mt = (media_type or "all").strip().lower()
+    if mt in ("photo", "video"):
+        q = q.filter(BrandMaterial.media_type == mt)
+
+    order_cat = case((BrandMaterial.category == "main", 0), else_=1)
+    rows = (
+        q.order_by(
+            BrandMaterial.media_type.asc(),
+            order_cat.asc(),
+            BrandMaterial.sub_index.asc().nullsfirst(),
+            BrandMaterial.id.asc(),
+        )
+        .all()
+    )
+
+    return {
+        "sku": rows[0].sku if rows else sku_norm,
+        "items": [_row_to_dict(r) for r in rows],
+    }
+
+
+def _coverage_counts_template() -> dict:
+    return {
+        "videoMain": 0,
+        "videoSub": 0,
+        "photoMain": 0,
+        "photoSub": 0,
+    }
+
+
+def _coverage_sku_order_by():
+    """SKUs with materials first; then FR prefixes, ET last, others; then SKU A–Z."""
+    prefix = func.upper(func.substr(FreemirName.sku, 1, 2))
+    prefix_group = case(
+        (prefix == "FR", 0),
+        (prefix == "ET", 2),
+        else_=1,
+    )
+    has_materials = exists(
+        select(1).where(BrandMaterial.sku_key == func.lower(FreemirName.sku))
+    )
+    has_materials_sort = case((has_materials, 0), else_=1)
+    return (has_materials_sort, prefix_group, FreemirName.sku.asc())
+
+
+def list_material_coverage(
+    db: Session,
+    *,
+    page: int = 1,
+    page_size: int = 50,
+    sku_filter: str = "",
+) -> dict:
+    """SKU_Info catalog vs Material Library — counts per SKU."""
+    q = db.query(FreemirName)
+
+    tokens = _parse_sku_filter_tokens(sku_filter)
+    if len(tokens) > 1:
+        q = q.filter(FreemirName.sku.in_(tokens))
+    elif len(tokens) == 1:
+        q = q.filter(FreemirName.sku.ilike(f"%{tokens[0]}%"))
+
+    total = q.count()
+    page = max(1, int(page or 1))
+    page_size = min(max(1, int(page_size or 50)), 200)
+
+    names = (
+        q.order_by(*_coverage_sku_order_by())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    sku_keys = [_sku_key(n.sku) for n in names if n.sku]
+    stats: dict[str, dict] = {k: _coverage_counts_template() for k in sku_keys}
+    main_photo_by_key: dict[str, str] = {}
+
+    if sku_keys:
+        materials = (
+            db.query(BrandMaterial)
+            .filter(BrandMaterial.sku_key.in_(sku_keys))
+            .all()
+        )
+        for row in materials:
+            key = row.sku_key
+            if key not in stats:
+                stats[key] = _coverage_counts_template()
+            mt = _row_media_type(row)
+            cat = (row.category or "").lower()
+            if mt == "video":
+                if cat == "main":
+                    stats[key]["videoMain"] += 1
+                else:
+                    stats[key]["videoSub"] += 1
+            else:
+                if cat == "main":
+                    stats[key]["photoMain"] += 1
+                    main_photo_by_key[key] = row.id
+                else:
+                    stats[key]["photoSub"] += 1
+
+    items = []
+    for n in names:
+        key = _sku_key(n.sku)
+        counts = stats.get(key, _coverage_counts_template())
+        has_materials = sum(counts.values()) > 0
+        items.append(
+            {
+                "sku": n.sku,
+                "productName": (n.product_name or "").strip(),
+                "skuInfoImageUrl": (n.link or "").strip(),
+                "mainPhotoMaterialId": main_photo_by_key.get(key),
+                **counts,
+                "hasMaterials": has_materials,
+            }
+        )
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "pageSize": page_size,
+    }
+
+
 def _renumber_subs(db: Session, sku: str, media_type: str) -> None:
     key = _sku_key(sku)
     mt = normalize_media_type(media_type)
@@ -229,6 +496,11 @@ def _demote_main_to_sub(db: Session, main_row: BrandMaterial) -> None:
     main_row.sub_index = next_idx
 
 
+def _preview_object_path(sku: str, material_id: str) -> str:
+    safe_sku = re.sub(r"[^\w\-]+", "_", normalize_sku(sku))
+    return f"{GCS_PREFIX}/{safe_sku}/.preview_{material_id}.jpg"
+
+
 def upload_material(
     db: Session,
     *,
@@ -238,6 +510,7 @@ def upload_material(
     file_bytes: bytes,
     mime_type: str,
     uploaded_by: str = "",
+    preview_bytes: bytes | None = None,
 ) -> dict:
     sku_norm = normalize_sku(sku)
     if not sku_norm:
@@ -291,6 +564,11 @@ def upload_material(
 
     row_id = f"bm_{uuid.uuid4().hex[:16]}"
     now = datetime.now(timezone.utc)
+    preview_path = None
+    if preview_bytes:
+        preview_path = _preview_object_path(sku_norm, row_id)
+        bucket.blob(preview_path).upload_from_string(preview_bytes, content_type="image/jpeg")
+
     row = BrandMaterial(
         id=row_id,
         sku=sku_norm,
@@ -299,10 +577,12 @@ def upload_material(
         media_type=mt,
         sub_index=sub_index,
         gcs_object_path=object_path,
+        preview_gcs_object_path=preview_path,
         mime_type=mime_type,
         size_bytes=len(file_bytes),
         uploaded_at=now,
         uploaded_by=uploaded_by or "",
+        note=normalize_note(note),
     )
     db.add(row)
     db.commit()
@@ -321,6 +601,7 @@ def update_material(
     sku: str,
     category: str,
     media_type: str,
+    note: str | None = None,
 ) -> dict:
     sku_norm = normalize_sku(sku)
     if not sku_norm:
@@ -360,6 +641,8 @@ def update_material(
     row.sku_key = new_key
     row.category = category
     row.media_type = mt
+    if note is not None:
+        row.note = normalize_note(note)
 
     if category == "main":
         row.sub_index = None
@@ -420,7 +703,12 @@ def delete_materials_bulk(db: Session, material_ids: list[str]) -> dict:
         return {"deleted": 0, "notFound": ids}
 
     found_ids = {r.id for r in rows}
-    _delete_gcs_objects_parallel([r.gcs_object_path for r in rows])
+    paths = []
+    for r in rows:
+        paths.append(r.gcs_object_path)
+        if getattr(r, "preview_gcs_object_path", None):
+            paths.append(r.preview_gcs_object_path)
+    _delete_gcs_objects_parallel(paths)
 
     affected: set[tuple[str, str]] = set()
     for row in rows:
@@ -446,11 +734,116 @@ def delete_material(db: Session, material_id: str) -> None:
 
     sku = row.sku
     mt = getattr(row, "media_type", None) or media_type_from_mime(row.mime_type)
-    _delete_gcs_objects_parallel([row.gcs_object_path])
+    paths = [row.gcs_object_path]
+    if getattr(row, "preview_gcs_object_path", None):
+        paths.append(row.preview_gcs_object_path)
+    _delete_gcs_objects_parallel(paths)
 
     db.delete(row)
     db.commit()
     _renumber_subs(db, sku, mt)
+
+
+PREVIEW_MAX_PX = 420
+
+
+def _thumbnail_image_bytes(raw: bytes, max_px: int = PREVIEW_MAX_PX) -> bytes:
+    with Image.open(io.BytesIO(raw)) as img:
+        img = ImageOps.exif_transpose(img)
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        img.thumbnail((max_px, max_px), Image.Resampling.LANCZOS)
+        out = io.BytesIO()
+        img.save(out, format="JPEG", quality=82, optimize=True)
+        return out.getvalue()
+
+
+def _ffmpeg_video_frame_jpeg(gcs_object_path: str, bucket) -> bytes | None:
+    """Extract one JPEG frame via ffmpeg + signed GCS URL (optional; needs ffmpeg in PATH)."""
+    if not shutil.which("ffmpeg"):
+        return None
+    blob = bucket.blob(gcs_object_path)
+    if not blob.exists():
+        return None
+    try:
+        signed_url = blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(minutes=10),
+            method="GET",
+        )
+    except Exception:
+        return None
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            "0.5",
+            "-i",
+            signed_url,
+            "-vframes",
+            "1",
+            "-f",
+            "image2pipe",
+            "-vcodec",
+            "mjpeg",
+            "pipe:1",
+        ],
+        capture_output=True,
+        timeout=120,
+    )
+    if proc.returncode != 0 or not proc.stdout:
+        return None
+    return proc.stdout
+
+
+def _persist_video_preview(db: Session, row: BrandMaterial, frame_bytes: bytes, bucket) -> str:
+    preview_path = _preview_object_path(row.sku, row.id)
+    bucket.blob(preview_path).upload_from_string(frame_bytes, content_type="image/jpeg")
+    row.preview_gcs_object_path = preview_path
+    db.commit()
+    return preview_path
+
+
+def get_material_preview(db: Session, material_id: str) -> tuple[bytes, str]:
+    """Small JPEG for grid — uses stored video poster or resized photo."""
+    row = db.query(BrandMaterial).filter(BrandMaterial.id == material_id).first()
+    if not row:
+        raise ValueError("NOT_FOUND")
+
+    client = get_storage_client()
+    bucket = client.bucket(GCS_BUCKET)
+    preview_path = getattr(row, "preview_gcs_object_path", None)
+
+    if preview_path:
+        blob = bucket.blob(preview_path)
+        if not blob.exists():
+            raise ValueError("FILE_NOT_FOUND")
+        return _thumbnail_image_bytes(blob.download_as_bytes()), "image/jpeg"
+
+    mime = (row.mime_type or "").lower()
+    mt = getattr(row, "media_type", None) or media_type_from_mime(mime)
+    if mt == "video" or mime.startswith("video/"):
+        frame = _ffmpeg_video_frame_jpeg(row.gcs_object_path, bucket)
+        if frame:
+            _persist_video_preview(db, row, frame, bucket)
+            return _thumbnail_image_bytes(frame), "image/jpeg"
+        raise ValueError("NO_PREVIEW")
+
+    blob = bucket.blob(row.gcs_object_path)
+    if not blob.exists():
+        raise ValueError("FILE_NOT_FOUND")
+
+    raw = blob.download_as_bytes()
+    if not mime.startswith("image/"):
+        raise ValueError("NO_PREVIEW")
+
+    try:
+        return _thumbnail_image_bytes(raw), "image/jpeg"
+    except (UnidentifiedImageError, OSError, ValueError):
+        return raw, mime or "application/octet-stream"
 
 
 def get_material_file(db: Session, material_id: str) -> tuple[bytes, str]:

@@ -83,7 +83,10 @@ function ProtectedApp() {
         <Route path="product-performance" element={<PermissionGate toolKey="product_performance"><ProductPerformanceCleaner /></PermissionGate>} />
         <Route path="livestream-display" element={<PermissionGate toolKey="livestream_display"><LivestreamDisplay /></PermissionGate>} />
         <Route path="photo-downloader" element={<PermissionGate toolKey="photo_downloader"><PhotoDownloader /></PermissionGate>} />
-        <Route path="brand-material" element={<PermissionGate toolKey="brand_material"><BrandMaterial /></PermissionGate>} />
+        <Route path="brand-material">
+          <Route index element={<PermissionGate toolKey="brand_material"><BrandMaterial /></PermissionGate>} />
+          <Route path=":sku" element={<PermissionGate toolKey="brand_material"><BrandMaterial /></PermissionGate>} />
+        </Route>
         <Route path="*" element={<Navigate to="/" />} />
       </Route>
     </Routes>

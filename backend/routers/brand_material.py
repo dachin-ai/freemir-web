@@ -1,5 +1,7 @@
 import re
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -11,7 +13,11 @@ from services.brand_material_logic import (
     delete_material,
     delete_materials_bulk,
     get_material_file,
+    get_material_preview,
+    list_material_coverage,
+    list_material_folders,
     list_materials,
+    list_materials_by_sku,
     storage_file_name,
     update_material,
     upload_material,
@@ -36,6 +42,7 @@ class UpdateBody(BaseModel):
     sku: str = Field(min_length=1, max_length=32)
     category: str = Field(pattern=r"^(main|sub)$")
     mediaType: str = Field(pattern=r"^(photo|video)$")
+    note: str | None = Field(default=None, max_length=500)
 
 
 class BulkDeleteBody(BaseModel):
@@ -59,6 +66,60 @@ def _validate_sku(sku: str) -> str:
     if not SKU_PATTERN.match(s):
         raise HTTPException(status_code=400, detail="Invalid SKU format (12 characters, e.g. FR0208A00001)")
     return s
+
+
+@router.get("/coverage", dependencies=[Depends(require_tool_access("brand_material"))])
+def list_coverage(
+    page: int = 1,
+    page_size: int = 50,
+    sku: str = "",
+    db: Session = Depends(get_db),
+):
+    try:
+        return list_material_coverage(
+            db,
+            page=page,
+            page_size=page_size,
+            sku_filter=sku,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/folders", dependencies=[Depends(require_tool_access("brand_material"))])
+def list_folders(
+    page: int = 1,
+    page_size: int = 24,
+    sku: str = "",
+    media_type: str = "all",
+    db: Session = Depends(get_db),
+):
+    try:
+        return list_material_folders(
+            db,
+            page=page,
+            page_size=page_size,
+            sku_filter=sku,
+            media_type=media_type,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/sku/{sku}", dependencies=[Depends(require_tool_access("brand_material"))])
+def get_sku_catalog(
+    sku: str,
+    media_type: str = "all",
+    db: Session = Depends(get_db),
+):
+    try:
+        return list_materials_by_sku(db, sku, media_type=media_type)
+    except ValueError as e:
+        if str(e) == "SKU_REQUIRED":
+            raise HTTPException(status_code=400, detail="SKU_REQUIRED") from e
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("", dependencies=[Depends(require_tool_access("brand_material"))])
@@ -88,7 +149,9 @@ async def upload(
     sku: str = Form(...),
     category: str = Form("sub"),
     mediaType: str = Form("photo"),
+    note: str = Form(""),
     file: UploadFile = File(...),
+    poster: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     user=Depends(require_tool_access("brand_material")),
 ):
@@ -100,6 +163,9 @@ async def upload(
     content = await file.read()
     mime = file.content_type or "image/jpeg"
     uploader_name = _uploader_display_name(user)
+    preview_bytes = None
+    if poster:
+        preview_bytes = await poster.read()
 
     try:
         item = upload_material(
@@ -110,6 +176,8 @@ async def upload(
             file_bytes=content,
             mime_type=mime,
             uploaded_by=uploader_name,
+            preview_bytes=preview_bytes or None,
+            note=note,
         )
         return {"item": item}
     except FileNotFoundError as e:
@@ -142,6 +210,7 @@ def patch_material(material_id: str, body: UpdateBody, db: Session = Depends(get
             sku=sku_norm,
             category=body.category,
             media_type=body.mediaType,
+            note=body.note,
         )
         return {"item": item}
     except ValueError as e:
@@ -160,6 +229,27 @@ def remove_material(material_id: str, db: Session = Depends(get_db)):
         if str(e) == "NOT_FOUND":
             raise HTTPException(status_code=404, detail=str(e)) from e
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get("/{material_id}/preview", dependencies=[Depends(require_tool_access("brand_material"))])
+def preview_file(material_id: str, db: Session = Depends(get_db)):
+    try:
+        data, mime = get_material_preview(db, material_id)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except ValueError as e:
+        code = str(e)
+        if code == "NOT_FOUND":
+            raise HTTPException(status_code=404, detail=code) from e
+        if code in ("FILE_NOT_FOUND", "NO_PREVIEW"):
+            raise HTTPException(status_code=404, detail=code) from e
+        raise HTTPException(status_code=400, detail=code) from e
+
+    return Response(
+        content=data,
+        media_type=mime,
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 @router.get("/{material_id}/file", dependencies=[Depends(require_tool_access("brand_material"))])

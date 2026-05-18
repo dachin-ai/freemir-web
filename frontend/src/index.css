@@ -42,6 +42,15 @@
   text-align: center !important;
 }
 
+/* Material Checker — sticky header stays readable while scrolling */
+.material-coverage-table .ant-table-thead > tr > th {
+  background: var(--bg-card) !important;
+  z-index: 3;
+}
+.material-coverage-table .ant-table-sticky-scroll {
+  background: var(--bg-card);
+}
+
 /* ============================================
    LIGHT MODE — musim panas: langit & air, biru segar (bukan hijau)
    ============================================ */

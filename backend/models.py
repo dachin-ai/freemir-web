@@ -209,10 +209,12 @@ class BrandMaterial(Base):
     media_type = Column(String, nullable=False, default="photo")  # photo | video
     sub_index = Column(Integer, nullable=True)
     gcs_object_path = Column(String, nullable=False)
+    preview_gcs_object_path = Column(String, nullable=True)
     mime_type = Column(String, nullable=False)
     size_bytes = Column(Integer, default=0)
     uploaded_at = Column(DateTime, server_default=func.now())
     uploaded_by = Column(String, default="")
+    note = Column(String(500), default="")
 
 
 class SharedQuickLinks(Base):

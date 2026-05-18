@@ -279,6 +279,34 @@ def _migrate_brand_material_media_type_column():
     print("[Startup] [OK] brand_materials.media_type column added.")
 
 
+def _migrate_brand_material_preview_column():
+    from sqlalchemy import inspect
+
+    insp = inspect(engine)
+    if "brand_materials" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("brand_materials")}
+    if "preview_gcs_object_path" in cols:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE brand_materials ADD COLUMN preview_gcs_object_path VARCHAR"))
+    print("[Startup] [OK] brand_materials.preview_gcs_object_path column added.")
+
+
+def _migrate_brand_material_note_column():
+    from sqlalchemy import inspect
+
+    insp = inspect(engine)
+    if "brand_materials" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("brand_materials")}
+    if "note" in cols:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE brand_materials ADD COLUMN note VARCHAR(500) DEFAULT ''"))
+    print("[Startup] [OK] brand_materials.note column added.")
+
+
 def _seed_sqlite_dev_user():
     """Tanpa Neon: satu user admin lokal agar login di http://localhost:5173 berhasil."""
     if not USING_SQLITE_DEV:
@@ -318,6 +346,8 @@ async def lifespan(app: FastAPI):
         Base.metadata.create_all(bind=engine)
         print("[Startup] [OK] Database tables created/verified.")
         _migrate_brand_material_media_type_column()
+        _migrate_brand_material_preview_column()
+        _migrate_brand_material_note_column()
         _seed_sqlite_dev_user()
     except Exception as e:
         print(f"[Startup] [WARN] Database not yet available: {e}")
