@@ -16,11 +16,12 @@ const getBaseURL = () => {
     return `http://${host}:8000/api`;
   }
 
-  // Production: VITE_API_URL from Cloud Build (split deploy). Fallback /api for unified deploy.
-  if (envBackend) {
-    return envBackend;
+  if (envBackend && String(envBackend).trim()) {
+    return String(envBackend).trim();
   }
-  return '/api';
+
+  // Split deploy (production): frontend and API are separate Cloud Run services.
+  return 'https://freemir-web-api-123563250077.asia-southeast1.run.app/api';
 };
 
 const baseURL = getBaseURL();

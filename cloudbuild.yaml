@@ -26,7 +26,7 @@ steps:
       - '--image=asia-southeast1-docker.pkg.dev/dachin-ai-493209/cloud-run-source-deploy/${_BACKEND_IMAGE}:$COMMIT_SHA'
       - '--region=asia-southeast1'
       - '--allow-unauthenticated'
-      - '--set-env-vars=DATABASE_URL=${_DATABASE_URL},JWT_SECRET=${_JWT_SECRET},OPENAI_API_KEY=${_OPENAI_API_KEY},OPENAI_BASE_URL=${_OPENAI_BASE_URL},OPENAI_MODEL=${_OPENAI_MODEL}'
+      - '--update-env-vars=DATABASE_URL=${_DATABASE_URL},JWT_SECRET=${_JWT_SECRET},OPENAI_API_KEY=${_OPENAI_API_KEY},OPENAI_BASE_URL=${_OPENAI_BASE_URL},OPENAI_MODEL=${_OPENAI_MODEL}'
       - '--set-secrets=/etc/secrets/credentials.json=credentials-json:latest'
       - '--min-instances=0'
       - '--max-instances=3'
