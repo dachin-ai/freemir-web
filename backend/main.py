@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from sqlalchemy import text
 from routers import price_checker, order_loss, failed_delivery, presales, erp_oos, sku_plan, conversion_cleaner, order_match, auth, warehouse_order, socmed, affiliate, tiktok_ads, access, product_performance, livestream_display, photo_downloader, quick_links, brand_material, sku_review
@@ -411,11 +412,34 @@ if ai_chat_available:
 from routers import shopee_affiliate
 app.include_router(shopee_affiliate.router, prefix="/api/shopee-affiliate", tags=["shopee-affiliate"])
 
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to FastAPI Backend!"}
-
 @app.get("/api/health")
 def health_check():
     """Lightweight wake-up endpoint — keeps Render from returning a cold start during login."""
     return {"status": "ok"}
+
+
+def _mount_frontend(app: FastAPI) -> None:
+    """Serve Vite build from ./static when present (unified Cloud Run deploy)."""
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    index_path = os.path.join(static_dir, "index.html")
+    if not os.path.isfile(index_path):
+        return
+
+    @app.get("/", include_in_schema=False)
+    async def spa_index():
+        return FileResponse(index_path)
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_files(full_path: str):
+        if full_path.startswith("api") or full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        safe_root = os.path.realpath(static_dir)
+        target = os.path.realpath(os.path.join(static_dir, full_path))
+        if not target.startswith(safe_root):
+            raise HTTPException(status_code=404, detail="Not Found")
+        if os.path.isfile(target):
+            return FileResponse(target)
+        return FileResponse(index_path)
+
+
+_mount_frontend(app)

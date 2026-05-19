@@ -36,6 +36,18 @@
   background: rgba(14, 165, 233, 0.12) !important;
 }
 
+/* Access Management — align tool column headers (fixed height) */
+.access-perm-table .ant-table-thead > tr > th {
+  vertical-align: bottom;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.access-perm-table .ant-table-thead > tr > th.ant-table-cell-fix-left,
+.access-perm-table .ant-table-thead > tr > th.ant-table-cell-fix-right {
+  vertical-align: middle;
+  padding: 8px;
+}
+
 /* Price Checker tables centered for readability */
 .price-checker-center-table .ant-table-thead > tr > th,
 .price-checker-center-table .ant-table-tbody > tr > td {

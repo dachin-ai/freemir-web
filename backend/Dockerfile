@@ -1,3 +1,4 @@
+# Legacy: API-only image. Prefer repo-root Dockerfile (FE + BE unified on Cloud Run).
 FROM python:3.11-slim
 
 # Set the working directory in the container

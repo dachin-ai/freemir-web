@@ -1,3 +1,4 @@
+# Legacy: nginx-only frontend. Prefer repo-root Dockerfile (FE + BE unified on Cloud Run).
 # Build stage (VITE_API_URL baked in at build time for Cloud Build)
 FROM node:18-alpine as build
 WORKDIR /app

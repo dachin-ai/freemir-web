@@ -16,13 +16,11 @@ const getBaseURL = () => {
     return `http://${host}:8000/api`;
   }
 
-  // Allow overriding API target outside development.
+  // Production: VITE_API_URL from Cloud Build (split deploy). Fallback /api for unified deploy.
   if (envBackend) {
     return envBackend;
   }
-  
-  // Fallback: Cloud Run backend (freemir-web-api; override with VITE_API_URL in build)
-  return 'https://freemir-web-api-123563250077.asia-southeast1.run.app/api';
+  return '/api';
 };
 
 const baseURL = getBaseURL();

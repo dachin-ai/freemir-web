@@ -1,0 +1,55 @@
+# Unified Cloud Run (single URL: / + /api). Use when ready:
+#   Cloud Build trigger → point to this file, or run manually.
+# Service: freemir-web only. Retire freemir-web-api after cutover.
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build'
+    args:
+      - build
+      - '--build-arg'
+      - 'VITE_API_URL=/api'
+      - '-t'
+      - 'asia-southeast1-docker.pkg.dev/dachin-ai-493209/cloud-run-source-deploy/${_IMAGE}:$COMMIT_SHA'
+      - '-f'
+      - 'Dockerfile'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push'
+    args:
+      - push
+      - 'asia-southeast1-docker.pkg.dev/dachin-ai-493209/cloud-run-source-deploy/${_IMAGE}:$COMMIT_SHA'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy'
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - '${_SERVICE}'
+      - '--image=asia-southeast1-docker.pkg.dev/dachin-ai-493209/cloud-run-source-deploy/${_IMAGE}:$COMMIT_SHA'
+      - '--region=asia-southeast1'
+      - '--allow-unauthenticated'
+      - '--set-env-vars=DATABASE_URL=${_DATABASE_URL},JWT_SECRET=${_JWT_SECRET},OPENAI_API_KEY=${_OPENAI_API_KEY},OPENAI_BASE_URL=${_OPENAI_BASE_URL},OPENAI_MODEL=${_OPENAI_MODEL}'
+      - '--set-secrets=/etc/secrets/credentials.json=credentials-json:latest'
+      - '--min-instances=0'
+      - '--max-instances=3'
+      - '--timeout=600'
+      - '--memory=2Gi'
+      - '--quiet'
+
+images:
+  - 'asia-southeast1-docker.pkg.dev/dachin-ai-493209/cloud-run-source-deploy/${_IMAGE}:$COMMIT_SHA'
+
+timeout: '1800s'
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+  _SERVICE: 'freemir-web'
+  _IMAGE: 'freemir-web'
+  _JWT_SECRET: 'freemir_antigravity_2026_prod_secret'
+  _DATABASE_URL: 'postgresql://dena_admin:AntiGrav2026Secure@35.198.222.19:5432/antigravity_db'
+  _OPENAI_API_KEY: ''
+  _OPENAI_BASE_URL: 'https://ai.sumopod.com/v1'
+  _OPENAI_MODEL: 'gpt-4o-mini'

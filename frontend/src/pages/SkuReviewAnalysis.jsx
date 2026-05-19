@@ -488,10 +488,7 @@ const SkuReviewAnalysis = () => {
         setResult(null);
         setAiSummary(null);
         try {
-            const res = await api.post('/sku-review/analyze', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-                timeout: 180000,
-            });
+            const res = await api.post('/sku-review/analyze', formData, { timeout: 180000 });
             setResult(res.data);
             message.success(t('skuReviewAnalysis.msgSuccess'));
             logActivity(t('skuReviewAnalysis.title'));
@@ -539,27 +536,35 @@ const SkuReviewAnalysis = () => {
             message.warning(t('skuReviewAnalysis.msgUploadFirst'));
             return;
         }
-        const needsExport = withPhotos || aiSummary;
-        if (!needsExport && result?.file_base64) {
+        // Tanpa foto & tanpa AI: pakai Excel dari hasil analyze (sama seperti Price Checker)
+        if (!withPhotos && !aiSummary && result?.file_base64) {
             saveBase64Xlsx(result.file_base64);
             logActivity('SKU Review (Download)');
             return;
         }
         const formData = new FormData();
         formData.append('file', fileList[0]);
-        formData.append('include_photos', withPhotos ? 'true' : 'false');
-        if (aiSummary) {
-            formData.append('ai_summary_json', JSON.stringify(aiSummary));
-        }
         setDownloading(true);
         try {
-            const res = await api.post('/sku-review/export', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-                timeout: withPhotos ? 300000 : 120000,
-            });
-            if (!res.data?.file_base64) throw new Error('empty');
-            const suffix = [withPhotos && 'photos', aiSummary && 'ai'].filter(Boolean).join('_');
-            saveBase64Xlsx(res.data.file_base64, suffix ? `_${suffix}` : '');
+            let b64;
+            let suffix = '';
+            if (aiSummary) {
+                formData.append('include_photos', withPhotos ? 'true' : 'false');
+                formData.append('ai_summary_json', JSON.stringify(aiSummary));
+                const res = await api.post('/sku-review/export', formData, {
+                    timeout: withPhotos ? 300000 : 180000,
+                });
+                b64 = res.data?.file_base64;
+                suffix = [withPhotos && 'photos', 'ai'].filter(Boolean).join('_');
+            } else {
+                // Download + foto: ulang analyze dengan include_photos (sama Price Checker)
+                formData.append('include_photos', 'true');
+                const res = await api.post('/sku-review/analyze', formData, { timeout: 300000 });
+                b64 = res.data?.file_base64;
+                suffix = 'photos';
+            }
+            if (!b64) throw new Error('empty');
+            saveBase64Xlsx(b64, suffix ? `_${suffix}` : '');
             message.success(
                 withPhotos
                     ? t('skuReviewAnalysis.msgDownloadPhotosOk')

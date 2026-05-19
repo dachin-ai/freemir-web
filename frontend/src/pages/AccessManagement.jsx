@@ -20,6 +20,12 @@ import UserActivity from './UserActivity';
 
 const { Text } = Typography;
 
+const ALL_TOOL_KEYS = [
+    'admin', 'price_checker', 'order_planner', 'product_performance', 'photo_downloader',
+    'brand_material', 'sku_review', 'order_review', 'affiliate_performance',
+    'livestream_display', 'pre_sales', 'affiliate_analyzer', 'ads_analyzer',
+];
+
 const PERM_TOOLS = [
     { key: 'admin',                 group: 'admin'   },
     { key: 'price_checker',         group: 'freemir' },
@@ -314,6 +320,77 @@ function UserPermissionsTab() {
         }
     };
 
+    const isTableBusy = saving === '__bulk_names__' || saving === '__bulk_perm__';
+
+    const applyPermissions = async (username, nextPermissions, successKey) => {
+        const user = users.find((u) => u.username === username);
+        if (!user) return;
+        const prevPermissions = normalizePermissions(user.permissions);
+        setUsers((prev) =>
+            prev.map((u) =>
+                u.username === username ? { ...u, permissions: { ...nextPermissions } } : u,
+            ),
+        );
+        setSaving(username);
+        try {
+            const displayName =
+                editingNamesRef.current[username] ?? user.name ?? user.username ?? username;
+            await updateUserPermissions(username, nextPermissions, displayName);
+            if (successKey) message.success(t(successKey));
+        } catch (err) {
+            message.error(err.response?.data?.detail || t('accessMgmt.msgPermFail'));
+            setUsers((prev) =>
+                prev.map((u) =>
+                    u.username === username ? { ...u, permissions: prevPermissions } : u,
+                ),
+            );
+        } finally {
+            setSaving(null);
+        }
+    };
+
+    const setAllToolsForUser = (username, enabled) => {
+        const user = users.find((u) => u.username === username);
+        if (!user) return;
+        const next = { ...normalizePermissions(user.permissions) };
+        ALL_TOOL_KEYS.forEach((k) => { next[k] = enabled ? 1 : 0; });
+        applyPermissions(
+            username,
+            next,
+            enabled ? 'accessMgmt.msgAllToolsGranted' : 'accessMgmt.msgAllToolsCleared',
+        );
+    };
+
+    const setToolForAllUsers = async (toolKey, enabled) => {
+        setSaving('__bulk_perm__');
+        let ok = 0;
+        const value = enabled ? 1 : 0;
+        try {
+            for (const u of users) {
+                const next = { ...normalizePermissions(u.permissions), [toolKey]: value };
+                const displayName = editingNamesRef.current[u.username] ?? u.name ?? u.username;
+                await updateUserPermissions(u.username, next, displayName);
+                ok += 1;
+            }
+            setUsers((prev) =>
+                prev.map((u) => ({
+                    ...u,
+                    permissions: { ...normalizePermissions(u.permissions), [toolKey]: value },
+                })),
+            );
+            message.success(
+                enabled
+                    ? t('accessMgmt.msgToolGrantedAll', { count: ok })
+                    : t('accessMgmt.msgToolClearedAll', { count: ok }),
+            );
+        } catch (err) {
+            message.error(err.response?.data?.detail || t('accessMgmt.msgPermFail'));
+            await fetchUsers();
+        } finally {
+            setSaving(null);
+        }
+    };
+
     const togglePermission = async (username, toolKey, currentValue) => {
         const currentInt = toPermissionInt(currentValue);
         const newValue = currentInt === 1 ? 0 : 1;
@@ -390,33 +467,89 @@ function UserPermissionsTab() {
         }
     };
 
+    const toolHeaderCellStyle = {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        minHeight: 76,
+        width: '100%',
+        padding: '6px 4px',
+        boxSizing: 'border-box',
+    };
+    const toolLabelWrapStyle = {
+        flex: '1 1 auto',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 40,
+        width: '100%',
+    };
+
     const toolColumns = PERM_TOOLS.map(tool => {
         const gs = GROUP_STYLE[tool.group] || GROUP_STYLE.freemir;
+        const toolLabel = t(`accessMgmt.toolLabels.${tool.key}`);
+        const bulkDisabled = isTableBusy || loading;
+        const toolActionBtn = { fontSize: 10, padding: '0 2px', height: 18, lineHeight: '18px' };
         return {
             title: (
-                <div style={{
-                    background: gs.bg,
-                    border: `1px solid ${gs.border}`,
-                    borderRadius: 6,
-                    padding: '2px 6px',
-                    color: gs.color,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    whiteSpace: 'nowrap',
-                    textAlign: 'center',
-                }}>
-                    {t(`accessMgmt.toolLabels.${tool.key}`)}
+                <div style={toolHeaderCellStyle}>
+                    <div style={toolLabelWrapStyle}>
+                        <div style={{
+                            background: gs.bg,
+                            border: `1px solid ${gs.border}`,
+                            borderRadius: 6,
+                            padding: '4px 6px',
+                            color: gs.color,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            lineHeight: 1.25,
+                            textAlign: 'center',
+                            width: '100%',
+                            wordBreak: 'break-word',
+                        }}>
+                            {toolLabel}
+                        </div>
+                    </div>
+                    <Space size={4} style={{ flexShrink: 0, marginTop: 4 }}>
+                        <Popconfirm
+                            title={t('accessMgmt.confirmSelectAllCol', { tool: toolLabel })}
+                            okText={t('accessMgmt.selectAllCol')}
+                            cancelText={t('accessMgmt.addUserCancel')}
+                            onConfirm={() => setToolForAllUsers(tool.key, true)}
+                            disabled={bulkDisabled}
+                        >
+                            <Button type="link" size="small" style={toolActionBtn} disabled={bulkDisabled}>
+                                {t('accessMgmt.selectAllCol')}
+                            </Button>
+                        </Popconfirm>
+                        <span style={{ color: 'var(--border)', fontSize: 10 }}>|</span>
+                        <Popconfirm
+                            title={t('accessMgmt.confirmClearAllCol', { tool: toolLabel })}
+                            okText={t('accessMgmt.clearAllCol')}
+                            cancelText={t('accessMgmt.addUserCancel')}
+                            onConfirm={() => setToolForAllUsers(tool.key, false)}
+                            disabled={bulkDisabled}
+                        >
+                            <Button type="link" size="small" danger style={toolActionBtn} disabled={bulkDisabled}>
+                                {t('accessMgmt.clearAllCol')}
+                            </Button>
+                        </Popconfirm>
+                    </Space>
                 </div>
             ),
             key: tool.key,
-            width: 110,
+            width: 118,
             align: 'center',
+            onHeaderCell: () => ({
+                style: { verticalAlign: 'bottom', padding: 0 },
+            }),
             render: (_, row) => (
                 <Checkbox
                     checked={toPermissionInt(row.permissions?.[tool.key]) === 1}
                     disabled={
                         saving === row.username
-                        || saving === '__bulk_names__'
+                        || isTableBusy
                         || approvalUpdating === row.username
                     }
                     onChange={() => togglePermission(row.username, tool.key, row.permissions?.[tool.key] ?? 0)}
@@ -486,6 +619,61 @@ function UserPermissionsTab() {
                     ]}
                     onChange={(v) => onApprovalChange(row.username, v)}
                 />
+            ),
+        },
+        {
+            title: (
+                <div style={{
+                    ...toolHeaderCellStyle,
+                    minHeight: 76,
+                    justifyContent: 'center',
+                }}>
+                    {t('accessMgmt.colBulkAccess')}
+                </div>
+            ),
+            key: 'bulk_access',
+            fixed: 'left',
+            width: 100,
+            align: 'center',
+            onHeaderCell: () => ({
+                style: { verticalAlign: 'bottom', padding: 0 },
+            }),
+            render: (_, row) => (
+                <Space direction="vertical" size={0}>
+                    <Popconfirm
+                        title={t('accessMgmt.confirmSelectAllRow', { user: row.username })}
+                        okText={t('accessMgmt.selectAllRow')}
+                        cancelText={t('accessMgmt.addUserCancel')}
+                        onConfirm={() => setAllToolsForUser(row.username, true)}
+                        disabled={isTableBusy || saving === row.username || approvalUpdating === row.username}
+                    >
+                        <Button
+                            type="link"
+                            size="small"
+                            style={{ fontSize: 11, padding: 0 }}
+                            disabled={isTableBusy || saving === row.username || approvalUpdating === row.username}
+                        >
+                            {t('accessMgmt.selectAllRow')}
+                        </Button>
+                    </Popconfirm>
+                    <Popconfirm
+                        title={t('accessMgmt.confirmClearAllRow', { user: row.username })}
+                        okText={t('accessMgmt.clearAllRow')}
+                        cancelText={t('accessMgmt.addUserCancel')}
+                        onConfirm={() => setAllToolsForUser(row.username, false)}
+                        disabled={isTableBusy || saving === row.username || approvalUpdating === row.username}
+                    >
+                        <Button
+                            type="link"
+                            size="small"
+                            danger
+                            style={{ fontSize: 11, padding: 0 }}
+                            disabled={isTableBusy || saving === row.username || approvalUpdating === row.username}
+                        >
+                            {t('accessMgmt.clearAllRow')}
+                        </Button>
+                    </Popconfirm>
+                </Space>
             ),
         },
         ...toolColumns,
@@ -635,6 +823,7 @@ function UserPermissionsTab() {
                 </Form>
             </Modal>
             <Table
+                className="access-perm-table"
                 dataSource={users}
                 columns={columns}
                 rowKey="username"

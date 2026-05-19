@@ -1,5 +1,5 @@
-# Cloud Build for repo dachin-ai/freemir-web (trigger: deploy-freemir-web).
-# Override substitutions in the trigger UI if service names or API URL differ.
+# Default CI/CD — split Cloud Run (frontend + API). Trigger uses this file.
+# For single-service deploy later, switch trigger to cloudbuild.unified.yaml
 steps:
   # ── BACKEND ──────────────────────────────────────────────
   - name: 'gcr.io/cloud-builders/docker'
@@ -30,9 +30,11 @@ steps:
       - '--set-secrets=/etc/secrets/credentials.json=credentials-json:latest'
       - '--min-instances=0'
       - '--max-instances=3'
+      - '--timeout=600'
+      - '--memory=2Gi'
       - '--quiet'
 
-  # ── FRONTEND (VITE_API_URL must match backend Cloud Run URL) ──
+  # ── FRONTEND (VITE_API_URL → backend Cloud Run URL) ──
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build-frontend'
     args:
@@ -56,9 +58,9 @@ steps:
       - run
       - deploy
       - '${_FRONTEND_SERVICE}'
-      - '--image=asia-southeast1-docker.pkg.dev/dachin-ai-493209/cloud-run-source-deploy/${_FRONTEND_IMAGE}:$COMMIT_SHA'
       - '--region=asia-southeast1'
       - '--allow-unauthenticated'
+      - '--image=asia-southeast1-docker.pkg.dev/dachin-ai-493209/cloud-run-source-deploy/${_FRONTEND_IMAGE}:$COMMIT_SHA'
       - '--quiet'
 
 images:
@@ -70,17 +72,13 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 substitutions:
-  # Cloud Run service names (must match or be created on first deploy)
   _BACKEND_SERVICE: 'freemir-web-api'
   _FRONTEND_SERVICE: 'freemir-web'
-  # Artifact Registry image names (under .../cloud-run-source-deploy/)
   _BACKEND_IMAGE: 'freemir-web-api'
   _FRONTEND_IMAGE: 'freemir-web'
-  # Frontend build: project number 123563250077 → default Run URL for the backend service
   _VITE_API_URL: 'https://freemir-web-api-123563250077.asia-southeast1.run.app/api'
   _JWT_SECRET: 'freemir_antigravity_2026_prod_secret'
   _DATABASE_URL: 'postgresql://dena_admin:AntiGrav2026Secure@35.198.222.19:5432/antigravity_db'
-  # AI (SumoPod) — set actual key in Cloud Build trigger substitutions UI
   _OPENAI_API_KEY: ''
   _OPENAI_BASE_URL: 'https://ai.sumopod.com/v1'
   _OPENAI_MODEL: 'gpt-4o-mini'

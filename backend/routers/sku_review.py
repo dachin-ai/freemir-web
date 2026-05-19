@@ -85,29 +85,59 @@ def _summaries_payload(summaries: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _form_bool(value: str) -> bool:
+    return str(value or "").strip().lower() in ("true", "1", "yes", "on")
+
+
+def _load_analysis(content: bytes, filename: str):
+    expanded_df, summaries = _analysis_cache.get(content)
+    if expanded_df is None:
+        expanded_df, summaries, _col_map = process_sku_review(content, filename)
+        _analysis_cache.put(content, expanded_df, summaries)
+    return expanded_df, summaries
+
+
+def _excel_b64(
+    expanded_df,
+    summaries,
+    *,
+    include_photos: bool = False,
+    ai_insights: Optional[Dict[str, Any]] = None,
+) -> str:
+    photo_by_sku: dict = {}
+    if include_photos:
+        skus = [r.get("sku") for r in summaries.get("sku_matrix", {}).get("rows", [])]
+        photo_by_sku = resolve_sku_photos(skus)
+    excel_bytes = export_sku_review_excel(
+        expanded_df,
+        summaries,
+        include_photos=include_photos,
+        photo_by_sku=photo_by_sku,
+        ai_insights=ai_insights,
+    )
+    return base64.b64encode(excel_bytes).decode("utf-8")
+
+
 @router.post("/analyze", dependencies=[Depends(require_tool_access("sku_review"))])
-async def analyze_sku_review(file: UploadFile = File(...)):
-    """Analyze only — Excel in response has no SKU photos."""
+async def analyze_sku_review(
+    file: UploadFile = File(...),
+    include_photos: str = Form("false"),
+):
+    """Analyze + Excel (optional SKU photos — same pattern as Price Checker batch)."""
     try:
         content = await file.read()
         filename = file.filename or "upload.xlsx"
+        with_photos = _form_bool(include_photos)
 
-        expanded_df, summaries = _analysis_cache.get(content)
-        if expanded_df is None:
-            expanded_df, summaries, _col_map = process_sku_review(content, filename)
-            _analysis_cache.put(content, expanded_df, summaries)
-        excel_bytes = export_sku_review_excel(
-            expanded_df,
-            summaries,
-            include_photos=False,
-        )
-        b64_str = base64.b64encode(excel_bytes).decode("utf-8")
+        expanded_df, summaries = _load_analysis(content, filename)
+        b64_str = _excel_b64(expanded_df, summaries, include_photos=with_photos)
         preview = expanded_df.head(20).fillna("").to_dict(orient="records")
 
         payload = {
             **_summaries_payload(summaries),
             "preview": preview,
             "file_base64": b64_str,
+            "include_photos": with_photos,
         }
         return JSONResponse(_sanitize(payload))
     except ValueError as val_err:
@@ -142,23 +172,16 @@ async def sku_review_ai_summary(
 @router.post("/export", dependencies=[Depends(require_tool_access("sku_review"))])
 async def export_sku_review(
     file: UploadFile = File(...),
-    include_photos: bool = Form(False),
+    include_photos: str = Form("false"),
     ai_summary_json: str = Form(""),
 ):
-    """Regenerate Excel — optional SKU photos and AI insights block."""
+    """Regenerate Excel — optional SKU photos and AI insights sheet."""
     try:
         content = await file.read()
         filename = file.filename or "upload.xlsx"
+        with_photos = _form_bool(include_photos)
 
-        expanded_df, summaries = _analysis_cache.get(content)
-        if expanded_df is None:
-            expanded_df, summaries, _col_map = process_sku_review(content, filename)
-            _analysis_cache.put(content, expanded_df, summaries)
-
-        photo_by_sku: dict = {}
-        if include_photos:
-            skus = [r.get("sku") for r in summaries.get("sku_matrix", {}).get("rows", [])]
-            photo_by_sku = resolve_sku_photos(skus)
+        expanded_df, summaries = _load_analysis(content, filename)
 
         ai_insights: Optional[Dict[str, Any]] = None
         if ai_summary_json and ai_summary_json.strip():
@@ -167,15 +190,13 @@ async def export_sku_review(
             except json.JSONDecodeError:
                 raise HTTPException(status_code=400, detail="Invalid ai_summary_json")
 
-        excel_bytes = export_sku_review_excel(
+        b64_str = _excel_b64(
             expanded_df,
             summaries,
-            include_photos=include_photos,
-            photo_by_sku=photo_by_sku,
+            include_photos=with_photos,
             ai_insights=ai_insights,
         )
-        b64_str = base64.b64encode(excel_bytes).decode("utf-8")
-        return JSONResponse({"file_base64": b64_str, "include_photos": include_photos})
+        return JSONResponse({"file_base64": b64_str, "include_photos": with_photos})
     except ValueError as val_err:
         raise HTTPException(status_code=400, detail=str(val_err))
     except HTTPException:
