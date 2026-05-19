@@ -29,6 +29,7 @@ import LivestreamDisplay from './pages/LivestreamDisplay';
 import PhotoDownloader from './pages/PhotoDownloader';
 import BrandMaterial from './pages/BrandMaterial';
 import QuickLinks from './pages/QuickLinks';
+import SkuReviewAnalysis from './pages/SkuReviewAnalysis';
 import PermissionGate from './components/PermissionGate';
 import CursorTrail from './components/CursorTrail';
 import { useTranslation } from 'react-i18next';
@@ -83,6 +84,7 @@ function ProtectedApp() {
         <Route path="product-performance" element={<PermissionGate toolKey="product_performance"><ProductPerformanceCleaner /></PermissionGate>} />
         <Route path="livestream-display" element={<PermissionGate toolKey="livestream_display"><LivestreamDisplay /></PermissionGate>} />
         <Route path="photo-downloader" element={<PermissionGate toolKey="photo_downloader"><PhotoDownloader /></PermissionGate>} />
+        <Route path="sku-review" element={<SkuReviewAnalysis />} />
         <Route path="brand-material">
           <Route index element={<PermissionGate toolKey="brand_material"><BrandMaterial /></PermissionGate>} />
           <Route path=":sku" element={<PermissionGate toolKey="brand_material"><BrandMaterial /></PermissionGate>} />

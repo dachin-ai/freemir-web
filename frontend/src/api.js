@@ -11,7 +11,9 @@ const getBaseURL = () => {
     if (envBackend && /localhost|127\.0\.0\.1/.test(envBackend)) {
       return envBackend;
     }
-    return 'http://localhost:8000/api';
+    // Same host as Vite (localhost or LAN IP) so login works when not on :5173 via localhost
+    const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+    return `http://${host}:8000/api`;
   }
 
   // Allow overriding API target outside development.

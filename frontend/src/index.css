@@ -793,3 +793,18 @@ h4.ant-typography {
   0%   { stroke: rgba(99, 102, 241, 0.2); }
   100% { stroke: rgba(16, 185, 129, 0.75); }
 }
+
+/* SKU Review — store matrix: horizontal separators only */
+.sku-store-matrix .ant-table-thead > tr > th,
+.sku-store-matrix .ant-table-tbody > tr > td {
+  border-inline: none !important;
+}
+.sku-store-matrix .ant-table-tbody > tr > td {
+  border-top: none !important;
+}
+.sku-store-matrix .ant-table-thead > tr > th {
+  border-bottom: 2px solid var(--border) !important;
+}
+.sku-store-matrix .ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--border) !important;
+}

@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from sqlalchemy import text
-from routers import price_checker, order_loss, failed_delivery, presales, erp_oos, sku_plan, conversion_cleaner, order_match, auth, warehouse_order, socmed, affiliate, tiktok_ads, access, product_performance, livestream_display, photo_downloader, quick_links, brand_material
+from routers import price_checker, order_loss, failed_delivery, presales, erp_oos, sku_plan, conversion_cleaner, order_match, auth, warehouse_order, socmed, affiliate, tiktok_ads, access, product_performance, livestream_display, photo_downloader, quick_links, brand_material, sku_review
 from database import engine, Base, SessionLocal, USING_SQLITE_DEV
 import models  # noqa: F401 - ensure all models are registered before create_all
 import os
@@ -401,6 +401,7 @@ app.include_router(livestream_display.router)
 app.include_router(photo_downloader.router)
 app.include_router(quick_links.router)
 app.include_router(brand_material.router)
+app.include_router(sku_review.router)
 
 # Include AI Chat router only if GEMINI_API_KEY is set
 if ai_chat_available:

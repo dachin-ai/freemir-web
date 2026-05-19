@@ -14,6 +14,7 @@ const TOOL_KEYS = [
     'product_performance',
     'photo_downloader',
     'brand_material',
+    'sku_review',
     'order_review',
     'affiliate_performance',
     'livestream_display',

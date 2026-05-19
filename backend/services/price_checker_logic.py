@@ -686,70 +686,24 @@ def calculate_prices(
 def convert_df_to_excel_multisheet(df: pd.DataFrame, method: str = "Listing", include_pictures: bool = False) -> bytes:
     import xlsxwriter
     output = io.BytesIO()
+    from services.excel_picture_utils import (
+        FRAME_H_PX,
+        FRAME_W_PX,
+        IMAGE_CELL_H_PX,
+        IMAGE_CELL_W_PX,
+        fetch_framed_image_bytes,
+    )
+
     image_cache: Dict[str, bytes | None] = {}
-    frame_w_px = 56
-    frame_h_px = 56
-    image_cell_w_px = 68
-    image_cell_h_px = 64
-
-    def _make_framed_thumbnail(raw_bytes: bytes) -> bytes | None:
-        try:
-            with Image.open(io.BytesIO(raw_bytes)) as img:
-                # Normalize to RGB and fit image into fixed frame area.
-                img = img.convert("RGB")
-                inner_w = frame_w_px - 8
-                inner_h = frame_h_px - 8
-                fitted = ImageOps.contain(img, (inner_w, inner_h), method=Image.Resampling.LANCZOS)
-
-                canvas = Image.new("RGB", (frame_w_px, frame_h_px), color=(245, 248, 252))
-                x = (frame_w_px - fitted.width) // 2
-                y = (frame_h_px - fitted.height) // 2
-                canvas.paste(fitted, (x, y))
-
-                # Draw a subtle border frame.
-                border_color = (180, 188, 200)
-                for i in range(1):
-                    canvas.paste(border_color, [i, i, frame_w_px - i, i + 1])
-                    canvas.paste(border_color, [i, frame_h_px - i - 1, frame_w_px - i, frame_h_px - i])
-                    canvas.paste(border_color, [i, i, i + 1, frame_h_px - i])
-                    canvas.paste(border_color, [frame_w_px - i - 1, i, frame_w_px - i, frame_h_px - i])
-
-                out = io.BytesIO()
-                canvas.save(out, format="JPEG", quality=88, optimize=True)
-                return out.getvalue()
-        except (UnidentifiedImageError, OSError, ValueError):
-            return None
-
-    gcs_public_prefix = f"https://storage.googleapis.com/{GCS_BUCKET}/"
+    frame_w_px = FRAME_W_PX
+    frame_h_px = FRAME_H_PX
+    image_cell_w_px = IMAGE_CELL_W_PX
+    image_cell_h_px = IMAGE_CELL_H_PX
 
     def _get_image_bytes(url: str) -> bytes | None:
         if not include_pictures:
             return None
-        if not url:
-            return None
-        if url in image_cache:
-            return image_cache[url]
-
-        raw_bytes = None
-        if _is_image_url(url):
-            try:
-                resp = requests.get(url, timeout=5)
-                if resp.status_code == 200 and resp.content:
-                    raw_bytes = resp.content
-            except Exception:
-                raw_bytes = None
-
-        if raw_bytes is None and url.startswith(gcs_public_prefix):
-            object_path = url[len(gcs_public_prefix):]
-            from urllib.parse import unquote
-
-            raw_bytes = download_gcs_object_bytes(unquote(object_path))
-
-        if raw_bytes:
-            image_cache[url] = _make_framed_thumbnail(raw_bytes)
-        else:
-            image_cache[url] = None
-        return image_cache[url]
+        return fetch_framed_image_bytes(url, image_cache)
 
     with pd.ExcelWriter(output, engine='xlsxwriter', engine_kwargs={'options': {'nan_inf_to_errors': True}}) as writer:
         workbook = writer.book

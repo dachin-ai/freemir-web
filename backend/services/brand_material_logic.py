@@ -185,6 +185,7 @@ def get_brand_main_photo_map(db: Session, skus: set) -> dict[str, dict]:
             "materialId": row.id,
             "url": url or "",
             "previewUrl": signed or "",
+            "previewGcsPath": preview_path or "",
         }
     return out
 

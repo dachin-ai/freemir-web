@@ -44,7 +44,7 @@ TOOL_KEYS = [
     "price_checker", "order_planner", "order_review",
     "affiliate_performance", "pre_sales", "affiliate_analyzer", "ads_analyzer",
     "admin", "product_performance", "livestream_display", "photo_downloader",
-    "brand_material",
+    "brand_material", "sku_review",
 ]
 
 # TIMEOUT PROTECTION for Google Sheets API

@@ -22,6 +22,7 @@ const TOOL_ITEMS = [
     { toolKey: 'product_performance', icon: <BarChartOutlined />, path: '/product-performance', active: true, category: 'freemir' },
     { toolKey: 'photo_downloader', icon: <PictureOutlined />, path: '/photo-downloader', active: true, category: 'freemir' },
     { toolKey: 'brand_material', icon: <FileImageOutlined />, path: '/brand-material', active: true, category: 'freemir' },
+    { toolKey: 'sku_review', icon: <FileSearchOutlined />, path: '/sku-review', active: true, category: 'freemir' },
     { toolKey: 'order_review', icon: <FileSearchOutlined />, path: '/order-loss', active: true, category: 'shopee' },
     { toolKey: 'affiliate_performance', icon: <BarChartOutlined />, path: '/shopee-affiliate', active: true, category: 'shopee' },
     { toolKey: 'livestream_display', icon: <VideoCameraOutlined />, path: '/livestream-display', active: true, category: 'shopee' },

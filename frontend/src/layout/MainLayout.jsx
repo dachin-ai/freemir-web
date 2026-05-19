@@ -83,6 +83,7 @@ const MainLayout = () => {
         { key: '/product-performance', label: lockedLabel(<Bi i18nKey="layout.productPerformance" />, 'product_performance'), style: !hasAccess('product_performance') ? { opacity: 0.6 } : {} },
         { key: '/photo-downloader', label: lockedLabel(<Bi i18nKey="layout.photoDownloader" />, 'photo_downloader'), style: !hasAccess('photo_downloader') ? { opacity: 0.6 } : {} },
         { key: '/brand-material', label: lockedLabel(<Bi i18nKey="layout.brandMaterial" />, 'brand_material'), style: !hasAccess('brand_material') ? { opacity: 0.6 } : {} },
+        { key: '/sku-review', label: <Bi i18nKey="layout.skuReviewAnalysis" /> },
       ]
     },
     {

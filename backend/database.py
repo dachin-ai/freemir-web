@@ -5,11 +5,11 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 
-# Muat variabel environment dari file .env
-load_dotenv()
-
 _BACKEND_DIR = pathlib.Path(__file__).resolve().parent
 _DEFAULT_SQLITE_URL = f"sqlite:///{_BACKEND_DIR / 'freemir_local.db'}"
+
+# Always load backend/.env regardless of process cwd (uvicorn reload, IDE, etc.)
+load_dotenv(_BACKEND_DIR / ".env")
 
 # Postgres di production; tanpa DATABASE_URL pakai SQLite lokal agar backend + login dev bisa jalan.
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL") or _DEFAULT_SQLITE_URL
