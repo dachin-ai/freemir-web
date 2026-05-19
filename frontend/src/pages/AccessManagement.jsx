@@ -27,6 +27,7 @@ const PERM_TOOLS = [
     { key: 'product_performance',   group: 'freemir' },
     { key: 'photo_downloader',      group: 'freemir' },
     { key: 'brand_material',        group: 'freemir' },
+    { key: 'sku_review',            group: 'freemir' },
     { key: 'order_review',          group: 'shopee'  },
     { key: 'affiliate_performance', group: 'shopee'  },
     { key: 'livestream_display',    group: 'shopee'  },
@@ -638,9 +639,10 @@ function UserPermissionsTab() {
                 columns={columns}
                 rowKey="username"
                 loading={loading}
-                scroll={{ x: 'max-content' }}
+                scroll={{ x: 'max-content', y: 'calc(100vh - 320px)' }}
                 pagination={false}
                 size="middle"
+                sticky
             />
         </div>
     );
