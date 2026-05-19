@@ -18,8 +18,12 @@ const { Dragger } = Upload;
 // Navy headers + blue issue tags + yellow top-3 highlights
 const COLOR_NAVY = '#1e3a5f';
 const COLOR_NAVY_LIGHT = '#334155';
+const COLOR_TEAL = '#0f766e';
+const COLOR_TEAL_LIGHT = '#0d9488';
 const COLOR_TOP3 = '#fef9c3';
+const COLOR_TOP3_PART = '#dcfce7';
 const COLOR_ISSUE = '#3b82f6';
+const COLOR_PART = '#0f766e';
 const COLOR_TYPE = '#ca8a04';
 // ─────────────────────────────────────────────────────────────
 // Reusable cards
@@ -95,9 +99,11 @@ const headerCell = (label, bgColor = COLOR_NAVY) => (
     </div>
 );
 
-const top3Style = (row, key) => (
-    (row?.highlight_issues || []).includes(key) ? { background: COLOR_TOP3 } : undefined
-);
+const top3Style = (row, key) => {
+    if ((row?.highlight_issues || []).includes(key)) return { background: COLOR_TOP3 };
+    if ((row?.highlight_parts || []).includes(key)) return { background: COLOR_TOP3_PART };
+    return undefined;
+};
 
 const SENTIMENT_COMPARE_TAGS = ['design', 'material', 'lid'];
 
@@ -427,8 +433,49 @@ const SkuReviewAnalysis = () => {
             });
         });
 
+        // Part columns (teal headers)
+        if (idKey !== 'store') {
+            const partKeys = matrix?.part_keys || [];
+            partKeys.forEach((pk) => {
+                const dataKey = `pt_${pk}`;
+                cols.push({
+                    title: headerCell(`${labelPart(pk)} #`, COLOR_TEAL),
+                    dataIndex: dataKey,
+                    key: dataKey,
+                    width: 72,
+                    align: 'center',
+                    sorter: (a, b) => (a[dataKey] || 0) - (b[dataKey] || 0),
+                    onCell: (row) => ({ style: top3Style(row, pk) }),
+                    render: (v, row) => {
+                        const n = Number(v) || 0;
+                        const style = top3Style(row, pk);
+                        if (!n) return <Text type="secondary">{emptyCell}</Text>;
+                        return <Tag color={COLOR_PART} style={{ margin: 0, ...style }}>{n}</Tag>;
+                    },
+                });
+            });
+            partKeys.forEach((pk) => {
+                const pctKey = `pt_${pk}_pct`;
+                cols.push({
+                    title: headerCell(`${labelPart(pk)} %`, COLOR_TEAL_LIGHT),
+                    dataIndex: pctKey,
+                    key: pctKey,
+                    width: 72,
+                    align: 'center',
+                    sorter: (a, b) => (a[pctKey] || 0) - (b[pctKey] || 0),
+                    onCell: (row) => ({ style: top3Style(row, pk) }),
+                    render: (v, row) => {
+                        const n = Number(v) || 0;
+                        const style = top3Style(row, pk);
+                        if (!n) return <Text type="secondary">{emptyCell}</Text>;
+                        return <Text style={{ fontWeight: 600, ...style, display: 'block', padding: 4 }}>{n}%</Text>;
+                    },
+                });
+            });
+        }
+
         return cols;
-    }, [t, labelIssue, labelMeta, emptyCell]);
+    }, [t, labelIssue, labelPart, labelMeta, emptyCell]);
 
     const handleAnalyze = async () => {
         if (!fileList.length) {

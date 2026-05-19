@@ -824,6 +824,7 @@ def build_summaries(expanded: pd.DataFrame, source_rows: int) -> Dict[str, Any]:
     # SKU matrix: orders = expanded rows per SKU (matches Expanded Data count per SKU)
     sku_row_count: Dict[str, int] = defaultdict(int)
     sku_issue_rows: Dict[str, Counter] = defaultdict(Counter)
+    sku_part_rows: Dict[str, Counter] = defaultdict(Counter)
     sku_categorized_rows: Dict[str, int] = defaultdict(int)
 
     for _, row in expanded.iterrows():
@@ -839,10 +840,14 @@ def build_summaries(expanded: pd.DataFrame, source_rows: int) -> Dict[str, Any]:
                 row_issues.add(v)
         for iss in row_issues:
             sku_issue_rows[sku][iss] += 1
+        row_parts: set = set()
         for col in ("part_1", "part_2", "part_3"):
             v = str(row.get(col, "") or "").strip()
             if v:
                 part_counter[v] += 1
+                row_parts.add(v)
+        for pt in row_parts:
+            sku_part_rows[sku][pt] += 1
 
     total_issue_mentions = sum(issue_counter.values())
     total_part_mentions = sum(part_counter.values())
@@ -850,6 +855,8 @@ def build_summaries(expanded: pd.DataFrame, source_rows: int) -> Dict[str, Any]:
     # Order issue columns: stable preferred order, then any unseen by frequency
     ordered_issue_keys = [k for k in ISSUE_ORDER if k in issue_counter] + \
                          [k for k, _ in issue_counter.most_common() if k not in ISSUE_ORDER]
+    ordered_part_keys = [k for k in PART_ORDER if k in part_counter] + \
+                        [k for k, _ in part_counter.most_common() if k not in PART_ORDER]
 
     matrix_rows: List[Dict[str, Any]] = []
     eligible_skus = [s for s in sku_row_count if _valid_sku(s)]
@@ -859,6 +866,7 @@ def build_summaries(expanded: pd.DataFrame, source_rows: int) -> Dict[str, Any]:
     ):
         orders = sku_row_count[sku]
         counts = sku_issue_rows[sku]
+        part_counts = sku_part_rows[sku]
         mentions = sum(counts.values())
         categorized_n = sku_categorized_rows[sku]
         row: Dict[str, Any] = {
@@ -868,11 +876,16 @@ def build_summaries(expanded: pd.DataFrame, source_rows: int) -> Dict[str, Any]:
             "categorized_orders": categorized_n,
             "categorized_pct": _round_pct(categorized_n, orders),
             "highlight_issues": _top_issue_keys(counts, 3),
+            "highlight_parts": _top_issue_keys(part_counts, 3),
         }
         for k in ordered_issue_keys:
             cnt = int(counts.get(k, 0))
             row[k] = cnt
             row[f"{k}_pct"] = min(100.0, _round_pct(cnt, orders))
+        for k in ordered_part_keys:
+            cnt = int(part_counts.get(k, 0))
+            row[f"pt_{k}"] = cnt
+            row[f"pt_{k}_pct"] = min(100.0, _round_pct(cnt, orders))
         matrix_rows.append(row)
 
     categorized = int(expanded["categorized"].sum())
@@ -922,6 +935,7 @@ def build_summaries(expanded: pd.DataFrame, source_rows: int) -> Dict[str, Any]:
         "sku_matrix": {
             "columns": ["sku", "orders", "mentions"] + ordered_issue_keys,
             "issue_keys": ordered_issue_keys,
+            "part_keys": ordered_part_keys,
             "rows": matrix_rows,
         },
         "store_matrix": _build_store_matrix(expanded, ordered_issue_keys),
@@ -954,7 +968,10 @@ def process_sku_review(content: bytes, filename: str) -> Tuple[pd.DataFrame, Dic
 # Navy headers (white text) + yellow top-3 data cells
 COLOR_NAVY = "1E3A5F"
 COLOR_NAVY_MID = "334155"
+COLOR_TEAL = "0F766E"
+COLOR_TEAL_MID = "0D9488"
 COLOR_TOP3_CELL = "FEF9C3"
+COLOR_TOP3_PART = "DCFCE7"
 HEADER_FONT_COLOR = "FFFFFF"
 
 
@@ -972,8 +989,10 @@ def _matrix_export_df(
     meta_cols: List[Tuple[str, str]],
     *,
     include_photo_col: bool = False,
+    part_keys: Optional[List[str]] = None,
 ) -> pd.DataFrame:
-    """ID [+ Photo] + meta | all issue integers | all issue percents (grouped)."""
+    """ID [+ Photo] + meta | issue counts | issue % (hidden) | part counts | part % (hidden)."""
+    part_keys = part_keys or []
     out_rows: List[Dict[str, Any]] = []
     for r in rows:
         row: Dict[str, Any] = {id_header: r.get(id_col, "")}
@@ -988,6 +1007,10 @@ def _matrix_export_df(
             row[f"[Count] {_issue_label(k)}"] = int(r.get(k, 0) or 0)
         for k in issue_keys:
             row[f"[%] {_issue_label(k)}"] = _pct_to_excel(r.get(f"{k}_pct", 0))
+        for k in part_keys:
+            row[f"[Part] {_issue_label(k)}"] = int(r.get(f"pt_{k}", 0) or 0)
+        for k in part_keys:
+            row[f"[Part%] {_issue_label(k)}"] = _pct_to_excel(r.get(f"pt_{k}_pct", 0))
         out_rows.append(row)
     return pd.DataFrame(out_rows)
 
@@ -1108,6 +1131,7 @@ def export_sku_review_excel(
         summary_rows, "After-sales type (col F)", summaries.get("after_sales_types", []),
     )
     sku_matrix_rows = summaries.get("sku_matrix", {}).get("rows", [])
+    part_keys = summaries.get("sku_matrix", {}).get("part_keys", [])
     sku_df = _matrix_export_df(
         sku_matrix_rows,
         issue_keys,
@@ -1118,6 +1142,7 @@ def export_sku_review_excel(
             ("mentions", "Mentions"),
         ],
         include_photo_col=include_photos,
+        part_keys=part_keys,
     )
     store_df = _matrix_export_df(
         summaries.get("store_matrix", {}).get("rows", []),
@@ -1254,12 +1279,16 @@ def export_sku_review_excel(
                     if isinstance(v, float) and 0 <= v <= 1:
                         ws.cell(row=r, column=c).number_format = pct_fmt
 
-        def _issue_key_from_hdr(hdr: str, issue_keys: List[str]) -> Optional[str]:
-            prefix = "[Count] " if hdr.startswith("[Count] ") else "[%] " if hdr.startswith("[%] ") else ""
-            if not prefix:
+        teal_hdr = PatternFill("solid", fgColor=COLOR_TEAL)
+        teal_mid_hdr = PatternFill("solid", fgColor=COLOR_TEAL_MID)
+        navy_mid_hdr = PatternFill("solid", fgColor=COLOR_NAVY_MID)
+        top3_part_fill = PatternFill("solid", fgColor=COLOR_TOP3_PART)
+
+        def _key_from_hdr(hdr: str, keys: List[str], prefix: str) -> Optional[str]:
+            if not hdr.startswith(prefix):
                 return None
             label = hdr[len(prefix):]
-            for k in issue_keys:
+            for k in keys:
                 if _issue_label(k) == label:
                     return k
             return None
@@ -1273,7 +1302,9 @@ def export_sku_review_excel(
             id_field: str,
             *,
             bottom_border_only: bool = False,
+            part_keys: Optional[List[str]] = None,
         ) -> None:
+            part_keys = part_keys or []
             if ws.max_row < 2:
                 return
             headers = [str(ws.cell(row=1, column=c).value or "") for c in range(1, ws.max_column + 1)]
@@ -1281,13 +1312,25 @@ def export_sku_review_excel(
             photo_col_idx = headers.index("Photo") + 1 if "Photo" in headers else None
             navy_hdr = PatternFill("solid", fgColor=COLOR_NAVY)
             highlight_by_id = {
-                str(r.get(id_field, "")): set(r.get("highlight_issues") or [])
+                str(r.get(id_field, "")): (
+                    set(r.get("highlight_issues") or []),
+                    set(r.get("highlight_parts") or []),
+                )
                 for r in matrix_rows
             }
 
+            # Style header row with different colors per column type
             for c in range(1, ws.max_column + 1):
                 cell = ws.cell(row=1, column=c)
-                cell.fill = navy_hdr
+                hdr = headers[c - 1]
+                if hdr.startswith("[Part%] "):
+                    cell.fill = teal_mid_hdr
+                elif hdr.startswith("[Part] "):
+                    cell.fill = teal_hdr
+                elif hdr.startswith("[%] "):
+                    cell.fill = navy_mid_hdr
+                else:
+                    cell.fill = navy_hdr
                 cell.font = bold_white
                 cell.alignment = center
                 cell.border = Border(left=thin, right=thin, top=thin, bottom=medium)
@@ -1309,20 +1352,27 @@ def export_sku_review_excel(
                 ws.column_dimensions[get_column_letter(photo_col_idx)].width = 11
             for c in range(1, ws.max_column + 1):
                 if c not in (id_col_idx, photo_col_idx):
+                    hdr = headers[c - 1]
                     ws.column_dimensions[get_column_letter(c)].width = 10
+                    # Hide % columns — data still there, just folded
+                    if hdr.startswith("[%] ") or hdr.startswith("[Part%] "):
+                        ws.column_dimensions[get_column_letter(c)].hidden = True
 
             for r in range(2, ws.max_row + 1):
                 row_id = str(ws.cell(row=r, column=id_col_idx).value or "")
-                highlights = highlight_by_id.get(row_id, set())
+                hi_issues, hi_parts = highlight_by_id.get(row_id, (set(), set()))
                 ws.cell(row=r, column=id_col_idx).alignment = left_wrap
                 for c in range(1, ws.max_column + 1):
                     if c == id_col_idx:
                         continue
                     ws.cell(row=r, column=c).alignment = center
                     hdr = headers[c - 1]
-                    ik = _issue_key_from_hdr(hdr, issue_keys)
-                    if ik and ik in highlights:
+                    ik = _key_from_hdr(hdr, issue_keys, "[Count] ")
+                    pk = _key_from_hdr(hdr, part_keys, "[Part] ")
+                    if ik and ik in hi_issues:
                         ws.cell(row=r, column=c).fill = top3_fill
+                    elif pk and pk in hi_parts:
+                        ws.cell(row=r, column=c).fill = top3_part_fill
 
             _format_pct_columns(ws, 1)
             ws.freeze_panes = f"{freeze_col}2"
@@ -1400,6 +1450,7 @@ def export_sku_review_excel(
                 issue_keys,
                 sku_matrix_rows,
                 "sku",
+                part_keys=part_keys,
             )
             _embed_sku_matrix_photos(wb["SKU Matrix"])
 
