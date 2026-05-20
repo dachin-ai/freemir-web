@@ -423,6 +423,13 @@ def _mount_frontend(app: FastAPI) -> None:
     static_dir = os.path.join(os.path.dirname(__file__), "static")
     index_path = os.path.join(static_dir, "index.html")
     if not os.path.isfile(index_path):
+        @app.get("/", include_in_schema=False)
+        def api_root():
+            return {
+                "service": "freemir-web-api",
+                "health": "/api/health",
+                "docs": "/docs",
+            }
         return
 
     @app.get("/", include_in_schema=False)
