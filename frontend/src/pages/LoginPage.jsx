@@ -188,9 +188,11 @@ const LoginPage = () => {
                             size="large"
                             value={lang}
                             onChange={setLanguage}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
                             options={[
-                                { value: 'en', label: <span style={{ fontWeight: 700, letterSpacing: '0.06em' }}>EN</span> },
                                 { value: 'zh', label: <span style={{ fontWeight: 600 }}>中文</span> },
+                                { value: 'en', label: <span style={{ fontWeight: 700, letterSpacing: '0.06em' }}>EN</span> },
                                 { value: 'id', label: <span style={{ fontWeight: 700, letterSpacing: '0.04em' }}>ID</span> },
                             ]}
                         />
@@ -202,6 +204,8 @@ const LoginPage = () => {
                             onChange={(v) => {
                                 if ((v === 'dark') !== isDark) toggleTheme();
                             }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
                             options={[
                                 {
                                     value: 'light',

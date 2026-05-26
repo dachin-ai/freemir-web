@@ -12,6 +12,9 @@ from services.price_checker_logic import (
     clean_sku_list,
     PRICE_TYPES,
     STOCK_TYPES,
+    CURRENCIES,
+    normalize_currency,
+    get_stock_types_for,
     generate_template_file,
     convert_df_to_excel_multisheet,
     sync_google_sheets_to_vps_postgres,
@@ -187,6 +190,7 @@ class DirectInput(BaseModel):
     sku_string: str
     target_price: float
     target_stock: int = 0
+    currency: str = CURRENCIES[0]
 
 
 def _material_preview_response(db, material_id: str) -> Response:
@@ -246,6 +250,9 @@ def calc_direct(body: DirectInput):
     if not price_db:
         raise HTTPException(status_code=500, detail="Database not loaded")
 
+    currency = normalize_currency(body.currency)
+    stock_types = get_stock_types_for(currency)
+
     skus = clean_sku_list(body.sku_string)
     db = SessionLocal()
     try:
@@ -260,8 +267,11 @@ def calc_direct(body: DirectInput):
         link_map,
         photo_map=photo_map,
         brand_photo_meta_map=brand_photo_meta_map,
+        currency=currency,
     )
-    breakdown = generate_breakdown_table(body.sku_string, price_db, name_map)
+    breakdown = generate_breakdown_table(
+        body.sku_string, price_db, name_map, currency=currency
+    )
     
     eval_data = []
     for pt in PRICE_TYPES:
@@ -282,7 +292,7 @@ def calc_direct(body: DirectInput):
         })
 
     stock_eval_data = []
-    for st in STOCK_TYPES:
+    for st in stock_types:
         current_stock = int(price_info.get(st, 0) or 0)
         gap_stock = current_stock - int(body.target_stock)
         if gap_stock > 0:
@@ -300,11 +310,14 @@ def calc_direct(body: DirectInput):
         })
         
     return {
+        "currency": currency,
+        "stock_types": stock_types,
         "summary": {
             "bundle_discount": price_info.get("Bundle Discount"),
             "clearance": price_info.get("Mark Clearance"),
-                "gift": price_info.get("Mark Gift"),
-                "available_stock": price_info.get("Available Stock", "No Stock")
+            "gift": price_info.get("Mark Gift"),
+            "gift_discount": price_info.get("Gift Discount", 0.0),
+            "available_stock": price_info.get("Available Stock", "No Stock"),
         },
         "items": price_info.get("sku_items", []),
         "breakdown": breakdown,
@@ -316,25 +329,25 @@ def calc_direct(body: DirectInput):
 async def calc_batch(
     method: str = Form(...),
     include_pictures: bool = Form(False),
+    currency: str = Form(CURRENCIES[0]),
     file: UploadFile = File(...)
 ):
     if method not in ["Listing", "SKU"]:
         raise HTTPException(status_code=400, detail="Method must be Listing or SKU")
-    
-    # File size validation for production
+
+    currency = normalize_currency(currency)
+    stock_types = get_stock_types_for(currency)
+
+    # Read once: SpooledTemporaryFile streams cannot be reliably re-read after the
+    # first await, and re-reading is wasted I/O even when it does succeed.
     max_file_size = 10 * 1024 * 1024  # 10MB limit for Cloud Run
-    file_content = await file.read()
-    
-    if len(file_content) > max_file_size:
-        raise HTTPException(
-            status_code=413, 
-            detail=f"File too large. Maximum size is {max_file_size // (1024*1024)}MB"
-        )
-    
-    # Reset file pointer for processing
-    await file.seek(0)
     contents = await file.read()
-    
+    if len(contents) > max_file_size:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size is {max_file_size // (1024*1024)}MB",
+        )
+
     price_db, name_map, link_map = get_db()
     
     try:
@@ -434,9 +447,11 @@ async def calc_batch(
 
         def _invalid_result():
             r = {p_type: "Invalid" for p_type in PRICE_TYPES}
-            for stock_type in STOCK_TYPES:
+            for stock_type in stock_types:
                 r[stock_type] = 0
             r["Available Stock"] = "No Stock"
+            r["currency"] = currency
+            r["stock_types"] = stock_types
             r["sku_items"] = []
             return r
 
@@ -456,6 +471,7 @@ async def calc_batch(
                     link_map,
                     photo_map=photo_map,
                     brand_photo_meta_map=brand_photo_meta_map,
+                    currency=currency,
                 )
                 calc_results.append(price_info)
                 
@@ -470,25 +486,29 @@ async def calc_batch(
         final_df[col_target_price] = pd.to_numeric(final_df[col_target_price], errors='coerce').fillna(0)
         final_df[col_target_stock] = pd.to_numeric(final_df[col_target_stock], errors='coerce').fillna(0).astype(int)
         
+        # Vectorized gap computation: previously this looped 16 price tiers and
+        # called df.apply(axis=1) per tier, which is O(rows × tiers) python-level
+        # iteration. The same logic done column-wise via pd.to_numeric is O(rows).
+        target_price_series = final_df[col_target_price]
         for p_type in PRICE_TYPES:
-            def get_gap_value(row):
-                sys_price = row[p_type]
-                inp_price = row[col_target_price]
-                if sys_price == "Invalid": return "Invalid"
-                try:
-                    val = float(sys_price)
-                    return inp_price - val
-                except: return "Invalid"
-            final_df[f"Gap {p_type}"] = final_df.apply(get_gap_value, axis=1)
+            numeric_sys = pd.to_numeric(final_df[p_type], errors="coerce")
+            gap_series = target_price_series - numeric_sys
+            # Preserve the legacy contract: "Invalid" string when system price is non-numeric.
+            final_df[f"Gap {p_type}"] = gap_series.where(numeric_sys.notna(), "Invalid")
 
-        for stock_type in STOCK_TYPES:
-            final_df[f"Gap {stock_type}"] = pd.to_numeric(final_df[stock_type], errors='coerce').fillna(0).astype(int) - final_df[col_target_stock]
+        for stock_type in stock_types:
+            final_df[f"Gap {stock_type}"] = (
+                pd.to_numeric(final_df[stock_type], errors="coerce").fillna(0).astype(int)
+                - final_df[col_target_stock]
+            )
         final_df["Gap Available Stock"] = pd.to_numeric(
-            final_df["Available Stock"].astype(str).str.extract(r"^(\d+)")[0], errors='coerce'
+            final_df["Available Stock"].astype(str).str.extract(r"^(\d+)")[0], errors="coerce"
         ).fillna(0).astype(int) - final_df[col_target_stock]
 
         try:
-            excel_bytes = convert_df_to_excel_multisheet(final_df, method, include_pictures=include_pictures)
+            excel_bytes = convert_df_to_excel_multisheet(
+                final_df, method, include_pictures=include_pictures, currency=currency
+            )
         except Exception as e:
             raise HTTPException(
                 status_code=500, 
@@ -529,6 +549,8 @@ async def calc_batch(
         ]
         
         return JSONResponse(content={
+            "currency": currency,
+            "stock_types": stock_types,
             "summary": {
                 "total": int(total_rows),
                 "processed": int(total_rows - len(failed_rows)),
@@ -541,6 +563,7 @@ async def calc_batch(
             "processing_info": {
                 "file_size_mb": round(len(contents) / (1024*1024), 2),
                 "method": method,
+                "currency": currency,
                 "has_photo_data": len(photo_map) > 0,
                 "failed_row_indices": failed_rows[:10] if failed_rows else []
             }

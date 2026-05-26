@@ -2,7 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 
 /**
- * Single-language UI string from i18n (English / 中文 / Bahasa Indonesia).
+ * Single-language UI string from i18n (中文 default / English / Bahasa Indonesia).
  * Use `i18nKey` dot path, e.g. layout.lobby — optional `values` for interpolation.
  */
 export const Bi = ({ i18nKey, values, style, className, block }) => {

@@ -9,6 +9,11 @@ import { useLang } from '../context/LangContext';
 import Bi from '../components/Bi';
 import { changePassword } from '../api';
 
+/** Prevent DingTalk / AliDocs iframe from swallowing clicks inside the settings panel. */
+const stopPanelEvent = (e) => {
+  e.stopPropagation();
+};
+
 const { Sider, Content } = Layout;
 const { Text } = Typography;
 
@@ -21,7 +26,7 @@ const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout, hasAccess } = useAuth();
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, setThemeMode } = useTheme();
   const { lang, setLanguage } = useLang();
   const { t } = useTranslation();
 
@@ -254,17 +259,22 @@ const MainLayout = () => {
           <Text style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 500, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
             <Bi i18nKey="layout.topBarTagline" />
           </Text>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="fm-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {user ? (
+              <>
               <Dropdown
                 open={settingsOpen}
                 onOpenChange={setSettingsOpen}
                 trigger={['click']}
                 placement="bottomRight"
-                dropdownRender={() => (
+                getPopupContainer={(trigger) => trigger.parentElement || document.body}
+                styles={{ root: { zIndex: 11000 } }}
+                popupRender={() => (
                   <div
                     className="fm-settings-panel"
-                    onClick={(e) => e.stopPropagation()}
+                    onClick={stopPanelEvent}
+                    onMouseDown={stopPanelEvent}
+                    onPointerDown={stopPanelEvent}
                     style={{
                       marginTop: 10,
                       width: 336,
@@ -328,9 +338,12 @@ const MainLayout = () => {
                             size="large"
                             value={lang}
                             onChange={setLanguage}
+                            onMouseDown={stopPanelEvent}
+                            onPointerDown={stopPanelEvent}
+                            onClick={stopPanelEvent}
                             options={[
-                              { value: 'en', label: <span style={{ fontWeight: 700, letterSpacing: '0.06em' }}>EN</span> },
                               { value: 'zh', label: <span style={{ fontWeight: 600 }}>中文</span> },
+                              { value: 'en', label: <span style={{ fontWeight: 700, letterSpacing: '0.06em' }}>EN</span> },
                               { value: 'id', label: <span style={{ fontWeight: 700, letterSpacing: '0.04em' }}>ID</span> },
                             ]}
                           />
@@ -373,10 +386,10 @@ const MainLayout = () => {
                           block
                           size="large"
                           value={isDark ? 'dark' : 'light'}
-                          onChange={(v) => {
-                            const dark = v === 'dark';
-                            if (dark !== isDark) toggleTheme();
-                          }}
+                          onChange={(v) => setThemeMode(v === 'dark')}
+                          onMouseDown={stopPanelEvent}
+                          onPointerDown={stopPanelEvent}
+                          onClick={stopPanelEvent}
                           options={[
                             {
                               value: 'light',
@@ -474,10 +487,15 @@ const MainLayout = () => {
                     gap: 12,
                     padding: '8px 16px 8px 10px',
                     borderRadius: 12,
-                    border: '1px solid var(--border)',
-                    background: isDark ? 'rgba(30,41,59,0.72)' : 'rgba(255,255,255,0.95)',
+                    border: `1px solid ${isDark ? 'rgba(99,102,241,0.32)' : 'rgba(2,132,199,0.22)'}`,
+                    background: isDark
+                      ? 'linear-gradient(135deg, rgba(99,102,241,0.18) 0%, rgba(30,41,59,0.85) 100%)'
+                      : 'linear-gradient(135deg, rgba(56,189,248,0.16) 0%, rgba(255,255,255,1) 100%)',
                     cursor: 'pointer',
-                    boxShadow: isDark ? 'inset 0 1px 0 rgba(255,255,255,0.04)' : '0 1px 3px rgba(0,0,0,0.06)',
+                    boxShadow: isDark
+                      ? 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 10px rgba(99,102,241,0.22)'
+                      : '0 2px 10px rgba(2,132,199,0.12)',
+                    transition: 'transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease',
                     maxWidth: 340,
                   }}
                 >
@@ -501,6 +519,7 @@ const MainLayout = () => {
                   <DownOutlined style={{ fontSize: 12, color: 'var(--text-muted)', flexShrink: 0, opacity: 0.85 }} />
                 </button>
               </Dropdown>
+              </>
             ) : null}
           </div>
         </div>

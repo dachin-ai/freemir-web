@@ -3,8 +3,7 @@ import { initReactI18next } from 'react-i18next';
 import en from '../locales/en.json';
 import zh from '../locales/zh.json';
 import id from '../locales/id.json';
-
-const STORAGE_KEY = 'fm_lang';
+import { readLang, FM_LANG_STORAGE_KEY, DEFAULT_LANG, SUPPORTED_LANGS } from '../utils/langStorage';
 
 i18n.use(initReactI18next).init({
   resources: {
@@ -12,11 +11,11 @@ i18n.use(initReactI18next).init({
     zh: { translation: zh },
     id: { translation: id },
   },
-  lng: typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) || 'en' : 'en',
-  fallbackLng: 'en',
-  supportedLngs: ['en', 'zh', 'id'],
+  lng: typeof window !== 'undefined' ? readLang() : DEFAULT_LANG,
+  fallbackLng: DEFAULT_LANG,
+  supportedLngs: SUPPORTED_LANGS,
   interpolation: { escapeValue: false },
 });
 
-export const FM_LANG_STORAGE_KEY = STORAGE_KEY;
+export { FM_LANG_STORAGE_KEY };
 export default i18n;

@@ -1,30 +1,42 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { isDarkTheme, readThemeMode, writeThemeMode } from '../utils/themeStorage';
 
 const ThemeContext = createContext(null);
 
+function applyThemeToDocument(isDark) {
+  try {
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  } catch {
+    /* ignore */
+  }
+}
+
 export function ThemeProvider({ children }) {
-  const [isDark, setIsDark] = useState(() => {
-    return localStorage.getItem('fm_theme') !== 'light';
-  });
+  const [isDark, setIsDark] = useState(() => isDarkTheme(readThemeMode()));
+
+  const setThemeMode = useCallback((dark) => {
+    setIsDark(dark);
+    writeThemeMode(dark ? 'dark' : 'light');
+    applyThemeToDocument(dark);
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setIsDark((prev) => {
+      const next = !prev;
+      writeThemeMode(next ? 'dark' : 'light');
+      applyThemeToDocument(next);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    localStorage.setItem('fm_theme', isDark ? 'dark' : 'light');
+    applyThemeToDocument(isDark);
+    writeThemeMode(isDark ? 'dark' : 'light');
   }, [isDark]);
 
-  // Apply on first mount without waiting for state change
-  useEffect(() => {
-    const saved = localStorage.getItem('fm_theme') ?? 'dark';
-    document.documentElement.setAttribute('data-theme', saved);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const value = useMemo(() => ({ isDark, toggleTheme, setThemeMode }), [isDark, toggleTheme, setThemeMode]);
 
-  const toggleTheme = () => setIsDark(v => !v);
-
-  return (
-    <ThemeContext.Provider value={{ isDark, toggleTheme }}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme() {

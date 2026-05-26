@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-    Tabs, Card, Button, Input, InputNumber,
+    Tabs, Button, Input, InputNumber, Segmented,
     Row, Col, Typography, Table, Upload,
-    message, Spin, Divider, Tag
+    message, Spin, Divider
 } from 'antd';
 import {
     InboxOutlined, SyncOutlined, CloudDownloadOutlined,
@@ -17,6 +17,11 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import Bi from '../components/Bi';
 import PageHeader from '../components/PageHeader';
+import FlagIcon from '../components/FlagIcon';
+import {
+    readCurrency, writeCurrency,
+    SUPPORTED_CURRENCIES, CURRENCY_META, formatPrice,
+} from '../utils/currencyStorage';
 
 const { Title, Text } = Typography;
 const { Dragger } = Upload;
@@ -115,7 +120,19 @@ const PriceChecker = () => {
     const [method, setMethod] = useState('Listing');
     const [loadingDb, setLoadingDb] = useState(false);
     const [calcLoading, setCalcLoading] = useState(false);
+    const [currency, setCurrency] = useState(() => readCurrency());
+    const currencyMeta = CURRENCY_META[currency] || CURRENCY_META.IDR;
     const { logActivity } = useAuth();
+
+    const handleCurrencyChange = (next) => {
+        if (!SUPPORTED_CURRENCIES.includes(next) || next === currency) return;
+        setCurrency(next);
+        writeCurrency(next);
+        // Stale results reference the previous region's stock keys / prices.
+        setDirectResult(null);
+        setDirectPreviewBySku({});
+        setBatchOverview(null);
+    };
 
     // Direct Input
     const [skuInput, setSkuInput] = useState('');
@@ -253,9 +270,10 @@ const PriceChecker = () => {
                 sku_string: skuInput,
                 target_price: Number(targetPrice || 0),
                 target_stock: Number(targetStock || 0),
+                currency,
             });
             setDirectResult(res.data);
-            logActivity('Price Checker (Direct)');
+            logActivity(`Price Checker (Direct ${currency})`);
         } catch (err) { message.error(err.response?.data?.detail || t('priceChecker.msgCalcFail'));
         } finally { setCalcLoading(false); }
     };
@@ -265,12 +283,13 @@ const PriceChecker = () => {
         const formData = new FormData();
         formData.append('file', fileList[0]);
         formData.append('method', method);
+        formData.append('currency', currency);
         setCalcLoading(true); setBatchOverview(null);
         try {
             const res = await api.post('/price-checker/calculate-batch', formData);
             setBatchOverview(res.data);
             message.success(t('priceChecker.msgBatchDone'));
-            logActivity('Price Checker (Batch)');
+            logActivity(`Price Checker (Batch ${currency})`);
         } catch (err) { message.error(err.response?.data?.detail || t('priceChecker.msgBatchFail'));
         } finally { setCalcLoading(false); }
     };
@@ -280,7 +299,8 @@ const PriceChecker = () => {
         const bytes = atob(batchOverview.file_base64);
         const buf = new Uint8Array(bytes.length).map((_, i) => bytes.charCodeAt(i));
         const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `PC_${method}_Result.xlsx` }).click();
+        const downloadCurrency = batchOverview?.currency || currency;
+        Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `PC_${method}_${downloadCurrency}_Result.xlsx` }).click();
     };
 
     const handleDownloadWithPicture = async () => {
@@ -293,6 +313,7 @@ const PriceChecker = () => {
             const formData = new FormData();
             formData.append('file', fileList[0]);
             formData.append('method', method);
+            formData.append('currency', currency);
             formData.append('include_pictures', 'true');
             const res = await api.post('/price-checker/calculate-batch', formData);
             if (!res.data?.file_base64) {
@@ -301,7 +322,7 @@ const PriceChecker = () => {
             const bytes = atob(res.data.file_base64);
             const buf = new Uint8Array(bytes.length).map((_, i) => bytes.charCodeAt(i));
             const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `PC_${method}_Result_With_Picture.xlsx` }).click();
+            Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `PC_${method}_${currency}_Result_With_Picture.xlsx` }).click();
             message.success(t('priceChecker.msgPicReady'));
         } catch (err) {
             message.error(err.response?.data?.detail || err.message || t('priceChecker.msgPicFail'));
@@ -337,15 +358,24 @@ const PriceChecker = () => {
             .catch(() => message.error(t('priceChecker.copyFail')));
     };
 
-    const evalColumns = [
+    const directStockTypes = useMemo(
+        () => directResult?.stock_types || [],
+        [directResult],
+    );
+
+    const evalColumns = useMemo(() => [
         { title: 'Price Tier',    dataIndex: 'Tier',        key: 'Tier',  width: 160, fixed: 'left', onCell: r => copyableCellProps(r.Tier) },
-        { title: 'System Price', dataIndex: 'SystemPrice', key: 'sys',   width: 130, onCell: r => copyableCellProps(r.SystemPrice), render: v => (!isNaN(Number(v)) && v !== '' && v !== 'Invalid') ? Number(v).toLocaleString() : v },
-        { title: 'Target Price', dataIndex: 'TargetPrice', key: 'tgt',   width: 130, onCell: r => copyableCellProps(r.TargetPrice), render: v => (!isNaN(Number(v)) && v !== '' && v !== 'Invalid') ? Number(v).toLocaleString() : v },
-        { title: 'Gap (Margin)', dataIndex: 'Gap',         key: 'gap',   width: 130, onCell: r => copyableCellProps(r.Gap),
+        { title: `System Price (${currency})`, dataIndex: 'SystemPrice', key: 'sys',   width: 150, onCell: r => copyableCellProps(r.SystemPrice),
+            render: v => (v === 'Invalid' || v === '' || v === null || v === undefined || isNaN(Number(v))) ? (v ?? '–') : formatPrice(v, currency) },
+        { title: `Target Price (${currency})`, dataIndex: 'TargetPrice', key: 'tgt',   width: 150, onCell: r => copyableCellProps(r.TargetPrice),
+            render: v => (v === 'Invalid' || v === '' || v === null || v === undefined || isNaN(Number(v))) ? (v ?? '–') : formatPrice(v, currency) },
+        { title: 'Gap (Margin)', dataIndex: 'Gap',         key: 'gap',   width: 150, onCell: r => copyableCellProps(r.Gap),
             render: v => {
                 if (v === 'Invalid') return <span style={{ color: 'var(--text-muted)' }}>–</span>;
                 const n = Number(v);
-                return <span style={{ fontWeight: 700, color: n >= 0 ? '#10b981' : '#ef4444' }}>{n >= 0 ? '+' : ''}{n.toLocaleString()}</span>;
+                if (!Number.isFinite(n)) return <span style={{ color: 'var(--text-muted)' }}>–</span>;
+                const formatted = formatPrice(Math.abs(n), currency);
+                return <span style={{ fontWeight: 700, color: n >= 0 ? '#10b981' : '#ef4444' }}>{n >= 0 ? '+' : '-'}{formatted}</span>;
             }
         },
         { title: 'Status', dataIndex: 'Status', key: 'status', width: 110, onCell: r => copyableCellProps(r.Status),
@@ -358,21 +388,29 @@ const PriceChecker = () => {
                 }}>{v}</span>
             ),
         },
-    ];
+    ], [currency]);
 
-    const breakdownColumns = [
-        { title: 'SKU',               dataIndex: 'SKU',                     key: 'SKU',  width: 150, fixed: 'left', onCell: r => copyableCellProps(r['SKU']) },
-        { title: 'Product Name',      dataIndex: 'Product Name',            key: 'pn',   width: 240, onCell: r => copyableCellProps(r['Product Name']) },
-        { title: 'Base Price',        dataIndex: 'Base Price (Warning)',     key: 'bp',   width: 130, onCell: r => copyableCellProps(r['Base Price (Warning)']), render: v => (!isNaN(Number(v)) && v !== '' && v !== 'Invalid') ? Number(v).toLocaleString() : v },
-        { title: 'Logic Applied',     dataIndex: 'Logic Applied',           key: 'la',   width: 180, onCell: r => copyableCellProps(r['Logic Applied']) },
-        { title: 'Contribution (IDR)',dataIndex: 'Total Contribution (IDR)', key: 'con',  width: 160, onCell: r => copyableCellProps(r['Total Contribution (IDR)']), render: v => (!isNaN(Number(v)) && v !== '' && v !== 'Invalid') ? Number(v).toLocaleString() : v },
-        { title: 'IDR-Ready',         dataIndex: 'IDR-Ready',               key: 'idr_r', width: 120, onCell: r => copyableCellProps(r['IDR-Ready']), render: v => Number(v || 0).toLocaleString() },
-        { title: 'SBY-Ready',         dataIndex: 'SBY-Ready',               key: 'sby_r', width: 120, onCell: r => copyableCellProps(r['SBY-Ready']), render: v => Number(v || 0).toLocaleString() },
-        { title: 'IDR-Lock',          dataIndex: 'IDR-Lock',                key: 'idr_l', width: 120, onCell: r => copyableCellProps(r['IDR-Lock']), render: v => Number(v || 0).toLocaleString() },
-        { title: 'SBY-Lock',          dataIndex: 'SBY-Lock',                key: 'sby_l', width: 120, onCell: r => copyableCellProps(r['SBY-Lock']), render: v => Number(v || 0).toLocaleString() },
-        { title: 'IDR-OTW',           dataIndex: 'IDR-OTW',                 key: 'idr_o', width: 120, onCell: r => copyableCellProps(r['IDR-OTW']), render: v => Number(v || 0).toLocaleString() },
-        { title: 'SBY-OTW',           dataIndex: 'SBY-OTW',                 key: 'sby_o', width: 120, onCell: r => copyableCellProps(r['SBY-OTW']), render: v => Number(v || 0).toLocaleString() },
-    ];
+    const breakdownColumns = useMemo(() => {
+        const contributionKey = `Total Contribution (${currency})`;
+        const stockColumns = directStockTypes.map((st) => ({
+            title: st,
+            dataIndex: st,
+            key: `bd_${st}`,
+            width: 120,
+            onCell: (r) => copyableCellProps(r[st]),
+            render: (v) => Number(v || 0).toLocaleString(),
+        }));
+        return [
+            { title: 'SKU',               dataIndex: 'SKU',                  key: 'SKU',  width: 150, fixed: 'left', onCell: r => copyableCellProps(r['SKU']) },
+            { title: 'Product Name',      dataIndex: 'Product Name',         key: 'pn',   width: 240, onCell: r => copyableCellProps(r['Product Name']) },
+            { title: `Base Price (${currency})`, dataIndex: 'Base Price (Warning)', key: 'bp', width: 150, onCell: r => copyableCellProps(r['Base Price (Warning)']),
+                render: v => (v === 'Invalid' || v === '' || v === null || v === undefined || isNaN(Number(v))) ? (v ?? '–') : formatPrice(v, currency) },
+            { title: 'Logic Applied',     dataIndex: 'Logic Applied',        key: 'la',   width: 180, onCell: r => copyableCellProps(r['Logic Applied']) },
+            { title: `Contribution (${currency})`, dataIndex: contributionKey, key: 'con',  width: 170, onCell: r => copyableCellProps(r[contributionKey]),
+                render: v => (v === 'Invalid' || v === '' || v === null || v === undefined || isNaN(Number(v))) ? (v ?? '–') : formatPrice(v, currency) },
+            ...stockColumns,
+        ];
+    }, [currency, directStockTypes]);
 
     const stockEvalColumns = [
         { title: 'Stock Type', dataIndex: 'StockType', key: 'StockType', width: 160 },
@@ -445,7 +483,25 @@ const PriceChecker = () => {
                 accent="var(--indigo)"
                 actions={
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-                        <div style={{ display: 'flex', gap: 8 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <Segmented
+                                value={currency}
+                                onChange={handleCurrencyChange}
+                                size="middle"
+                                options={SUPPORTED_CURRENCIES.map((code) => {
+                                    const meta = CURRENCY_META[code];
+                                    return {
+                                        value: code,
+                                        label: (
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 13, paddingInline: 2 }}>
+                                                <FlagIcon code={meta.countryCode} width={22} />
+                                                {code}
+                                            </span>
+                                        ),
+                                    };
+                                })}
+                                style={{ height: 36, borderRadius: 8 }}
+                            />
                             <Upload
                                 accept=".xlsx,.xls"
                                 showUploadList={false}
@@ -758,15 +814,18 @@ const PriceChecker = () => {
                             />
                         </div>
                         <div>
-                            <Label><Bi i18nKey="priceChecker.targetPrice" /></Label>
+                            <Label>
+                                <Bi i18nKey="priceChecker.targetPrice" />
+                                <span style={{ marginLeft: 6, color: 'var(--text-muted)', fontWeight: 700 }}>({currencyMeta.short})</span>
+                            </Label>
                             <InputNumber
                                 className="pc-clean-number"
                                 size="large"
                                 style={{ width: '100%', borderRadius: 10 }}
                                 controls={false}
-                                placeholder="Enter target price"
+                                placeholder={`Enter target price (${currencyMeta.short})`}
                                 min={0}
-                                step={1000}
+                                step={currency === 'MYR' ? 1 : 1000}
                                 value={targetPrice}
                                 onChange={setTargetPrice}
                                 onFocus={() => { if (targetPrice === 0) setTargetPrice(null); }}
@@ -870,12 +929,18 @@ const PriceChecker = () => {
                             {/* Summary */}
                             <SectionHeading icon={<BarChartOutlined />}><Bi i18nKey="priceChecker.bundleSummary" /></SectionHeading>
                             <Row gutter={16} style={{ marginBottom: 24 }}>
-                                {[
-                                    { label: 'Bundle Discount', value: `${Number(directResult.summary.bundle_discount) * 100}%`, color: 'var(--indigo)' },
-                                    { label: 'Clearance Status', value: directResult.summary.clearance, color: '#f59e0b' },
-                                    { label: 'Gift Status',      value: directResult.summary.gift,      color: '#10b981' },
-                                    { label: 'Available Stock',  value: directResult.summary.available_stock || 'No Stock', color: '#06b6d4' },
-                                ].map(({ label, value, color }) => (
+                                {(() => {
+                                    const giftRate = Number(directResult.summary.gift_discount || 0);
+                                    const giftValue = giftRate > 0
+                                        ? `${Math.round(giftRate * 100)}%`
+                                        : (directResult.summary.gift || '-');
+                                    return [
+                                        { label: 'Bundle Discount', value: `${Number(directResult.summary.bundle_discount) * 100}%`, color: 'var(--indigo)' },
+                                        { label: 'Clearance Status', value: directResult.summary.clearance, color: '#f59e0b' },
+                                        { label: 'Gift Status',      value: giftValue,                       color: '#10b981' },
+                                        { label: 'Available Stock',  value: directResult.summary.available_stock || 'No Stock', color: '#06b6d4' },
+                                    ];
+                                })().map(({ label, value, color }) => (
                                     <Col key={label} xs={24} md={12}>
                                         <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px', textAlign: 'center' }}>
                                             <div style={{ fontSize: 30, fontWeight: 800, color, fontFamily: "'Outfit', sans-serif" }}>{value}</div>

@@ -1,30 +1,39 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import i18n, { FM_LANG_STORAGE_KEY } from '../i18n/config';
-
-const SUPPORTED = ['en', 'zh', 'id'];
+import i18n from '../i18n/config';
+import { readLang, writeLang, SUPPORTED_LANGS, DEFAULT_LANG } from '../utils/langStorage';
 
 const LangContext = createContext(null);
 
 export const LangProvider = ({ children }) => {
-  const [lang, setLangState] = useState(() => {
-    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(FM_LANG_STORAGE_KEY) : null;
-    return SUPPORTED.includes(stored) ? stored : 'en';
-  });
+  const [lang, setLangState] = useState(() => readLang());
 
   const setLanguage = useCallback((next) => {
-    if (!SUPPORTED.includes(next)) return;
+    if (!SUPPORTED_LANGS.includes(next)) return;
     setLangState(next);
-    localStorage.setItem(FM_LANG_STORAGE_KEY, next);
+    writeLang(next);
     void i18n.changeLanguage(next);
+    try {
+      document.documentElement.lang = next === 'zh' ? 'zh-CN' : next;
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   useEffect(() => {
     if (i18n.language !== lang) {
       void i18n.changeLanguage(lang);
     }
+    try {
+      document.documentElement.lang = lang === 'zh' ? 'zh-CN' : lang;
+    } catch {
+      /* ignore */
+    }
   }, [lang]);
 
-  const value = useMemo(() => ({ lang, setLanguage, supportedLangs: SUPPORTED }), [lang, setLanguage]);
+  const value = useMemo(
+    () => ({ lang, setLanguage, supportedLangs: SUPPORTED_LANGS, defaultLang: DEFAULT_LANG }),
+    [lang, setLanguage],
+  );
 
   return <LangContext.Provider value={value}>{children}</LangContext.Provider>;
 };

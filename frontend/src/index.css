@@ -702,9 +702,26 @@ h4.ant-typography {
   outline-color: #0284c7;
 }
 
+.fm-header-profile-trigger:hover {
+  transform: translateY(-1px);
+  border-color: rgba(99, 102, 241, 0.5) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 4px 16px rgba(99, 102, 241, 0.3) !important;
+}
+
+:root[data-theme="light"] .fm-header-profile-trigger:hover {
+  border-color: rgba(2, 132, 199, 0.4) !important;
+  box-shadow: 0 4px 16px rgba(2, 132, 199, 0.2) !important;
+}
+
+/* Header: settings dropdown trigger lives in the right-side admin button. */
+.fm-header-actions {
+  flex-shrink: 0;
+}
+
 /* Header settings dropdown: segmented (theme + language) */
 .fm-settings-panel .ant-segmented {
   border-radius: 10px;
+  touch-action: manipulation;
 }
 
 .fm-settings-panel .ant-segmented .ant-segmented-item-label {

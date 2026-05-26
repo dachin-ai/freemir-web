@@ -33,31 +33,57 @@ PRICE_TYPES = [
     "DD-Shoptab", "DD-Livestream", "DD-Mid-Creator", "DD-Top-Creator",
     "PD-Shoptab", "PD-Livestream", "PD-Mid-Creator", "PD-Top-Creator"
 ]
-STOCK_TYPES = [
+
+# Supported pricing regions. Sheet headers use "<CURRENCY>-<PriceType>" pattern,
+# e.g. "IDR-Warning", "MYR-Warning". Order matters: IDR is the default region.
+CURRENCIES = ["IDR", "MYR"]
+
+# Gift SKUs inside a multi-SKU bundle receive a discount instead of being free.
+# GIFT_DISCOUNT_RATE = 0.20 → gift contributes 80% of its normal price.
+# Single-SKU orders and bundles that contain only gifts ignore this factor.
+GIFT_DISCOUNT_RATE = 0.20
+GIFT_PRICE_FACTOR = 1.0 - GIFT_DISCOUNT_RATE
+
+# Warehouse-based stock columns. Note: the "IDR"/"SBY" prefixes here are
+# warehouse codes (Jakarta / Surabaya), NOT currency. "MYS" = Malaysia warehouse.
+STOCK_TYPES_IDR = [
     "IDR-Ready", "SBY-Ready",
     "IDR-Lock", "SBY-Lock",
     "IDR-OTW", "SBY-OTW",
 ]
+STOCK_TYPES_MYR = [
+    "MYS-Ready", "MYS-Lock", "MYS-OTW",
+]
+STOCK_TYPES_BY_CURRENCY = {
+    "IDR": STOCK_TYPES_IDR,
+    "MYR": STOCK_TYPES_MYR,
+}
+STOCK_TYPES_ALL = STOCK_TYPES_IDR + STOCK_TYPES_MYR
+# Backward-compat alias: existing call sites default to IDR warehouses.
+STOCK_TYPES = STOCK_TYPES_IDR
 
 # Stock-related "Gap *" columns in export (tri-color: >0 green, 0 yellow, <0 red)
 STOCK_GAP_COLUMN_NAMES = frozenset(
-    ["Gap Available Stock"] + [f"Gap {st}" for st in STOCK_TYPES]
+    ["Gap Available Stock"] + [f"Gap {st}" for st in STOCK_TYPES_ALL]
 )
 
-# Listing export: secondary warehouse columns (non-primary). Hidden with the same set_column(...)
-# API as SKU Name/Link columns — per-index hidden works reliably; letter range O:V does not in some clients.
-LISTING_STOCK_DETAIL_COLS_HIDDEN = (
-    "SBY-Ready",
-    "Gap SBY-Ready",
-    "IDR-Lock",
-    "Gap IDR-Lock",
-    "SBY-Lock",
-    "Gap SBY-Lock",
-    "IDR-OTW",
-    "Gap IDR-OTW",
-    "SBY-OTW",
-    "Gap SBY-OTW",
-)
+# Listing export: secondary warehouse columns (non-primary) hidden by default.
+# The "primary" column for a currency stays visible; the rest are collapsed.
+LISTING_STOCK_DETAIL_HIDDEN_BY_CURRENCY: Dict[str, tuple] = {
+    "IDR": (
+        "SBY-Ready", "Gap SBY-Ready",
+        "IDR-Lock",  "Gap IDR-Lock",
+        "SBY-Lock",  "Gap SBY-Lock",
+        "IDR-OTW",   "Gap IDR-OTW",
+        "SBY-OTW",   "Gap SBY-OTW",
+    ),
+    "MYR": (
+        "MYS-Lock", "Gap MYS-Lock",
+        "MYS-OTW",  "Gap MYS-OTW",
+    ),
+}
+# Backward-compat alias for older imports/uses.
+LISTING_STOCK_DETAIL_COLS_HIDDEN = LISTING_STOCK_DETAIL_HIDDEN_BY_CURRENCY["IDR"]
 
 # Extra hidden informational columns in export.
 EXPORT_HIDDEN_COLUMNS = ()
@@ -98,6 +124,63 @@ def _normalize_sku_name(sku: str, name: str) -> str:
     return str(name).strip()
 
 
+def normalize_currency(currency: Any) -> str:
+    """Return a valid currency code from CURRENCIES, defaulting to the first entry."""
+    if isinstance(currency, str):
+        cur = currency.strip().upper()
+        if cur in CURRENCIES:
+            return cur
+    return CURRENCIES[0]
+
+
+def get_stock_types_for(currency: str) -> List[str]:
+    return STOCK_TYPES_BY_CURRENCY.get(currency, STOCK_TYPES_BY_CURRENCY[CURRENCIES[0]])
+
+
+def _item_price(item_data: Dict, tier: str, currency: str) -> Any:
+    """Read a single tier price for a SKU, honoring nested per-currency storage
+    with a fallback to legacy flat top-level keys (treated as default currency).
+    Returns the raw value (float, None, or string) — parsing is up to the caller.
+    """
+    currencies = item_data.get("_currencies") if isinstance(item_data, dict) else None
+    if isinstance(currencies, dict) and currency in currencies:
+        return currencies[currency].get(tier)
+    # Legacy fallback: only valid for the default currency.
+    if currency == CURRENCIES[0]:
+        return item_data.get(tier)
+    return None
+
+
+def _item_stock(item_data: Dict, stock_key: str) -> Any:
+    stock = item_data.get("_stock") if isinstance(item_data, dict) else None
+    if isinstance(stock, dict) and stock_key in stock:
+        return stock[stock_key]
+    return item_data.get(stock_key, 0)
+
+
+def _parse_price_cell(raw: Any) -> Any:
+    """Parse a single price cell from Google Sheets.
+
+    Returns:
+        float — when the cell holds a valid number (e.g. "12,000" → 12000.0).
+        None  — when the cell is blank / unparsable. Downstream callers
+                treat None as "Invalid" so the SKU is excluded from that tier.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        if isinstance(raw, float) and raw != raw:  # NaN guard
+            return None
+        return float(raw)
+    text = str(raw).strip()
+    if not text or text.lower() in ("nan", "none", "null", "-"):
+        return None
+    try:
+        return float(text.replace(",", ""))
+    except ValueError:
+        return None
+
+
 def load_product_database() -> Tuple[Dict, Dict, Dict]:
     global _cached_price_db, _cached_name_map, _cached_link_map
     if _cached_price_db is not None:
@@ -109,21 +192,58 @@ def load_product_database() -> Tuple[Dict, Dict, Dict]:
         names = db.query(FreemirName).all()
         
         price_db = {}
+        default_currency = CURRENCIES[0]
         for p in prices:
             item = {"Category": p.category, "Clearance": p.clearance}
+
+            # Normalize prices payload to a dict regardless of how it was stored.
             raw_prices = p.prices
+            parsed: Dict[str, Any] = {}
             if isinstance(raw_prices, dict):
-                item.update(raw_prices)
+                parsed = raw_prices
             elif isinstance(raw_prices, str):
                 text = raw_prices.strip()
                 if text:
                     try:
-                        parsed = json.loads(text)
-                        if isinstance(parsed, dict):
-                            item.update(parsed)
+                        decoded = json.loads(text)
+                        if isinstance(decoded, dict):
+                            parsed = decoded
                     except Exception:
                         # Keep working even if legacy/corrupted rows exist.
-                        pass
+                        parsed = {}
+
+            # Detect new nested shape ({"IDR": {...}, "MYR": {...}, "stock": {...}})
+            # vs legacy flat shape ({"Warning": ..., "IDR-Ready": ...}).
+            is_nested = any(c in parsed for c in CURRENCIES) or "stock" in parsed
+
+            if is_nested:
+                currencies = {c: dict(parsed.get(c) or {}) for c in CURRENCIES}
+                stock = dict(parsed.get("stock") or {})
+            else:
+                # Legacy fallback: split flat dict into the default currency + stock.
+                currencies = {c: {} for c in CURRENCIES}
+                stock = {}
+                for k, v in parsed.items():
+                    if k == "Clearance" or k in PRICE_TYPES:
+                        currencies[default_currency][k] = v
+                    elif k in STOCK_TYPES_ALL:
+                        stock[k] = v
+
+            # Backward-compat surface: flatten the default currency (IDR) plus all
+            # stock keys onto the top level so existing calculate_prices / breakdown
+            # code keeps working without knowing about regions.
+            default_prices = currencies.get(default_currency, {})
+            for tier in PRICE_TYPES:
+                item[tier] = default_prices.get(tier)
+            if default_prices.get("Clearance") is not None:
+                item["Clearance"] = default_prices["Clearance"]
+            for st in STOCK_TYPES_ALL:
+                item[st] = stock.get(st, 0)
+
+            # Region-aware access for future multi-currency consumers.
+            item["_currencies"] = currencies
+            item["_stock"] = stock
+
             price_db[p.sku] = item
             
         name_map = {}
@@ -154,14 +274,35 @@ def sync_google_sheets_to_vps_postgres() -> int:
         count = 0
 
         # ===== SYNC PRICE + NAME DATA (SKU_Info as single source) =====
+        # Sheet layout (2026-05+): row 1 holds merged group labels
+        # ("Indonesia Price", "Malaysia Price", "Indonesia Stock", ...), and the
+        # real per-column headers live in row 2. Data starts at row 3.
+        # Price columns follow the pattern "<CURRENCY>-<PriceType>", e.g.
+        # "IDR-Warning", "MYR-Daily-Discount". Clearance is also per-currency
+        # ("IDR-Clearance", "MYR-Clearance"). Stock columns keep their warehouse
+        # prefixes (IDR/SBY = Indonesia warehouses, MYS = Malaysia warehouse).
         print("[Sync] Fetching SKU_Info worksheet...")
         try:
             sku_info_ws = sh.worksheet("SKU_Info")
             sku_info_data = sku_info_ws.get_all_values()
 
-            if sku_info_data:
-                sku_info_cols = [str(c).strip() for c in sku_info_data[0]]
-                df_sku_info = pd.DataFrame(sku_info_data[1:], columns=sku_info_cols)
+            if len(sku_info_data) >= 2:
+                # Row 2 (index 1) is the real header; data starts at row 3 (index 2).
+                # Falls back to legacy single-header layout if row 2 is empty.
+                header_row_idx = 1 if any(str(c).strip() for c in sku_info_data[1]) else 0
+                data_start_idx = header_row_idx + 1
+                sku_info_cols = [str(c).strip() for c in sku_info_data[header_row_idx]]
+
+                # De-duplicate empty headers so pandas does not collapse them onto each other.
+                seen_counts: Dict[str, int] = {}
+                unique_cols: List[str] = []
+                for c in sku_info_cols:
+                    base = c or "_blank"
+                    n = seen_counts.get(base, 0)
+                    unique_cols.append(base if n == 0 else f"{base}__{n}")
+                    seen_counts[base] = n + 1
+
+                df_sku_info = pd.DataFrame(sku_info_data[data_start_idx:], columns=unique_cols)
                 normalized = {str(c).strip().lower(): c for c in df_sku_info.columns}
 
                 def col(*aliases):
@@ -177,10 +318,29 @@ def sync_google_sheets_to_vps_postgres() -> int:
                 # Category usually exists as explicit header. Fallback to column E when
                 # sheet headers are changed/empty, because business data stores it there.
                 cat_col = col("Category") or (df_sku_info.columns[4] if len(df_sku_info.columns) > 4 else None)
-                clear_col = col("Clearance")
                 name_col = col("Product-Name", "Product Name", "Name", "English Name")
                 link_col = col("Link", "Product Link", "URL", "Image", "Image URL", "Pic")
                 mark_col = col("Mark")
+
+                # Resolve currency-prefixed price columns. Older sheets without prefix
+                # ("Warning", "Clearance") still work and are treated as IDR.
+                price_col_lookup: Dict[str, Dict[str, str]] = {}
+                for currency in CURRENCIES:
+                    cur_lookup: Dict[str, str] = {}
+                    for tier in ["Clearance", *PRICE_TYPES]:
+                        resolved = col(f"{currency}-{tier}")
+                        if resolved is None and currency == CURRENCIES[0]:
+                            # Legacy fallback: unprefixed column counts as default currency.
+                            resolved = col(tier)
+                        if resolved is not None:
+                            cur_lookup[tier] = resolved
+                    price_col_lookup[currency] = cur_lookup
+
+                stock_col_lookup: Dict[str, str] = {}
+                for st in STOCK_TYPES_ALL:
+                    resolved = col(st)
+                    if resolved is not None:
+                        stock_col_lookup[st] = resolved
 
                 print(f"[Sync] Processing {len(df_sku_info)} SKU_Info rows...")
 
@@ -201,28 +361,38 @@ def sync_google_sheets_to_vps_postgres() -> int:
                         continue
 
                     cat_val = str(row[cat_col]).strip() if cat_col and cat_col in row else ""
-                    clear_val = str(row[clear_col]).strip() if clear_col and clear_col in row else ""
                     raw_name = str(row[name_col]).strip() if name_col and name_col in row else ""
                     raw_link = str(row[link_col]).strip() if link_col and link_col in row else ""
                     raw_mark = str(row[mark_col]).strip() if mark_col and mark_col in row else ""
 
-                    prices_dict = {}
-                    for pt in PRICE_TYPES:
-                        if pt in row and str(row[pt]).strip():
-                            try:
-                                prices_dict[pt] = float(str(row[pt]).replace(",", ""))
-                            except:
-                                pass
-                    for st in STOCK_TYPES:
-                        if st in row:
-                            prices_dict[st] = parse_stock_value(row[st])
+                    # Build per-currency price dict. Blank / unparsable cells are
+                    # stored as None so downstream code marks that tier as Invalid.
+                    currencies_data: Dict[str, Dict[str, Any]] = {}
+                    for currency, cur_lookup in price_col_lookup.items():
+                        cur_dict: Dict[str, Any] = {}
+                        for tier in ["Clearance", *PRICE_TYPES]:
+                            src_col = cur_lookup.get(tier)
+                            cur_dict[tier] = _parse_price_cell(row[src_col]) if src_col else None
+                        currencies_data[currency] = cur_dict
+
+                    stock_data: Dict[str, int] = {}
+                    for st in STOCK_TYPES_ALL:
+                        src_col = stock_col_lookup.get(st)
+                        stock_data[st] = parse_stock_value(row[src_col]) if src_col else 0
+
+                    prices_json: Dict[str, Any] = {**currencies_data, "stock": stock_data}
+
+                    # Legacy `clearance` column on FreemirPrice mirrors IDR clearance,
+                    # so existing readers (load_product_database etc.) keep working.
+                    idr_clear = currencies_data.get(CURRENCIES[0], {}).get("Clearance")
+                    clear_val = "" if idr_clear is None else str(idr_clear)
 
                     for sku in expand_skus(raw_sku):
                         skus_to_update[sku] = {
                             'sku': sku,
                             'category': cat_val,
                             'clearance': clear_val,
-                            'prices': prices_dict
+                            'prices': prices_json,
                         }
                         if raw_name:
                             names_by_sku[sku] = raw_name
@@ -405,76 +575,81 @@ def get_bundle_discount_rate(count: int) -> float:
     elif count >= 5: return 0.05
     return 0.0
 
-def generate_breakdown_table(sku_string: str, price_db: Dict, name_map: Dict) -> List[Dict]:
+def generate_breakdown_table(
+    sku_string: str,
+    price_db: Dict,
+    name_map: Dict,
+    currency: str = CURRENCIES[0],
+) -> List[Dict]:
+    currency = normalize_currency(currency)
+    stock_types = get_stock_types_for(currency)
+
     skus = clean_sku_list(sku_string)
     sku_count = len(skus)
     if sku_count == 0: return []
 
     base_disc = get_bundle_discount_rate(sku_count)
-    breakdown_data = []
 
+    # Pass 1: cache per-SKU context. The main cost of this function is parsing
+    # prices/categories out of the JSON-backed item_data — caching it once cuts
+    # the work to ~1/3 versus reading every value in each of the three logical
+    # phases (classify, total, render).
+    sku_ctx: List[Tuple[str, Dict, bool, bool, float, float]] = []
     has_normal = False
-    for sku in skus:
-        cat = str(price_db.get(sku, {}).get("Category", "")).lower()
-        if "gift" not in cat:
-            has_normal = True
-
-    total_raw_warning = 0.0
-    total_discounted_warning = 0.0
     for sku in skus:
         item_data = price_db.get(sku, {})
         cat = str(item_data.get("Category", "")).lower()
         is_gift = "gift" in cat
-        gift_factor = 0.5 if is_gift and sku_count > 1 and has_normal else 1.0
-
-        c_val = parse_idr_price(item_data.get("Clearance", 0))
+        if not is_gift:
+            has_normal = True
+        c_val = parse_idr_price(_item_price(item_data, "Clearance", currency))
+        w_val = parse_idr_price(_item_price(item_data, "Warning", currency))
         is_clearance = c_val >= 1
-        raw_base = item_data.get("Warning", 0)
-        base_price_float = parse_idr_price(raw_base)
+        sku_ctx.append((sku, item_data, is_gift, is_clearance, c_val, w_val))
 
+    mixed_bundle = sku_count > 1 and has_normal
+
+    # Pass 2: floor-check totals (cheap arithmetic over cached values).
+    total_raw_warning = 0.0
+    total_discounted_warning = 0.0
+    for _, _, is_gift, is_clearance, c_val, w_val in sku_ctx:
         if is_clearance:
             total_raw_warning += c_val
             total_discounted_warning += c_val
         else:
-            total_raw_warning += base_price_float
-            total_discounted_warning += base_price_float * gift_factor * (1 - base_disc)
-
+            gift_factor = GIFT_PRICE_FACTOR if (mixed_bundle and is_gift) else 1.0
+            total_raw_warning += w_val
+            total_discounted_warning += w_val * gift_factor * (1 - base_disc)
     hit_floor = total_discounted_warning < total_raw_warning
 
-    for sku in skus:
-        item_data = price_db.get(sku, {})
+    # Pass 3: render the breakdown rows.
+    breakdown_data: List[Dict] = []
+    for sku, item_data, is_gift, is_clearance, c_val, w_val in sku_ctx:
         name = name_map.get(sku, "-")
-        cat = str(item_data.get("Category", "")).lower()
-        is_gift = "gift" in cat
-        gift_factor = 0.5 if is_gift and sku_count > 1 and has_normal else 1.0
-
-        c_val = parse_idr_price(item_data.get("Clearance", 0))
-        is_clearance = c_val >= 1
-
-        raw_base = item_data.get("Warning", 0)
-        base_price_float = parse_idr_price(raw_base)
+        gift_factor = GIFT_PRICE_FACTOR if (mixed_bundle and is_gift) else 1.0
 
         if is_clearance:
             final_price = c_val
             logic_applied = "Clearance Override"
+        elif hit_floor:
+            final_price = w_val
+            logic_applied = "Floor Protection Applied"
         else:
-            if hit_floor:
-                final_price = base_price_float
-                logic_applied = "Floor Protection Applied"
-            else:
-                final_price = base_price_float * gift_factor * (1 - base_disc)
-                logic_list = []
-                if is_gift and sku_count > 1 and has_normal: logic_list.append("Gift (50%)")
-                if base_disc > 0: logic_list.append(f"Bundle Disc ({base_disc*100}%)")
-                logic_applied = " + ".join(logic_list) if logic_list else "Normal Price"
+            final_price = w_val * gift_factor * (1 - base_disc)
+            logic_list: List[str] = []
+            if mixed_bundle and is_gift:
+                logic_list.append(f"Gift (-{int(round(GIFT_DISCOUNT_RATE * 100))}%)")
+            if base_disc > 0:
+                logic_list.append(f"Bundle Disc ({base_disc*100}%)")
+            logic_applied = " + ".join(logic_list) if logic_list else "Normal Price"
 
         breakdown_data.append({
             "SKU": sku,
             "Product Name": name,
-            "Base Price (Warning)": int(base_price_float),
+            "Base Price (Warning)": int(w_val),
             "Logic Applied": logic_applied,
-            "Total Contribution (IDR)": int(round(final_price)),
-            **{st: parse_stock_value(item_data.get(st, 0)) for st in STOCK_TYPES}
+            f"Total Contribution ({currency})": int(round(final_price)),
+            **{st: parse_stock_value(_item_stock(item_data, st)) for st in stock_types}
         })
 
     return breakdown_data
@@ -502,7 +677,10 @@ def calculate_prices(
     photo_map: Dict = None,
     brand_photo_map: Dict = None,
     brand_photo_meta_map: Dict = None,
+    currency: str = CURRENCIES[0],
 ) -> Dict:
+    currency = normalize_currency(currency)
+    stock_types = get_stock_types_for(currency)
     skus = clean_sku_list(sku_string)
     sku_count = len(skus)
     result = {}
@@ -575,7 +753,7 @@ def calculate_prices(
             "imageSource": image_source,
             "brandMaterialId": brand_material_id,
             "previewUrl": brand_preview_url,
-            "stock": {st: parse_stock_value(price_db.get(sku, {}).get(st, 0)) for st in STOCK_TYPES}
+            "stock": {st: parse_stock_value(_item_stock(price_db.get(sku, {}), st)) for st in stock_types}
         })
         category_value = str(price_db.get(sku, {}).get("Category", "")).strip()
         categories_per_sku.append((sku, category_value))
@@ -584,92 +762,102 @@ def calculate_prices(
         result.update({
             "Bundle Discount": 0, "Mark Clearance": "-", "Mark Gift": "-",
             **{k: "Invalid" for k in PRICE_TYPES},
-            **{k: 0 for k in STOCK_TYPES},
+            **{k: 0 for k in stock_types},
             "Available Stock": "No Stock",
+            "currency": currency,
+            "stock_types": stock_types,
             "sku_items": []
+        })
+        return result
+
+    # Short-circuit: any unknown SKU invalidates the whole bundle. We bail out
+    # before doing any computation so callers get a fast Invalid response.
+    if any(not price_db.get(sku) for sku in skus):
+        result.update({
+            "Bundle Discount": "", "Mark Clearance": "", "Mark Gift": "",
+            **{k: "Invalid" for k in PRICE_TYPES},
+            **{k: 0 for k in stock_types},
+            "Available Stock": "No Stock",
+            "currency": currency,
+            "stock_types": stock_types,
         })
         return result
 
     base_discount_rate = get_bundle_discount_rate(sku_count)
     total_prices = {k: 0.0 for k in PRICE_TYPES}
-    is_valid = {k: True for k in PRICE_TYPES} 
-    
+    is_valid = {k: True for k in PRICE_TYPES}
+    bundle_stock = {st: None for st in stock_types}
+
+    # Pass 1: cheap classification — needs has_normal known before gift_factor.
+    # Cache resolved item_data + category + clearance/warning to avoid re-reading.
+    sku_ctx: List[Tuple[Any, Dict, str, float, float]] = []
+    has_normal = False
     has_clearance = False
     has_gift = False
-    all_skus_found = True
-    
-    for sku in skus:
-        if not price_db.get(sku):
-            all_skus_found = False
-            break
-    
-    if not all_skus_found:
-        result.update({
-            "Bundle Discount": "", "Mark Clearance": "", "Mark Gift": "",
-            **{k: "Invalid" for k in PRICE_TYPES},
-            **{k: 0 for k in STOCK_TYPES},
-            "Available Stock": "No Stock"
-        })
-        return result
-
-    has_normal = False
     absolute_floor = 0.0
 
     for sku in skus:
         item_data = price_db.get(sku)
         cat = str(item_data.get("Category", "")).lower()
-        if "gift" not in cat:
-            has_normal = True
-        
-        c_val = parse_idr_price(item_data.get("Clearance", 0))
-        if c_val >= 1:
-            absolute_floor += c_val
-        else:
-            w_val = parse_idr_price(item_data.get("Warning", 0))
-            absolute_floor += w_val
-
-    for sku in skus:
-        item_data = price_db.get(sku)
-        col_cat, col_clearance = "Category", "Clearance"
-        
-        category = str(item_data.get(col_cat, "")).lower()
-        if "gift" in category: has_gift = True
-        
-        gift_factor = 0.5 if "gift" in category and sku_count > 1 and has_normal else 1.0
-        
-        c_val = parse_idr_price(item_data.get(col_clearance, 0))
+        c_val = parse_idr_price(_item_price(item_data, "Clearance", currency))
+        w_val = parse_idr_price(_item_price(item_data, "Warning", currency))
         is_clearance_item = c_val >= 1
-            
+
+        if "gift" in cat:
+            has_gift = True
+        else:
+            has_normal = True
         if is_clearance_item:
             has_clearance = True
-            item_prices = {k: c_val for k in PRICE_TYPES}
-            item_disc = 0.0
+            absolute_floor += c_val
         else:
-            item_prices = {}
-            item_disc = base_discount_rate
-            for p_type in PRICE_TYPES:
-                val = parse_idr_price(item_data.get(p_type, 0))
-                if val >= 1: item_prices[p_type] = val
-                else:
-                    item_prices[p_type] = 0
-                    is_valid[p_type] = False 
+            absolute_floor += w_val
 
-        for p_type in PRICE_TYPES:
-            total_prices[p_type] += item_prices[p_type] * gift_factor * (1 - item_disc)
+        sku_ctx.append((sku, item_data, cat, c_val, w_val))
+
+    # Pass 2: heavy compute (per-tier price contributions + per-warehouse min stock).
+    mixed_bundle = sku_count > 1 and has_gift and has_normal
+    for sku, item_data, cat, c_val, _w_val in sku_ctx:
+        is_clearance_item = c_val >= 1
+        gift_factor = GIFT_PRICE_FACTOR if (mixed_bundle and "gift" in cat) else 1.0
+
+        if is_clearance_item:
+            disc_multiplier = gift_factor  # Clearance ignores bundle discount.
+            for p_type in PRICE_TYPES:
+                total_prices[p_type] += c_val * disc_multiplier
+        else:
+            disc_multiplier = gift_factor * (1 - base_discount_rate)
+            for p_type in PRICE_TYPES:
+                val = parse_idr_price(_item_price(item_data, p_type, currency))
+                if val >= 1:
+                    total_prices[p_type] += val * disc_multiplier
+                else:
+                    is_valid[p_type] = False
+
+        for st in stock_types:
+            qty = parse_stock_value(_item_stock(item_data, st))
+            current = bundle_stock[st]
+            bundle_stock[st] = qty if current is None else min(current, qty)
+
+    for st in stock_types:
+        if bundle_stock[st] is None:
+            bundle_stock[st] = 0
 
     final_discount_display = 0.0 if has_clearance else base_discount_rate
-    bundle_stock = {}
-    for st in STOCK_TYPES:
-        per_sku_stock = [parse_stock_value(price_db.get(sku, {}).get(st, 0)) for sku in skus]
-        bundle_stock[st] = min(per_sku_stock) if per_sku_stock else 0
+    # Gift discount is only effectively applied when the bundle mixes a gift
+    # SKU with at least one normal SKU. Solo gifts / pure-gift bundles pay full.
+    gift_discount_rate = GIFT_DISCOUNT_RATE if mixed_bundle else 0.0
 
     result.update({
         "Bundle Discount": final_discount_display,
         "Mark Clearance": "Yes" if has_clearance else "-",
         "Mark Gift": "Yes" if has_gift else "-",
+        "Gift Discount": gift_discount_rate,
         "Category": "+".join([cat if cat else "-" for _, cat in categories_per_sku]),
         **bundle_stock,
         "Available Stock": summarize_bundle_stock(bundle_stock),
+        "currency": currency,
+        "stock_types": stock_types,
         "sku_items": sku_items
     })
     
@@ -683,7 +871,15 @@ def calculate_prices(
 
     return result
 
-def convert_df_to_excel_multisheet(df: pd.DataFrame, method: str = "Listing", include_pictures: bool = False) -> bytes:
+def convert_df_to_excel_multisheet(
+    df: pd.DataFrame,
+    method: str = "Listing",
+    include_pictures: bool = False,
+    currency: str = CURRENCIES[0],
+) -> bytes:
+    currency = normalize_currency(currency)
+    stock_types = get_stock_types_for(currency)
+    hidden_detail_cols = LISTING_STOCK_DETAIL_HIDDEN_BY_CURRENCY.get(currency, ())
     import xlsxwriter
     output = io.BytesIO()
     from services.excel_picture_utils import (
@@ -760,7 +956,7 @@ def convert_df_to_excel_multisheet(df: pd.DataFrame, method: str = "Listing", in
             core_cols = ["SKU", "Input Price", "Target Stock"]
             
         identity_cols = ["Bundle Discount", "Mark Clearance", "Mark Gift"]
-        stock_cols = ["Available Stock", "Gap Available Stock"] + STOCK_TYPES + [f"Gap {st}" for st in STOCK_TYPES]
+        stock_cols = ["Available Stock", "Gap Available Stock"] + stock_types + [f"Gap {st}" for st in stock_types]
 
         processing_sheets = [("All", PRICE_TYPES), ("Reminder", PRICE_TYPES)]
         for sc in SHEET_CONFIG:
@@ -785,7 +981,7 @@ def convert_df_to_excel_multisheet(df: pd.DataFrame, method: str = "Listing", in
                 interleaved_price_cols.append(f"Gap {pc}")
 
             interleaved_stock_cols = ["Available Stock", "Gap Available Stock"]
-            for st in STOCK_TYPES:
+            for st in stock_types:
                 interleaved_stock_cols.append(st)
                 interleaved_stock_cols.append(f"Gap {st}")
             
@@ -895,7 +1091,9 @@ def convert_df_to_excel_multisheet(df: pd.DataFrame, method: str = "Listing", in
                     worksheet.set_column(i, i, stock_block_width)
                 elif col_name == "Available Stock":
                     worksheet.set_column(i, i, stock_block_width)
-                elif col_name in STOCK_TYPES or col_name == "Gap Available Stock" or col_name.startswith("Gap IDR-") or col_name.startswith("Gap SBY-"):
+                elif col_name in stock_types or col_name == "Gap Available Stock" or (
+                    col_name.startswith("Gap ") and any(col_name == f"Gap {st}" for st in stock_types)
+                ):
                     worksheet.set_column(i, i, stock_block_width)
                 elif col_name in PRICE_TYPES or col_name.startswith("Gap "):
                     worksheet.set_column(i, i, 16)
@@ -925,7 +1123,7 @@ def convert_df_to_excel_multisheet(df: pd.DataFrame, method: str = "Listing", in
                     worksheet.conditional_format(rng, {"type": "cell", "criteria": "less than", "value": 0, "format": red_bg})
 
             # Hide detailed stock columns (compact view by default).
-            for _hide_name in LISTING_STOCK_DETAIL_COLS_HIDDEN:
+            for _hide_name in hidden_detail_cols:
                 if _hide_name in final_cols:
                     _hi = final_cols.index(_hide_name)
                     worksheet.set_column(_hi, _hi, 4, None, {"hidden": True})
