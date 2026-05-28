@@ -2,9 +2,11 @@ from fastapi import APIRouter, File, UploadFile, Form, HTTPException, Response, 
 from services.permission_guard import require_tool_access
 from fastapi.responses import JSONResponse
 from database import SessionLocal
+from models import PriceCheckerBundleCache
 import pandas as pd
 import io
 import json
+from collections import OrderedDict
 from services.price_checker_logic import (
     load_product_database,
     calculate_prices,
@@ -39,6 +41,162 @@ db_cache = {
     "last_refresh": None,
     "sku_photo_map": {}
 }
+
+
+def _normalize_bundle_sku(sku_string: str) -> str:
+    skus = [s.strip().upper() for s in clean_sku_list(sku_string) if str(s).strip()]
+    return "+".join(skus)
+
+
+def _is_valid_bundle_result(price_info: dict) -> bool:
+    if not isinstance(price_info, dict):
+        return False
+    if not price_info.get("sku_items"):
+        return False
+    return str(price_info.get("Warning", "Invalid")) != "Invalid"
+
+
+def _store_bundle_cache_entry(
+    db,
+    *,
+    source: str,
+    currency: str,
+    sku_string: str,
+    price_info: dict,
+    breakdown: list | None,
+):
+    bundle_sku = _normalize_bundle_sku(sku_string)
+    if not bundle_sku or not _is_valid_bundle_result(price_info):
+        return
+    bundle_key = f"{currency}|{bundle_sku}"
+    payload = {
+        "bundle_sku": bundle_sku,
+        "currency": currency,
+        "summary": {
+            "bundle_discount": price_info.get("Bundle Discount"),
+            "clearance": price_info.get("Mark Clearance"),
+            "gift": price_info.get("Mark Gift"),
+            "gift_discount": price_info.get("Gift Discount", 0.0),
+            "available_stock": price_info.get("Available Stock", "No Stock"),
+            "category": price_info.get("Category", ""),
+        },
+        "tiers": {pt: price_info.get(pt, "Invalid") for pt in PRICE_TYPES},
+        "stocks": {st: int(price_info.get(st, 0) or 0) for st in get_stock_types_for(currency)},
+        "items": price_info.get("sku_items", []),
+        "breakdown": breakdown or [],
+    }
+    db.add(
+        PriceCheckerBundleCache(
+            bundle_key=bundle_key,
+            bundle_sku=bundle_sku,
+            sku_count=len(bundle_sku.split("+")),
+            currency=currency,
+            source=source,
+            payload=payload,
+        )
+    )
+
+
+def _build_bundle_cache_row_data(
+    *,
+    source: str,
+    currency: str,
+    sku_string: str,
+    price_info: dict,
+    breakdown: list | None = None,
+    compact: bool = False,
+):
+    bundle_sku = _normalize_bundle_sku(sku_string)
+    if not bundle_sku or not _is_valid_bundle_result(price_info):
+        return None
+    payload = {
+        "bundle_sku": bundle_sku,
+        "currency": currency,
+        "summary": {
+            "bundle_discount": price_info.get("Bundle Discount"),
+            "clearance": price_info.get("Mark Clearance"),
+            "gift": price_info.get("Mark Gift"),
+            "gift_discount": price_info.get("Gift Discount", 0.0),
+            "available_stock": price_info.get("Available Stock", "No Stock"),
+            "category": price_info.get("Category", ""),
+        },
+        "tiers": {pt: price_info.get(pt, "Invalid") for pt in PRICE_TYPES},
+        "stocks": {st: int(price_info.get(st, 0) or 0) for st in get_stock_types_for(currency)},
+        "items": [] if compact else price_info.get("sku_items", []),
+        "breakdown": [] if compact else (breakdown or []),
+    }
+    return {
+        "bundle_key": f"{currency}|{bundle_sku}",
+        "bundle_sku": bundle_sku,
+        "sku_count": len(bundle_sku.split("+")),
+        "currency": currency,
+        "source": source,
+        "payload": payload,
+    }
+
+
+def _build_export_dataframe(unique_rows: list[PriceCheckerBundleCache]) -> pd.DataFrame:
+    def _get(entry, key, default=None):
+        if isinstance(entry, dict):
+            return entry.get(key, default)
+        return getattr(entry, key, default)
+
+    records = []
+    for row in unique_rows:
+        payload = _get(row, "payload", {}) or {}
+        summary = payload.get("summary", {})
+        tiers = payload.get("tiers", {})
+        stocks = payload.get("stocks", {})
+        items = payload.get("items", []) or []
+        breakdown = payload.get("breakdown", []) or []
+        row_data = {
+            "SKU": payload.get("bundle_sku", _get(row, "bundle_sku", "")),
+            "Input Price": tiers.get("Warning", 0) if tiers.get("Warning") != "Invalid" else 0,
+            "Target Stock": 0,
+            "Category": summary.get("category", ""),
+            "Bundle Discount": summary.get("bundle_discount", 0),
+            "Mark Clearance": summary.get("clearance", "-"),
+            "Mark Gift": summary.get("gift", "-"),
+            "Available Stock": summary.get("available_stock") or _summarize_available_stock(stocks),
+            "Logic Applied": " | ".join(
+                f"{b.get('SKU', '')}: {b.get('Logic Applied', '')}" for b in breakdown if b.get("Logic Applied")
+            ),
+        }
+        for pt in PRICE_TYPES:
+            row_data[pt] = tiers.get(pt, "Invalid")
+        for st, qty in stocks.items():
+            row_data[st] = qty
+        for idx, item in enumerate(items, start=1):
+            row_data[f"SKU {idx} Link"] = item.get("link", "")
+        for idx, item in enumerate(items, start=1):
+            row_data[f"SKU {idx} Name"] = item.get("name", "")
+        records.append(row_data)
+    return pd.DataFrame(records)
+
+
+def _to_valid_number(value):
+    try:
+        num = float(value)
+        if num != num:  # NaN
+            return None
+        return num
+    except Exception:
+        return None
+
+
+def _summarize_available_stock(stock_map: dict) -> str:
+    positive = []
+    for key, val in (stock_map or {}).items():
+        try:
+            qty = int(val or 0)
+        except Exception:
+            qty = 0
+        if qty > 0:
+            positive.append((key, qty))
+    if not positive:
+        return "No Stock"
+    min_key, min_val = min(positive, key=lambda x: x[1])
+    return f"{min_val} ({min_key})"
 
 def get_db():
     import time
@@ -186,6 +344,115 @@ def get_template(method: str):
     }
     return Response(content=file_bytes, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers=headers)
 
+
+@router.get("/export-data", dependencies=[Depends(require_tool_access("price_checker"))])
+def export_cached_data(include_pictures: bool = False):
+    db = SessionLocal()
+    try:
+        rows = db.query(PriceCheckerBundleCache).order_by(
+            PriceCheckerBundleCache.sku_count.asc(),
+            PriceCheckerBundleCache.created_at.desc(),
+        ).all()
+
+        # Keep newest row per bundle_key, then order shortest bundle first.
+        dedup_db = OrderedDict()
+        for row in rows:
+            if row.bundle_key not in dedup_db:
+                dedup_db[row.bundle_key] = row
+        unique_rows_db = sorted(
+            dedup_db.values(),
+            key=lambda r: (int(r.sku_count or 0), str(r.bundle_sku or "")),
+        )
+
+        # Also include all valid single SKUs from SKU_Info (price DB), even if never checked.
+        # IMPORTANT: avoid get_db() here because it can trigger expensive refresh flow.
+        price_db = db_cache.get("price_db")
+        name_map = db_cache.get("name_map")
+        link_map = db_cache.get("link_map")
+        if not price_db:
+            price_db, name_map, link_map = load_product_database()
+        default_currency = CURRENCIES[0]
+        stock_types = get_stock_types_for(default_currency)
+        merged_rows = list(unique_rows_db)
+        merged_keys = {r.bundle_key for r in unique_rows_db}
+
+        for raw_sku, item in (price_db or {}).items():
+            sku = str(raw_sku or "").strip().upper()
+            if not sku:
+                continue
+            warning_num = _to_valid_number((item or {}).get("Warning"))
+            if warning_num is None or warning_num <= 0:
+                continue
+
+            bundle_key = f"{default_currency}|{sku}"
+            if bundle_key in merged_keys:
+                continue
+            merged_keys.add(bundle_key)
+
+            sku_link = (link_map or {}).get(raw_sku) or (link_map or {}).get(sku) or ""
+            sku_name = (name_map or {}).get(raw_sku) or (name_map or {}).get(sku) or sku
+            synthetic_stocks = {st: int((item or {}).get(st, 0) or 0) for st in stock_types}
+            synthetic_payload = {
+                "bundle_sku": sku,
+                "currency": default_currency,
+                "summary": {
+                    "bundle_discount": 0.0,
+                    "clearance": "Yes" if _to_valid_number((item or {}).get("Clearance") or 0) and _to_valid_number((item or {}).get("Clearance") or 0) >= 1 else "-",
+                    "gift": "Yes" if "gift" in str((item or {}).get("Category", "")).lower() else "-",
+                    "gift_discount": 0.0,
+                    "available_stock": _summarize_available_stock(synthetic_stocks),
+                    "category": (item or {}).get("Category", ""),
+                },
+                "tiers": {pt: (item or {}).get(pt, "Invalid") for pt in PRICE_TYPES},
+                "stocks": synthetic_stocks,
+                "items": [{
+                    "sku": sku,
+                    "name": sku_name,
+                    "link": sku_link,
+                }],
+                "breakdown": [],
+            }
+            merged_rows.append({
+                "bundle_key": bundle_key,
+                "bundle_sku": sku,
+                "sku_count": 1,
+                "currency": default_currency,
+                "source": "sku_info",
+                "payload": synthetic_payload,
+            })
+
+        if not merged_rows:
+            raise HTTPException(status_code=404, detail="Belum ada data valid untuk diexport.")
+
+        merged_rows = sorted(
+            merged_rows,
+            key=lambda r: (
+                int((r.get("sku_count") if isinstance(r, dict) else getattr(r, "sku_count", 0)) or 0),
+                str((r.get("bundle_sku") if isinstance(r, dict) else getattr(r, "bundle_sku", "")) or ""),
+            ),
+        )
+
+        export_df = _build_export_dataframe(merged_rows)
+        if export_df.empty:
+            raise HTTPException(status_code=404, detail="Tidak ada data valid untuk diexport.")
+
+        file_bytes = convert_df_to_excel_multisheet(
+            export_df,
+            method="SKU",
+            include_pictures=include_pictures,
+            currency=CURRENCIES[0],
+        )
+
+        filename = "Price_Checker_Export_With_Image.xlsx" if include_pictures else "Price_Checker_Export.xlsx"
+        headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+        return Response(
+            content=file_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers=headers,
+        )
+    finally:
+        db.close()
+
 class DirectInput(BaseModel):
     sku_string: str
     target_price: float
@@ -272,6 +539,22 @@ def calc_direct(body: DirectInput):
     breakdown = generate_breakdown_table(
         body.sku_string, price_db, name_map, currency=currency
     )
+    db = SessionLocal()
+    try:
+        _store_bundle_cache_entry(
+            db,
+            source="direct",
+            currency=currency,
+            sku_string=body.sku_string,
+            price_info=price_info,
+            breakdown=breakdown,
+        )
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"[WARN] Failed to persist direct bundle cache: {e}")
+    finally:
+        db.close()
     
     eval_data = []
     for pt in PRICE_TYPES:
@@ -314,6 +597,7 @@ def calc_direct(body: DirectInput):
         "stock_types": stock_types,
         "summary": {
             "bundle_discount": price_info.get("Bundle Discount"),
+            "warning_price": price_info.get("Warning", "Invalid"),
             "clearance": price_info.get("Mark Clearance"),
             "gift": price_info.get("Mark Gift"),
             "gift_discount": price_info.get("Gift Discount", 0.0),
@@ -479,6 +763,35 @@ async def calc_batch(
                 print(f"[ERROR] Failed to process row {index}: {e}")
                 calc_results.append(_invalid_result())
                 failed_rows.append(index)
+
+        db = SessionLocal()
+        try:
+            # Batch cache write optimized: dedupe first, then single bulk insert.
+            # Also keep compact payload for batch rows to reduce DB write volume.
+            cache_rows_by_key = OrderedDict()
+            for index, price_info in enumerate(calc_results):
+                source_sku = ""
+                try:
+                    source_sku = str(df_final.iloc[index]["SKU"] if "SKU" in df_final.columns else "")
+                except Exception:
+                    source_sku = ""
+                row_data = _build_bundle_cache_row_data(
+                    source="batch",
+                    currency=currency,
+                    sku_string=source_sku,
+                    price_info=price_info,
+                    compact=True,
+                )
+                if row_data:
+                    cache_rows_by_key[row_data["bundle_key"]] = row_data
+            if cache_rows_by_key:
+                db.bulk_insert_mappings(PriceCheckerBundleCache, list(cache_rows_by_key.values()))
+                db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"[WARN] Failed to persist batch bundle cache: {e}")
+        finally:
+            db.close()
         
         price_df = pd.DataFrame(calc_results)
         final_df = pd.concat([df_final, price_df], axis=1)

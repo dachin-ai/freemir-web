@@ -737,8 +737,8 @@ def calculate_prices(
         elif photo_map.get(sku):
             image_url = photo_map.get(sku)
 
-        result[f"SKU {idx} Name"] = sku_name
         result[f"SKU {idx} Link"] = export_link
+        result[f"SKU {idx} Name"] = sku_name
         if image_source is None:
             if image_url and _is_image_url(sku_link) and image_url == sku_link:
                 image_source = "sku_info"
@@ -748,7 +748,9 @@ def calculate_prices(
         sku_items.append({
             "sku": sku,
             "name": sku_name,
-            "link": sku_link,
+            # Keep "open product link" aligned with image-source priority:
+            # prefer Brand Material main photo URL, then fallback to SKU_Info link.
+            "link": export_link,
             "image": image_url,
             "imageSource": image_source,
             "brandMaterialId": brand_material_id,
@@ -904,9 +906,9 @@ def convert_df_to_excel_multisheet(
     with pd.ExcelWriter(output, engine='xlsxwriter', engine_kwargs={'options': {'nan_inf_to_errors': True}}) as writer:
         workbook = writer.book
         
-        header_fmt_dark = workbook.add_format({'bold': True, 'bg_color': '#0c2461', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True})
-        header_fmt_stock = workbook.add_format({'bold': True, 'bg_color': '#DCFCE7', 'font_color': '#14532D', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True})
-        header_fmt_price = workbook.add_format({'bold': True, 'bg_color': '#DBEAFE', 'font_color': '#1E3A8A', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True})
+        header_fmt_dark = workbook.add_format({'bold': True, 'bg_color': '#0c2461', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+        header_fmt_stock = workbook.add_format({'bold': True, 'bg_color': '#DCFCE7', 'font_color': '#14532D', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+        header_fmt_price = workbook.add_format({'bold': True, 'bg_color': '#DBEAFE', 'font_color': '#1E3A8A', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
         # Data: default center + vertical middle; column A (data rows) uses left + vertical middle
         text_fmt = workbook.add_format({'num_format': '@', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
         text_fmt_a = workbook.add_format({'num_format': '@', 'border': 1, 'align': 'left', 'valign': 'vcenter'})
@@ -932,23 +934,28 @@ def convert_df_to_excel_multisheet(
         # Available Stock: long text should wrap (still respects stock column width)
         header_fmt_avail_stock = workbook.add_format({
             'bold': True, 'bg_color': '#DCFCE7', 'font_color': '#14532D', 'border': 1,
-            'align': 'center', 'valign': 'vcenter', 'text_wrap': True,
+            'align': 'center', 'valign': 'vcenter',
         })
         num_fmt_avail = workbook.add_format({
-            'num_format': '0', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True,
+            'num_format': '0', 'border': 1, 'align': 'center', 'valign': 'vcenter',
         })
         num_fmt_avail_a = workbook.add_format({
-            'num_format': '0', 'border': 1, 'align': 'left', 'valign': 'vcenter', 'text_wrap': True,
+            'num_format': '0', 'border': 1, 'align': 'left', 'valign': 'vcenter',
         })
         text_fmt_avail = workbook.add_format({
-            'num_format': '@', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True,
+            'num_format': '@', 'border': 1, 'align': 'center', 'valign': 'vcenter',
         })
         text_fmt_avail_a = workbook.add_format({
-            'num_format': '@', 'border': 1, 'align': 'left', 'valign': 'vcenter', 'text_wrap': True,
+            'num_format': '@', 'border': 1, 'align': 'left', 'valign': 'vcenter',
         })
 
-        sku_info_cols = [c for c in df.columns if re.match(r'SKU \d+ (Name|Link)', c)]
-        sku_info_cols.sort(key=lambda x: (int(x.split()[1]), x.split()[2]))
+        sku_link_cols = [c for c in df.columns if re.match(r'SKU \d+ Link', c)]
+        sku_name_cols = [c for c in df.columns if re.match(r'SKU \d+ Name', c)]
+        sku_link_cols.sort(key=lambda x: int(x.split()[1]))
+        sku_name_cols.sort(key=lambda x: int(x.split()[1]))
+        # Keep export order predictable for easier hide/show:
+        # all photos first, then all names.
+        sku_info_cols = sku_link_cols + sku_name_cols
 
         if method == "Listing":
             core_cols = ["Product ID", "PID Name", "Variation ID", "MID Name", "Campaign Price", "Target Stock", "SKU"]

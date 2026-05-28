@@ -119,6 +119,19 @@ class FreemirName(Base):
     link = Column(String)
     mark = Column(String)
 
+
+class PriceCheckerBundleCache(Base):
+    __tablename__ = "price_checker_bundle_cache"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    bundle_key = Column(String, index=True, nullable=False)  # e.g. IDR|SKU1+SKU2
+    bundle_sku = Column(String, index=True, nullable=False)  # normalized SKU string with "+"
+    sku_count = Column(Integer, index=True, nullable=False, default=1)
+    currency = Column(String(8), index=True, nullable=False, default="IDR")
+    source = Column(String(16), nullable=False, default="direct")  # direct | batch
+    payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
 class LivestreamDisplayItem(Base):
     __tablename__ = "livestream_display_items"
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-    Tabs, Button, Input, InputNumber, Segmented,
+    Button, Input, InputNumber, Segmented, Collapse, Dropdown, Modal,
     Row, Col, Typography, Table, Upload,
     message, Spin, Divider
 } from 'antd';
@@ -9,7 +9,7 @@ import {
     CheckCircleFilled, CloseCircleFilled, FileExcelOutlined,
     DatabaseOutlined, DownloadOutlined, UploadOutlined,
     FileTextOutlined, BarChartOutlined, AppstoreOutlined, RiseOutlined,
-    UnorderedListOutlined, BarcodeOutlined, ThunderboltOutlined, RightOutlined
+    UnorderedListOutlined, BarcodeOutlined, ThunderboltOutlined, RightOutlined, LinkOutlined, DownOutlined
 } from '@ant-design/icons';
 import api from '../api';
 import { useTranslation } from 'react-i18next';
@@ -92,7 +92,7 @@ async function fetchMaterialPreviewUrl(materialId) {
     return url;
 }
 
-function DirectSkuPhoto({ item, previewSrc }) {
+function DirectSkuPhoto({ item, previewSrc, noImageLabel }) {
     const src = previewSrc || item.previewUrl || (
         item.imageSource !== 'brand_material' ? item.image : null
     );
@@ -107,7 +107,7 @@ function DirectSkuPhoto({ item, previewSrc }) {
     }
     return (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: 12, color: 'var(--text-muted)', textAlign: 'center' }}>
-            <Text style={{ fontSize: 12 }}>No image available</Text>
+            <Text style={{ fontSize: 12 }}>{noImageLabel}</Text>
         </div>
     );
 }
@@ -146,6 +146,7 @@ const PriceChecker = () => {
     const [batchOverview, setBatchOverview] = useState(null);
     const [lastStockUploadAt, setLastStockUploadAt] = useState(null);
     const [downloadingWithPicture, setDownloadingWithPicture] = useState(false);
+    const [exportLoading, setExportLoading] = useState(false);
 
     const formatWibDateTime = (isoString) => {
         if (!isoString) return '-';
@@ -331,9 +332,48 @@ const PriceChecker = () => {
         }
     };
 
+    const runExportData = async (withPictures) => {
+        setExportLoading(true);
+        try {
+            const res = await api.get('/price-checker/export-data', {
+                params: { include_pictures: withPictures ? 'true' : 'false' },
+                responseType: 'blob',
+            });
+            const blob = new Blob(
+                [res.data],
+                { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+            );
+            const href = URL.createObjectURL(blob);
+            const filename = withPictures ? 'Price_Checker_Export_With_Image.xlsx' : 'Price_Checker_Export.xlsx';
+            Object.assign(document.createElement('a'), { href, download: filename }).click();
+            message.success(withPictures ? t('priceChecker.msgExportPicReady') : t('priceChecker.msgExportReady'));
+            logActivity(withPictures
+                ? `Price Checker (Export Data With Picture ${currency})`
+                : `Price Checker (Export Data ${currency})`);
+        } catch (err) {
+            message.error(err.response?.data?.detail || t('priceChecker.msgExportFail'));
+        } finally {
+            setExportLoading(false);
+        }
+    };
+
+    const handleExportData = (withPictures) => {
+        if (!withPictures) {
+            runExportData(false);
+            return;
+        }
+        Modal.confirm({
+            title: t('priceChecker.exportConfirmTitle'),
+            content: t('priceChecker.exportConfirmContent'),
+            okText: t('priceChecker.exportConfirmOk'),
+            cancelText: t('priceChecker.exportConfirmCancel'),
+            onOk: () => runExportData(true),
+        });
+    };
+
     /* ─── Table Column Definitions ─── */
-    const copyableCellProps = (value) => ({
-        style: { userSelect: 'text', cursor: 'copy' },
+    const copyableCellProps = (value, extraStyle = {}) => ({
+        style: { userSelect: 'text', cursor: 'copy', ...extraStyle },
         onClick: () => {
             const v = value === null || value === undefined ? '' : String(value);
             navigator.clipboard.writeText(v).then(() => message.success(t('priceChecker.copyOk', { val: v }), 1));
@@ -363,8 +403,48 @@ const PriceChecker = () => {
         [directResult],
     );
 
+    const directItemPreviewBySku = useMemo(() => {
+        const map = {};
+        (directResult?.items || []).forEach((it) => {
+            const skuKey = String(it?.sku || '').trim().toUpperCase();
+            if (!skuKey) return;
+            map[skuKey] = directPreviewBySku[it.sku] || it.previewUrl || (
+                it.imageSource !== 'brand_material' ? it.image : null
+            ) || null;
+        });
+        return map;
+    }, [directResult, directPreviewBySku]);
+
     const evalColumns = useMemo(() => [
-        { title: 'Price Tier',    dataIndex: 'Tier',        key: 'Tier',  width: 160, fixed: 'left', onCell: r => copyableCellProps(r.Tier) },
+        {
+            title: '',
+            dataIndex: 'Tier',
+            key: 'tierColor',
+            width: 64,
+            align: 'center',
+            render: (tier) => {
+                const text = String(tier || '').toLowerCase();
+                let color = 'rgba(148,163,184,0.9)';
+                if (text.startsWith('warning')) color = '#ef4444';
+                else if (text.startsWith('daily')) color = '#22c55e';
+                else if (text.startsWith('dd')) color = '#facc15';
+                else if (text.startsWith('pd')) color = '#60a5fa';
+                return (
+                    <span
+                        style={{
+                            display: 'inline-block',
+                            width: 9,
+                            height: 9,
+                            borderRadius: 999,
+                            background: color,
+                            boxShadow: `0 0 0 3px ${color}24`,
+                            verticalAlign: 'middle',
+                        }}
+                    />
+                );
+            },
+        },
+        { title: 'Price Tier',    dataIndex: 'Tier',        key: 'Tier',  width: 160, onCell: r => copyableCellProps(r.Tier) },
         { title: `System Price (${currency})`, dataIndex: 'SystemPrice', key: 'sys',   width: 150, onCell: r => copyableCellProps(r.SystemPrice),
             render: v => (v === 'Invalid' || v === '' || v === null || v === undefined || isNaN(Number(v))) ? (v ?? '–') : formatPrice(v, currency) },
         { title: `Target Price (${currency})`, dataIndex: 'TargetPrice', key: 'tgt',   width: 150, onCell: r => copyableCellProps(r.TargetPrice),
@@ -401,7 +481,80 @@ const PriceChecker = () => {
             render: (v) => Number(v || 0).toLocaleString(),
         }));
         return [
-            { title: 'SKU',               dataIndex: 'SKU',                  key: 'SKU',  width: 150, fixed: 'left', onCell: r => copyableCellProps(r['SKU']) },
+            {
+                title: '',
+                dataIndex: 'SKU',
+                key: 'thumb',
+                width: 74,
+                align: 'center',
+                fixed: 'left',
+                onHeaderCell: () => ({
+                    style: {
+                        background: isDark ? '#111827' : '#f8fafc',
+                    },
+                }),
+                onCell: () => ({
+                    style: {
+                        background: isDark ? '#111827' : '#f8fafc',
+                    },
+                }),
+                render: (sku) => {
+                    const key = String(sku || '').trim().toUpperCase();
+                    const src = directItemPreviewBySku[key];
+                    return (
+                        <div
+                            style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: 8,
+                                overflow: 'hidden',
+                                border: '1px solid var(--border)',
+                                background: 'var(--bg-panel)',
+                                marginInline: 'auto',
+                            }}
+                        >
+                            {src ? (
+                                <img
+                                    src={src}
+                                    alt={sku}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                />
+                            ) : (
+                                <span
+                                    style={{
+                                        width: '100%',
+                                        height: '100%',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: 'var(--text-muted)',
+                                        fontSize: 9,
+                                        fontWeight: 700,
+                                    }}
+                                >
+                                    N/A
+                                </span>
+                            )}
+                        </div>
+                    );
+                },
+            },
+            {
+                title: 'SKU',
+                dataIndex: 'SKU',
+                key: 'SKU',
+                width: 150,
+                fixed: 'left',
+                onHeaderCell: () => ({
+                    style: {
+                        background: isDark ? '#111827' : '#f8fafc',
+                    },
+                }),
+                onCell: (r) => copyableCellProps(r['SKU'], {
+                    background: isDark ? '#111827' : '#f8fafc',
+                    fontWeight: 600,
+                }),
+            },
             { title: 'Product Name',      dataIndex: 'Product Name',         key: 'pn',   width: 240, onCell: r => copyableCellProps(r['Product Name']) },
             { title: `Base Price (${currency})`, dataIndex: 'Base Price (Warning)', key: 'bp', width: 150, onCell: r => copyableCellProps(r['Base Price (Warning)']),
                 render: v => (v === 'Invalid' || v === '' || v === null || v === undefined || isNaN(Number(v))) ? (v ?? '–') : formatPrice(v, currency) },
@@ -410,9 +563,36 @@ const PriceChecker = () => {
                 render: v => (v === 'Invalid' || v === '' || v === null || v === undefined || isNaN(Number(v))) ? (v ?? '–') : formatPrice(v, currency) },
             ...stockColumns,
         ];
-    }, [currency, directStockTypes]);
+    }, [currency, directStockTypes, isDark, directItemPreviewBySku]);
 
     const stockEvalColumns = [
+        {
+            title: '',
+            dataIndex: 'StockType',
+            key: 'stockColor',
+            width: 64,
+            align: 'center',
+            render: (stockType) => {
+                const text = String(stockType || '').toLowerCase();
+                let color = 'rgba(148,163,184,0.9)';
+                if (text.includes('ready')) color = '#22c55e';
+                else if (text.includes('lock')) color = '#facc15';
+                else if (text.includes('otw')) color = '#60a5fa';
+                return (
+                    <span
+                        style={{
+                            display: 'inline-block',
+                            width: 9,
+                            height: 9,
+                            borderRadius: 999,
+                            background: color,
+                            boxShadow: `0 0 0 3px ${color}24`,
+                            verticalAlign: 'middle',
+                        }}
+                    />
+                );
+            },
+        },
         { title: 'Stock Type', dataIndex: 'StockType', key: 'StockType', width: 160 },
         { title: 'Current Stock', dataIndex: 'CurrentStock', key: 'CurrentStock', width: 130, render: v => Number(v || 0).toLocaleString() },
         { title: 'Target Stock', dataIndex: 'TargetStock', key: 'TargetStock', width: 130, render: v => Number(v || 0).toLocaleString() },
@@ -474,6 +654,20 @@ const PriceChecker = () => {
           }))
         : [];
 
+    const foldLabelStyle = {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        border: '1px solid var(--border)',
+        borderRadius: 10,
+        padding: '9px 12px',
+        background: isDark ? 'rgba(15,23,42,0.72)' : 'rgba(248,250,252,0.95)',
+        fontWeight: 700,
+        color: 'var(--text-main)',
+        cursor: 'pointer',
+        transition: 'all 160ms ease',
+    };
+
     /* ─── RENDER ─── */
     return (
         <div>
@@ -490,17 +684,37 @@ const PriceChecker = () => {
                                 size="middle"
                                 options={SUPPORTED_CURRENCIES.map((code) => {
                                     const meta = CURRENCY_META[code];
+                                    const isActive = currency === code;
                                     return {
                                         value: code,
                                         label: (
-                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 13, paddingInline: 2 }}>
+                                            <span
+                                                style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: 8,
+                                                    fontWeight: isActive ? 800 : 600,
+                                                    fontSize: 13,
+                                                    paddingInline: 2,
+                                                    opacity: isActive ? 1 : 0.55,
+                                                    color: isActive ? '#ffffff' : 'var(--text-muted)',
+                                                    transform: isActive ? 'scale(1.02)' : 'scale(1)',
+                                                    transition: 'all 180ms ease',
+                                                }}
+                                            >
                                                 <FlagIcon code={meta.countryCode} width={22} />
                                                 {code}
                                             </span>
                                         ),
                                     };
                                 })}
-                                style={{ height: 36, borderRadius: 8 }}
+                                style={{
+                                    height: 38,
+                                    borderRadius: 10,
+                                    padding: 3,
+                                    background: isDark ? 'rgba(15,23,42,0.75)' : 'rgba(148,163,184,0.2)',
+                                    border: '1px solid var(--border)',
+                                }}
                             />
                             <Upload
                                 accept=".xlsx,.xls"
@@ -537,62 +751,197 @@ const PriceChecker = () => {
                 }
             />
 
-            {/* TABS */}
-            <Tabs
-                activeKey={inputMode}
-                onChange={(key) => {
-                    setInputMode(key);
-                    setFileList([]);
-                    setDirectResult(null);
-                    setBatchOverview(null);
-                }}
-                type="card"
-                className="tabs-nav-only"
-                items={[
-                    { key: 'Batch', label: <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><UnorderedListOutlined /><Bi i18nKey="priceChecker.batchInput" /></span> },
-                    { key: 'Direct', label: <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><ThunderboltOutlined /><Bi i18nKey="priceChecker.directInput" /></span> },
-                ]}
-            />
+            {/* MODE SWITCH + EXPORT */}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                <div
+                    style={{
+                        position: 'relative',
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: 8,
+                        padding: 6,
+                        borderRadius: 12,
+                        border: '1px solid var(--border)',
+                        background: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(148,163,184,0.12)',
+                        overflow: 'hidden',
+                        width: 330,
+                        maxWidth: '100%',
+                    }}
+                >
+                    <span
+                        style={{
+                            position: 'absolute',
+                            top: 6,
+                            left: 6,
+                            width: 'calc(50% - 10px)',
+                            height: 'calc(100% - 12px)',
+                            borderRadius: 9,
+                            background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                            boxShadow: '0 8px 18px rgba(79,70,229,0.35)',
+                            transform: inputMode === 'Batch' ? 'translateX(0)' : 'translateX(calc(100% + 8px))',
+                            transition: 'transform 220ms ease',
+                            pointerEvents: 'none',
+                        }}
+                    />
+                    <Button
+                        type="text"
+                        onClick={() => {
+                            setInputMode('Batch');
+                            setFileList([]);
+                            setDirectResult(null);
+                            setBatchOverview(null);
+                        }}
+                        style={{
+                            height: 38,
+                            borderRadius: 9,
+                            fontWeight: 700,
+                            fontSize: 13,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 8,
+                            position: 'relative',
+                            zIndex: 1,
+                            color: inputMode === 'Batch' ? '#fff' : 'var(--text-main)',
+                            background: 'transparent',
+                            transition: 'color 180ms ease',
+                        }}
+                    >
+                        <UnorderedListOutlined />
+                        <Bi i18nKey="priceChecker.batchInput" />
+                    </Button>
+                    <Button
+                        type="text"
+                        onClick={() => {
+                            setInputMode('Direct');
+                            setFileList([]);
+                            setDirectResult(null);
+                            setBatchOverview(null);
+                        }}
+                        style={{
+                            height: 38,
+                            borderRadius: 9,
+                            fontWeight: 700,
+                            fontSize: 13,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 8,
+                            position: 'relative',
+                            zIndex: 1,
+                            color: inputMode === 'Direct' ? '#fff' : 'var(--text-main)',
+                            background: 'transparent',
+                            transition: 'color 180ms ease',
+                        }}
+                    >
+                        <ThunderboltOutlined />
+                        <Bi i18nKey="priceChecker.directInput" />
+                    </Button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                <Dropdown
+                    menu={{
+                        items: [
+                            { key: 'plain', label: t('priceChecker.exportWithoutImage'), onClick: () => handleExportData(false) },
+                            { key: 'img', label: t('priceChecker.exportWithImage'), onClick: () => handleExportData(true) },
+                        ],
+                    }}
+                    trigger={['click']}
+                >
+                    <Button
+                        icon={<DownloadOutlined />}
+                        loading={exportLoading}
+                        style={{
+                            height: 38,
+                            minWidth: 170,
+                            borderRadius: 10,
+                            fontWeight: 700,
+                            fontSize: 13,
+                            background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                            color: '#fff',
+                            border: '1px solid rgba(99,102,241,0.45)',
+                            boxShadow: '0 4px 10px rgba(79,70,229,0.24)',
+                        }}
+                    >
+                        {t('priceChecker.exportData')} <DownOutlined style={{ fontSize: 11 }} />
+                    </Button>
+                </Dropdown>
+                </div>
+            </div>
 
             {/* ─── BATCH METHODS ─── */}
             {inputMode === 'Batch' && (
                 <div>
                     <div style={{ marginBottom: 18 }}>
                         <Text style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 10 }}>
-                            Batch Method
+                            <Bi i18nKey="priceChecker.batchMethod" />
                         </Text>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                        <div
+                            style={{
+                                position: 'relative',
+                                display: 'grid',
+                                gridTemplateColumns: '1fr 1fr',
+                                gap: 8,
+                                padding: 6,
+                                borderRadius: 12,
+                                border: '1px solid var(--border)',
+                                background: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(148,163,184,0.12)',
+                                width: '100%',
+                                overflow: 'hidden',
+                            }}
+                        >
+                            <span
+                                style={{
+                                    position: 'absolute',
+                                    top: 6,
+                                    left: 6,
+                                    width: 'calc(50% - 10px)',
+                                    height: 'calc(100% - 12px)',
+                                    borderRadius: 9,
+                                    background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                                    boxShadow: '0 8px 18px rgba(79,70,229,0.35)',
+                                    transform: method === 'Listing' ? 'translateX(0)' : 'translateX(calc(100% + 8px))',
+                                    transition: 'transform 220ms ease',
+                                    pointerEvents: 'none',
+                                }}
+                            />
                             <Button
+                                type="text"
                                 onClick={() => { setMethod('Listing'); setFileList([]); setBatchOverview(null); }}
                                 style={{
-                                    height: 46,
-                                    borderRadius: 10,
+                                    height: 44,
+                                    borderRadius: 9,
                                     fontWeight: 700,
-                                    border: method === 'Listing' ? '2px solid var(--indigo)' : '1px solid var(--border)',
-                                    background: method === 'Listing' ? 'rgba(99,102,241,0.08)' : 'var(--bg-card)',
-                                    color: method === 'Listing' ? 'var(--indigo)' : 'var(--text-main)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     gap: 8,
+                                    position: 'relative',
+                                    zIndex: 1,
+                                    color: method === 'Listing' ? '#fff' : 'var(--text-main)',
+                                    background: 'transparent',
+                                    transition: 'color 180ms ease',
                                 }}
                             >
                                 <UnorderedListOutlined />
                                 {t('priceChecker.listingMethod')}
                             </Button>
                             <Button
+                                type="text"
                                 onClick={() => { setMethod('SKU'); setFileList([]); setBatchOverview(null); }}
                                 style={{
-                                    height: 46,
-                                    borderRadius: 10,
+                                    height: 44,
+                                    borderRadius: 9,
                                     fontWeight: 700,
-                                    border: method === 'SKU' ? '2px solid var(--indigo)' : '1px solid var(--border)',
-                                    background: method === 'SKU' ? 'rgba(99,102,241,0.08)' : 'var(--bg-card)',
-                                    color: method === 'SKU' ? 'var(--indigo)' : 'var(--text-main)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     gap: 8,
+                                    position: 'relative',
+                                    zIndex: 1,
+                                    color: method === 'SKU' ? '#fff' : 'var(--text-main)',
+                                    background: 'transparent',
+                                    transition: 'color 180ms ease',
                                 }}
                             >
                                 <BarcodeOutlined />
@@ -616,8 +965,10 @@ const PriceChecker = () => {
                                     onClick={() => downloadTemplate(method)}
                                     style={{
                                         height: 44, borderRadius: 8, fontWeight: 600, fontSize: 13,
-                                        background: 'var(--bg-panel)', color: 'var(--indigo)',
-                                        border: '1.5px dashed var(--indigo)',
+                                        background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                                        color: '#fff',
+                                        border: 'none',
+                                        boxShadow: '0 4px 12px rgba(79,70,229,0.35)',
                                     }}
                                 >
                                     {t('priceChecker.downloadMethodTemplate', { method })}
@@ -627,7 +978,7 @@ const PriceChecker = () => {
 
                         <div style={stepCardStyle}>
                             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)' }}>
-                                <SectionHeading icon={<UploadOutlined />}>Step 2 - Upload File <RightOutlined style={{ fontSize: 12, marginLeft: 2 }} /></SectionHeading>
+                                <SectionHeading icon={<UploadOutlined />}>Step 2 - <Bi i18nKey="priceChecker.uploadFile" /> <RightOutlined style={{ fontSize: 12, marginLeft: 2 }} /></SectionHeading>
                             </div>
                             <div style={{ padding: '18px 20px' }}>
                                 <Dragger
@@ -653,7 +1004,7 @@ const PriceChecker = () => {
                                                 onClick={remove}
                                                 style={{ fontSize: 12, color: '#ef4444', padding: '0 4px' }}
                                             >
-                                                Remove
+                                                <Bi i18nKey="priceChecker.remove" />
                                             </Button>
                                         </div>
                                     )}
@@ -666,11 +1017,11 @@ const PriceChecker = () => {
 
                         <div style={stepCardStyle}>
                             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)' }}>
-                                <SectionHeading icon={<RiseOutlined />}>Step 3 - Start Calculation</SectionHeading>
+                                <SectionHeading icon={<RiseOutlined />}>Step 3 - <Bi i18nKey="priceChecker.startCalculation" /></SectionHeading>
                             </div>
                             <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                                 <Text style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                                    {fileList.length ? 'File siap diproses.' : 'Upload file dulu untuk mengaktifkan proses.'}
+                                    {fileList.length ? t('priceChecker.fileReady') : t('priceChecker.fileNotReady')}
                                 </Text>
                                 <Button
                                     block
@@ -785,15 +1136,19 @@ const PriceChecker = () => {
             {/* ─── DIRECT INPUT ─── */}
             {inputMode === 'Direct' && (
                 <div style={{
-                    background: 'linear-gradient(180deg, var(--bg-card) 0%, var(--bg-panel) 100%)',
-                    borderRadius: 14,
-                    border: '1px solid var(--border)',
-                    padding: '22px',
-                    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.05)',
+                    background: isDark
+                        ? 'linear-gradient(145deg, rgba(30,41,59,0.95) 0%, rgba(15,23,42,0.98) 100%)'
+                        : 'linear-gradient(145deg, #ffffff 0%, #f8fafc 100%)',
+                    borderRadius: 16,
+                    border: isDark ? '1px solid rgba(99,102,241,0.25)' : '1px solid rgba(99,102,241,0.2)',
+                    padding: '24px',
+                    boxShadow: isDark
+                        ? '0 10px 30px rgba(2, 6, 23, 0.45)'
+                        : '0 10px 30px rgba(15, 23, 42, 0.08)',
                 }}>
                     <div style={{ marginBottom: 16 }}>
                         <Text style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.7px' }}>
-                            Direct Input
+                            <Bi i18nKey="priceChecker.directInput" />
                         </Text>
                     </div>
                     <div style={{
@@ -814,14 +1169,11 @@ const PriceChecker = () => {
                             />
                         </div>
                         <div>
-                            <Label>
-                                <Bi i18nKey="priceChecker.targetPrice" />
-                                <span style={{ marginLeft: 6, color: 'var(--text-muted)', fontWeight: 700 }}>({currencyMeta.short})</span>
-                            </Label>
+                            <Label><Bi i18nKey="priceChecker.targetPrice" /></Label>
                             <InputNumber
                                 className="pc-clean-number"
                                 size="large"
-                                style={{ width: '100%', borderRadius: 10 }}
+                                style={{ width: '100%', borderRadius: 10, border: '1px solid var(--border)' }}
                                 controls={false}
                                 placeholder={`Enter target price (${currencyMeta.short})`}
                                 min={0}
@@ -838,7 +1190,7 @@ const PriceChecker = () => {
                             <InputNumber
                                 className="pc-clean-number"
                                 size="large"
-                                style={{ width: '100%', borderRadius: 10 }}
+                                style={{ width: '100%', borderRadius: 10, border: '1px solid var(--border)' }}
                                 controls={false}
                                 placeholder="Enter target stock"
                                 min={0}
@@ -857,17 +1209,19 @@ const PriceChecker = () => {
                         loading={calcLoading}
                         onClick={doCalculateDirect}
                         style={{
-                            marginTop: 18, height: 46, borderRadius: 10, fontWeight: 700, fontSize: 14,
-                            color: '#fff', border: 'none', paddingInline: 32,
+                            marginTop: 18, height: 42, borderRadius: 9, fontWeight: 700, fontSize: 13,
+                            color: '#fff', border: '1px solid rgba(99,102,241,0.42)', paddingInline: 26,
+                            background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                            boxShadow: '0 3px 8px rgba(79,70,229,0.2)',
                         }}
                     >
-                        <Bi i18nKey="priceChecker.calcRealtime" />
+                        <Bi i18nKey="priceChecker.calculate" />
                     </Button>
 
                     {calcLoading && (
                         <div style={{ textAlign: 'center', padding: '40px 0' }}>
                             <Spin size="large" />
-                            <div style={{ marginTop: 12, color: 'var(--text-muted)', fontSize: 13 }}>Calculating prices...</div>
+                            <div style={{ marginTop: 12, color: 'var(--text-muted)', fontSize: 13 }}><Bi i18nKey="priceChecker.calculating" /></div>
                         </div>
                     )}
 
@@ -875,48 +1229,117 @@ const PriceChecker = () => {
                         <div style={{ marginTop: 28 }}>
                             <Divider style={{ borderColor: 'var(--border)' }} />
 
+                            {/* Summary */}
+                            <SectionHeading icon={<BarChartOutlined />}>Summary</SectionHeading>
+                            <Row gutter={[12, 12]} style={{ marginBottom: 24 }}>
+                                {(() => {
+                                    const giftRate = Number(directResult.summary.gift_discount || 0);
+                                    const giftValue = giftRate > 0
+                                        ? `${Math.round(giftRate * 100)}%`
+                                        : (directResult.summary.gift || '-');
+                                    const warningFromSummary = directResult.summary.warning_price;
+                                    const warningFromEvaluation = directResult.evaluation?.find((row) => row?.Tier === 'Warning')?.SystemPrice;
+                                    const warningRaw = warningFromSummary ?? warningFromEvaluation;
+                                    const warningNumeric = Number(warningRaw);
+                                    const warningValue = Number.isFinite(warningNumeric)
+                                        ? formatPrice(warningNumeric, currency)
+                                        : (warningRaw && warningRaw !== 'Invalid' ? String(warningRaw) : '-');
+                                    const availableRaw = directResult.summary.available_stock || 'No Stock';
+                                    const availableMatch = String(availableRaw).match(/^(\d+)\s*\(([^)]+)\)/);
+                                    const availableValue = availableMatch
+                                        ? `${Number(availableMatch[1]).toLocaleString()} • ${availableMatch[2]}`
+                                        : availableRaw;
+                                    return [
+                                        { label: `Warning Price (${currency})`, value: warningValue, color: '#8b5cf6', compact: false, md: 7 },
+                                        { label: 'Available Stock', value: availableValue, color: '#06b6d4', compact: false, md: 7 },
+                                        { label: 'Bundle Discount', value: `${Number(directResult.summary.bundle_discount) * 100}%`, color: 'var(--indigo)', compact: true, md: 3 },
+                                        { label: 'Clearance Status', value: directResult.summary.clearance, color: '#f59e0b', compact: true, md: 3 },
+                                        { label: 'Gift Status', value: giftValue, color: '#10b981', compact: true, md: 4 },
+                                    ];
+                                })().map(({ label, value, color, compact, md }) => (
+                                    <Col key={label} xs={24} sm={12} md={md}>
+                                        <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 10, padding: compact ? '12px 10px' : '14px 12px', textAlign: 'center', height: '100%' }}>
+                                            <div style={{ fontSize: compact ? 20 : 24, fontWeight: 800, color, fontFamily: "'Outfit', sans-serif", lineHeight: 1.15, wordBreak: 'break-word' }}>{value}</div>
+                                            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginTop: 4 }}>{label}</div>
+                                        </div>
+                                    </Col>
+                                ))}
+                            </Row>
+
                             {/* SKU Preview */}
                             {directResult.items?.length > 0 && (
                                 <div style={{ marginBottom: 28 }}>
-                                    <SectionHeading icon={<AppstoreOutlined />}><Bi i18nKey="priceChecker.itemPreview" /></SectionHeading>
-                                    <div style={{ display: 'grid', gridTemplateColumns: directResult.items.length === 1 ? '1fr' : 'repeat(auto-fit, minmax(210px, 1fr))', gap: 16 }}>
+                                    <SectionHeading icon={<AppstoreOutlined />}>Preview</SectionHeading>
+                                    <div
+                                        style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 160px))',
+                                            justifyContent: 'start',
+                                            gap: 10,
+                                        }}
+                                    >
                                         {directResult.items.map((item, idx) => (
-                                            <div key={`${item.sku}-${idx}`} style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 18, overflow: 'hidden', minHeight: 220, display: 'flex', flexDirection: 'column' }}>
-                                                <div style={{
-                                                    display: 'flex',
-                                                    justifyContent: 'center',
-                                                    padding: 16,
+                                            <div
+                                                key={`${item.sku}-${idx}`}
+                                                style={{
                                                     background: isDark
-                                                        ? 'linear-gradient(180deg, #0f172a 0%, #111827 100%)'
-                                                        : 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)',
+                                                        ? 'linear-gradient(180deg, rgba(15,23,42,0.95) 0%, rgba(2,6,23,0.98) 100%)'
+                                                        : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+                                                    border: isDark ? '1px solid rgba(99,102,241,0.24)' : '1px solid rgba(99,102,241,0.18)',
+                                                    borderRadius: 14,
+                                                    overflow: 'hidden',
+                                                    minHeight: 220,
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    boxShadow: isDark
+                                                        ? '0 10px 24px rgba(2,6,23,0.4)'
+                                                        : '0 10px 24px rgba(15,23,42,0.08)',
+                                                }}
+                                            >
+                                                <div style={{
+                                                    padding: 8,
+                                                    background: isDark
+                                                        ? 'linear-gradient(180deg, rgba(30,41,59,0.7) 0%, rgba(15,23,42,0.8) 100%)'
+                                                        : 'linear-gradient(180deg, #eef2ff 0%, #e2e8f0 100%)',
+                                                    borderBottom: '1px solid var(--border)',
                                                 }}>
                                                     <div style={{
-                                                        width: 120,
-                                                        minWidth: 120,
+                                                        width: '100%',
                                                         aspectRatio: '1 / 1',
                                                         position: 'relative',
                                                         overflow: 'hidden',
-                                                        borderRadius: 18,
+                                                        borderRadius: 10,
                                                         background: isDark ? '#111827' : '#ffffff',
-                                                        border: isDark ? '1px solid #1f2937' : '1px solid #cbd5e1',
-                                                        boxShadow: isDark ? '0 6px 16px rgba(0,0,0,0.35)' : '0 6px 16px rgba(15,23,42,0.08)',
+                                                        border: isDark ? '1px solid #374151' : '1px solid #cbd5e1',
+                                                        boxShadow: isDark ? 'inset 0 0 0 1px rgba(255,255,255,0.02), 0 6px 14px rgba(0,0,0,0.3)' : '0 6px 14px rgba(15,23,42,0.1)',
                                                     }}>
-                                                        <DirectSkuPhoto item={item} previewSrc={directPreviewBySku[item.sku]} />
+                                                        <DirectSkuPhoto item={item} previewSrc={directPreviewBySku[item.sku]} noImageLabel={t('priceChecker.noImage')} />
                                                     </div>
                                                 </div>
-                                                <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 8 }}>
+                                                <div style={{ padding: '8px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 6 }}>
                                                     <div>
-                                                        <Text strong style={{ display: 'block', marginBottom: 6, fontSize: 15 }}>{item.name || item.sku}</Text>
-                                                        <Text type="secondary" style={{ display: 'block', fontSize: 12, wordBreak: 'break-all' }}>{item.sku}</Text>
-                                                        {item.stock && (
-                                                            <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
-                                                                {Object.entries(item.stock).filter(([, v]) => Number(v) > 0).map(([k, v]) => `${k}: ${Number(v).toLocaleString()}`).join(' | ') || 'No Stock'}
-                                                            </Text>
-                                                        )}
+                                                        <Text strong style={{ display: 'block', marginBottom: 2, fontSize: 11.5, wordBreak: 'break-all', letterSpacing: '0.2px' }}>{item.sku}</Text>
+                                                        <Text type="secondary" style={{ display: 'block', fontSize: 10.5, lineHeight: 1.25 }}>{item.name || '-'}</Text>
                                                     </div>
                                                     {item.link ? (
-                                                        <a href={item.link} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: 'var(--indigo)' }}>
-                                                            Open product link
+                                                        <a
+                                                            href={item.link}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            style={{
+                                                                fontSize: 10,
+                                                                color: 'var(--indigo)',
+                                                                fontWeight: 600,
+                                                                background: isDark ? 'rgba(99,102,241,0.14)' : 'rgba(99,102,241,0.12)',
+                                                                border: '1px solid rgba(99,102,241,0.35)',
+                                                                borderRadius: 6,
+                                                                padding: '4px 7px',
+                                                                width: 'fit-content',
+                                                                textDecoration: 'none',
+                                                            }}
+                                                        >
+                                                            <LinkOutlined style={{ marginRight: 6 }} />
+                                                            Image
                                                         </a>
                                                     ) : null}
                                                 </div>
@@ -926,85 +1349,151 @@ const PriceChecker = () => {
                                 </div>
                             )}
 
-                            {/* Summary */}
-                            <SectionHeading icon={<BarChartOutlined />}><Bi i18nKey="priceChecker.bundleSummary" /></SectionHeading>
-                            <Row gutter={16} style={{ marginBottom: 24 }}>
-                                {(() => {
-                                    const giftRate = Number(directResult.summary.gift_discount || 0);
-                                    const giftValue = giftRate > 0
-                                        ? `${Math.round(giftRate * 100)}%`
-                                        : (directResult.summary.gift || '-');
-                                    return [
-                                        { label: 'Bundle Discount', value: `${Number(directResult.summary.bundle_discount) * 100}%`, color: 'var(--indigo)' },
-                                        { label: 'Clearance Status', value: directResult.summary.clearance, color: '#f59e0b' },
-                                        { label: 'Gift Status',      value: giftValue,                       color: '#10b981' },
-                                        { label: 'Available Stock',  value: directResult.summary.available_stock || 'No Stock', color: '#06b6d4' },
-                                    ];
-                                })().map(({ label, value, color }) => (
-                                    <Col key={label} xs={24} md={12}>
-                                        <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px', textAlign: 'center' }}>
-                                            <div style={{ fontSize: 30, fontWeight: 800, color, fontFamily: "'Outfit', sans-serif" }}>{value}</div>
-                                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginTop: 4 }}>{label}</div>
-                                        </div>
-                                    </Col>
-                                ))}
-                            </Row>
-
-                            {/* Breakdown Table */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                                <SectionHeading icon={<AppstoreOutlined />}><Bi i18nKey="priceChecker.priceBreakdown" /></SectionHeading>
-                                <Button size="small" icon={<FileTextOutlined />} onClick={() => copyTable(directResult.breakdown, breakdownColumns)} style={{ fontSize: 12 }}>Copy Table</Button>
-                            </div>
-                            <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 24 }}>
-                                <Table
-                                    dataSource={directResult.breakdown}
-                                    columns={breakdownColumns}
-                                    pagination={false}
-                                    size="middle"
-                                    rowKey="SKU"
-                                    scroll={{ x: 'max-content' }}
-                                    className="copyable-table price-checker-center-table"
-                                />
-                            </div>
-
-                            {/* Evaluation Table */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                                <SectionHeading icon={<RiseOutlined />}><Bi i18nKey="priceChecker.priceEvalTier" /></SectionHeading>
-                                <Button size="small" icon={<FileTextOutlined />} onClick={() => copyTable(directResult.evaluation, evalColumns)} style={{ fontSize: 12 }}>Copy Table</Button>
-                            </div>
-                            <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                                <Table
-                                    dataSource={directResult.evaluation}
-                                    columns={evalColumns}
-                                    pagination={false}
-                                    size="middle"
-                                    rowKey="Tier"
-                                    scroll={{ x: 660 }}
-                                    className="copyable-table price-checker-center-table"
-                                />
-                            </div>
-
-                            {/* Stock Evaluation Table */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '20px 0 8px' }}>
-                                <SectionHeading icon={<BarChartOutlined />}><Bi i18nKey="priceChecker.stockEvalType" /></SectionHeading>
-                                <Button
-                                    size="small"
-                                    icon={<FileTextOutlined />}
-                                    onClick={() => copyTable(directResult.stock_evaluation || [], stockEvalColumns)}
-                                    style={{ fontSize: 12 }}
-                                >
-                                    Copy Table
-                                </Button>
-                            </div>
-                            <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                                <Table
-                                    dataSource={directResult.stock_evaluation || []}
-                                    columns={stockEvalColumns}
-                                    pagination={false}
-                                    size="middle"
-                                    rowKey="StockType"
-                                    scroll={{ x: 660 }}
-                                    className="price-checker-center-table"
+                            <div style={{ marginTop: 20 }}>
+                                <Collapse
+                                    style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                    }}
+                                    expandIconPosition="end"
+                                    expandIcon={({ isActive }) => (
+                                        <RightOutlined
+                                            style={{
+                                                fontSize: 12,
+                                                color: 'var(--text-muted)',
+                                                transform: isActive ? 'rotate(90deg)' : 'rotate(0deg)',
+                                                transition: 'transform 180ms ease',
+                                            }}
+                                        />
+                                    )}
+                                    items={[
+                                        {
+                                            key: 'breakdown',
+                                            label: (
+                                                <div style={foldLabelStyle}>
+                                                    <AppstoreOutlined style={{ color: 'var(--indigo)' }} />
+                                                    Composition
+                                                </div>
+                                            ),
+                                            extra: (
+                                                <Button
+                                                    type="text"
+                                                    size="small"
+                                                    icon={<FileTextOutlined />}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        copyTable(directResult.breakdown, breakdownColumns);
+                                                    }}
+                                                    style={{
+                                                        fontSize: 11,
+                                                        height: 30,
+                                                        borderRadius: 8,
+                                                        paddingInline: 8,
+                                                        color: 'var(--text-muted)',
+                                                    }}
+                                                >
+                                                    Copy
+                                                </Button>
+                                            ),
+                                            children: (
+                                                <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 12 }}>
+                                                    <Table
+                                                        dataSource={directResult.breakdown}
+                                                        columns={breakdownColumns}
+                                                        pagination={false}
+                                                        size="middle"
+                                                        rowKey="SKU"
+                                                        scroll={{ x: 'max-content' }}
+                                                        className="copyable-table price-checker-center-table"
+                                                    />
+                                                </div>
+                                            ),
+                                        },
+                                        {
+                                            key: 'evaluation',
+                                            label: (
+                                                <div style={foldLabelStyle}>
+                                                    <RiseOutlined style={{ color: 'var(--indigo)' }} />
+                                                    Price Tier
+                                                </div>
+                                            ),
+                                            extra: (
+                                                <Button
+                                                    type="text"
+                                                    size="small"
+                                                    icon={<FileTextOutlined />}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        copyTable(directResult.evaluation, evalColumns);
+                                                    }}
+                                                    style={{
+                                                        fontSize: 11,
+                                                        height: 30,
+                                                        borderRadius: 8,
+                                                        paddingInline: 8,
+                                                        color: 'var(--text-muted)',
+                                                    }}
+                                                >
+                                                    Copy
+                                                </Button>
+                                            ),
+                                            children: (
+                                                <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 12 }}>
+                                                    <Table
+                                                        dataSource={directResult.evaluation}
+                                                        columns={evalColumns}
+                                                        pagination={false}
+                                                        size="middle"
+                                                        rowKey="Tier"
+                                                        scroll={{ x: 660 }}
+                                                        className="copyable-table price-checker-center-table"
+                                                    />
+                                                </div>
+                                            ),
+                                        },
+                                        {
+                                            key: 'stock-evaluation',
+                                            label: (
+                                                <div style={foldLabelStyle}>
+                                                    <BarChartOutlined style={{ color: 'var(--indigo)' }} />
+                                                    Stock Tier
+                                                </div>
+                                            ),
+                                            extra: (
+                                                <Button
+                                                    type="text"
+                                                    size="small"
+                                                    icon={<FileTextOutlined />}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        copyTable(directResult.stock_evaluation || [], stockEvalColumns);
+                                                    }}
+                                                    style={{
+                                                        fontSize: 11,
+                                                        height: 30,
+                                                        borderRadius: 8,
+                                                        paddingInline: 8,
+                                                        color: 'var(--text-muted)',
+                                                    }}
+                                                >
+                                                    Copy
+                                                </Button>
+                                            ),
+                                            children: (
+                                                <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                                                    <Table
+                                                        dataSource={directResult.stock_evaluation || []}
+                                                        columns={stockEvalColumns}
+                                                        pagination={false}
+                                                        size="middle"
+                                                        rowKey="StockType"
+                                                        scroll={{ x: 660 }}
+                                                        className="price-checker-center-table"
+                                                    />
+                                                </div>
+                                            ),
+                                        },
+                                    ]}
                                 />
                             </div>
                         </div>
