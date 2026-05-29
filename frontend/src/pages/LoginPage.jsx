@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { Form, Input, Button, message, Typography, Segmented } from 'antd';
 import {
     UserOutlined,
@@ -49,11 +50,11 @@ const LoginPage = () => {
     const tabBarBg = tc('rgba(255,255,255,0.04)', 'rgba(15,23,42,0.04)');
     const tabBarBorder = tc('rgba(148,163,184,0.08)', 'rgba(148,163,184,0.15)');
     const tabInactive = tc('#64748b', '#64748b');
-    const tabActive = tc('#38bdf8', '#0284c7');
+    const tabActive = tc('#38bdf8', '#0ea5e9');
     const tabActiveBg = tc('rgba(56,189,248,0.15)', 'rgba(2,132,199,0.1)');
     const tabActiveRing = tc('inset 0 0 0 1px rgba(56,189,248,0.25)', 'inset 0 0 0 1px rgba(2,132,199,0.22)');
     const borderSubtle = tc('rgba(148,163,184,0.08)', 'rgba(148,163,184,0.14)');
-    const linkC = tc('#38bdf8', '#0284c7');
+    const linkC = tc('#38bdf8', '#0ea5e9');
     const prefixIco = tc('#475569', '#94a3b8');
 
     const inputStyle = {
@@ -126,7 +127,7 @@ const LoginPage = () => {
     };
 
     const glowTop = tc('rgba(56,189,248,0.07)', 'rgba(56,189,248,0.12)');
-    const glowBot = tc('rgba(99,102,241,0.08)', 'rgba(2,132,199,0.1)');
+    const glowBot = tc('rgba(14,165,233,0.1)', 'rgba(2,132,199,0.1)');
 
     return (
         <div
@@ -230,6 +231,24 @@ const LoginPage = () => {
                     </div>
                 </div>
 
+                <div style={{ marginBottom: 20 }}>
+                    <Link
+                        to="/"
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            color: linkC,
+                            fontSize: 13,
+                            fontWeight: 600,
+                            textDecoration: 'none',
+                        }}
+                    >
+                        <ArrowLeftOutlined />
+                        {t('landing.backToHome')}
+                    </Link>
+                </div>
+
                 <div style={{ textAlign: 'center', marginBottom: 32 }}>
                     <img
                         src="/logo.png"
@@ -330,7 +349,7 @@ const LoginPage = () => {
                                     borderRadius: 10,
                                     fontWeight: 700,
                                     fontSize: 15,
-                                    background: 'linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)',
+                                    background: 'var(--fm-gradient)',
                                     color: '#fff',
                                     border: 'none',
                                     boxShadow: '0 4px 20px rgba(14,165,233,0.25)',
@@ -393,10 +412,10 @@ const LoginPage = () => {
                                     borderRadius: 10,
                                     fontWeight: 700,
                                     fontSize: 15,
-                                    background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                                    background: 'var(--fm-gradient)',
                                     color: '#fff',
                                     border: 'none',
-                                    boxShadow: '0 4px 20px rgba(99,102,241,0.25)',
+                                    boxShadow: '0 4px 20px rgba(2,132,199,0.28)',
                                 }}
                             >
                                 {loadingReset ? t('login.sending') : t('login.resetPassword')}
@@ -417,15 +436,15 @@ const LoginPage = () => {
                                 width: 64,
                                 height: 64,
                                 borderRadius: '50%',
-                                background: tc('rgba(99,102,241,0.1)', 'rgba(99,102,241,0.08)'),
-                                border: tc('1px solid rgba(99,102,241,0.3)', '1px solid rgba(99,102,241,0.22)'),
+                                background: tc('rgba(14,165,233,0.12)', 'rgba(2,132,199,0.08)'),
+                                border: tc('1px solid rgba(56,189,248,0.3)', '1px solid rgba(2,132,199,0.22)'),
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 margin: '0 auto 20px',
                             }}
                         >
-                            <CheckCircleOutlined style={{ fontSize: 28, color: '#818cf8' }} />
+                            <CheckCircleOutlined style={{ fontSize: 28, color: '#38bdf8' }} />
                         </div>
                         <div style={{ color: titleC, fontWeight: 700, fontSize: 18, marginBottom: 8, fontFamily: "'Outfit', sans-serif" }}>{t('login.checkEmail')}</div>
                         <Text style={{ color: mutedC, fontSize: 13, lineHeight: 1.6, display: 'block' }}>{t('login.newPasswordSent')}</Text>
@@ -503,8 +522,8 @@ const LoginPage = () => {
                         onClick={onSyncUsers}
                         size="small"
                         style={{
-                            background: tc('rgba(99,102,241,0.08)', 'rgba(99,102,241,0.06)'),
-                            border: tc('1px solid rgba(99,102,241,0.2)', '1px solid rgba(99,102,241,0.18)'),
+                            background: tc('rgba(14,165,233,0.08)', 'rgba(2,132,199,0.06)'),
+                            border: tc('1px solid rgba(56,189,248,0.2)', '1px solid rgba(2,132,199,0.18)'),
                             color: mutedC,
                             borderRadius: 8,
                             fontSize: 11,

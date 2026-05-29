@@ -1,0 +1,190 @@
+/* Price Checker — readability (kontras teks & ukuran) */
+
+.price-checker-page {
+  color: var(--text-main);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+:root[data-theme='light'] .price-checker-page {
+  --pc-label: #1e293b;
+  --pc-muted: #475569;
+  --pc-hint: #64748b;
+}
+
+:root[data-theme='dark'] .price-checker-page {
+  --pc-label: #f1f5f9;
+  --pc-muted: #cbd5e1;
+  --pc-hint: #94a3b8;
+}
+
+.price-checker-page .pc-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pc-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.price-checker-page .pc-section-heading {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+  font-family: 'Outfit', sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.price-checker-page .pc-muted,
+.price-checker-page .pc-muted.ant-typography {
+  color: var(--pc-muted) !important;
+  font-size: 14px !important;
+}
+
+.price-checker-page .pc-hint {
+  color: var(--pc-hint) !important;
+  font-size: 13px !important;
+}
+
+.price-checker-page .pc-page-header .ant-typography {
+  color: var(--pc-hint) !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+}
+
+.price-checker-page .pc-page-header h3.ant-typography {
+  color: var(--text-main) !important;
+  font-size: 22px !important;
+}
+
+/* Mode switch (Batch / Direct) — teks tidak aktif lebih gelap */
+.price-checker-page .pc-mode-switch {
+  background: var(--bg-card) !important;
+  border-color: var(--border) !important;
+}
+
+.price-checker-page .pc-mode-pill {
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  color: var(--text-main) !important;
+}
+
+.price-checker-page .pc-mode-pill--active {
+  color: #fff !important;
+}
+
+/* Method switch & upload */
+.price-checker-page .pc-method-pill {
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  color: var(--text-main) !important;
+}
+
+.price-checker-page .pc-method-pill--active,
+.price-checker-page .pc-mode-pill--active {
+  color: #fff !important;
+}
+
+.price-checker-page .ant-upload-text {
+  color: var(--text-main) !important;
+  font-size: 15px !important;
+  font-weight: 500 !important;
+}
+
+.price-checker-page .ant-upload-hint {
+  color: var(--pc-muted) !important;
+  font-size: 13px !important;
+}
+
+/* Stat cards */
+.price-checker-page .pc-stat-value {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.price-checker-page .pc-stat-label {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: var(--pc-muted) !important;
+  margin-top: 6px !important;
+}
+
+/* Tabel hasil */
+.price-checker-page .price-checker-center-table.ant-table-wrapper .ant-table {
+  font-size: 14px !important;
+}
+
+.price-checker-page .price-checker-center-table .ant-table-thead > tr > th {
+  color: var(--pc-label) !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  background: var(--bg-card) !important;
+}
+
+.price-checker-page .price-checker-center-table .ant-table-tbody > tr > td {
+  color: var(--text-main) !important;
+  font-size: 14px !important;
+  font-weight: 500;
+}
+
+.price-checker-page .copyable-table .ant-table-tbody > tr > td {
+  color: var(--text-main) !important;
+  font-size: 14px !important;
+}
+
+.price-checker-page .copyable-table .ant-table-thead > tr > th {
+  color: var(--pc-label) !important;
+  font-size: 12px !important;
+}
+
+/* Collapse panels */
+.price-checker-page .pc-fold-label {
+  color: var(--text-main) !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+}
+
+.price-checker-page .ant-collapse-header {
+  color: var(--text-main) !important;
+}
+
+.price-checker-page .ant-collapse-expand-icon {
+  color: var(--pc-muted) !important;
+}
+
+/* SKU preview cards */
+.price-checker-page .pc-sku-code {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: var(--text-main) !important;
+}
+
+.price-checker-page .pc-sku-name {
+  font-size: 12px !important;
+  line-height: 1.35 !important;
+  color: var(--pc-muted) !important;
+}
+
+/* Input placeholder lebih terbaca */
+.price-checker-page .ant-input::placeholder,
+.price-checker-page .ant-input-number-input::placeholder {
+  color: var(--pc-hint) !important;
+  opacity: 1 !important;
+}
+
+.price-checker-page .ant-input,
+.price-checker-page .ant-input-number-input {
+  color: var(--text-main) !important;
+  font-size: 14px !important;
+}
+
+/* Summary metric tiles */
+.price-checker-page .pc-metric-label {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: var(--pc-muted) !important;
+}

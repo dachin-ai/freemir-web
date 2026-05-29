@@ -32,7 +32,7 @@ const EditableNumberInput = ({ value, onChange, placeholder, min, style, formatt
     />
 );
 
-const SectionHeading = ({ icon, children, color = '#6366f1' }) => (
+const SectionHeading = ({ icon, children, color = '#0ea5e9' }) => (
     <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-main)', fontFamily: "'Outfit', sans-serif", display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
         <span style={{ width: 28, height: 28, borderRadius: 6, background: `${color}20`, border: `1px solid ${color}35`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: color, fontSize: 14, flexShrink: 0 }}>{icon}</span>
         {children}
@@ -223,7 +223,7 @@ const WarehouseOrder = () => {
             <PageHeader
                 title={<Bi i18nKey="warehouse.title" />}
                 subtitle={<Bi i18nKey="warehouse.subtitle" />}
-                accent="#6366f1"
+                accent="#0ea5e9"
             />
 
             <Row gutter={[20, 20]}>
@@ -272,7 +272,7 @@ const WarehouseOrder = () => {
                     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, marginBottom: 16 }}>
                         <SectionHeading icon={<InboxOutlined />}><Bi i18nKey="warehouse.warehouseConfig" /></SectionHeading>
                         <EditableGrid rows={warehouses} setRows={setWarehouses} columns={whCols} addLabel={<Bi i18nKey="warehouse.addWarehouse" />} />
-                        <div style={{ marginTop: 10, padding: '8px 12px', background: 'rgba(99,102,241,0.08)', borderRadius: 8, border: '1px solid rgba(99,102,241,0.2)' }}>
+                        <div style={{ marginTop: 10, padding: '8px 12px', background: 'rgba(2,132,199,0.08)', borderRadius: 8, border: '1px solid rgba(2,132,199,0.2)' }}>
                             <Text style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                                 <Bi i18nKey="warehouse.totalProp" /> <strong style={{ color: warehouses.reduce((s, w) => s + (Number(w.proportion) || 0), 0) === 100 ? '#10b981' : '#f59e0b' }}>
                                     {warehouses.reduce((s, w) => s + (Number(w.proportion) || 0), 0)}%
@@ -299,9 +299,9 @@ const WarehouseOrder = () => {
                         icon={<ThunderboltOutlined />}
                         style={{
                             height: 52, borderRadius: 10, fontWeight: 700, fontSize: 16,
-                            background: 'linear-gradient(135deg, #6366f1 0%, #3b82f6 100%)',
+                            background: 'var(--fm-gradient)',
                             color: '#fff', border: 'none',
-                            boxShadow: '0 4px 20px rgba(99,102,241,0.35)',
+                            boxShadow: '0 4px 20px rgba(2,132,199,0.35)',
                         }}
                     >
                         {loading ? <Bi i18nKey="warehouse.generating" /> : <Bi i18nKey="warehouse.generateOutput" />}
@@ -329,8 +329,8 @@ const WarehouseOrder = () => {
                             {/* Summary Cards */}
                             <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
                                 <Col xs={12} md={6}>
-                                    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderLeft: '4px solid #6366f1', borderRadius: 10, padding: '14px 12px', textAlign: 'center' }}>
-                                        <div style={{ fontSize: 22, fontWeight: 900, color: '#6366f1', fontFamily: "'Outfit', sans-serif" }}>
+                                    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderLeft: '4px solid #0ea5e9', borderRadius: 10, padding: '14px 12px', textAlign: 'center' }}>
+                                        <div style={{ fontSize: 22, fontWeight: 900, color: '#0ea5e9', fontFamily: "'Outfit', sans-serif" }}>
                                             Rp {result.aov?.toLocaleString()}
                                         </div>
                                         <Text style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>AOV</Text>

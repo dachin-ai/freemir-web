@@ -59,6 +59,119 @@
   "common": {
     "verifyingSession": "Verifying session..."
   },
+  "landing": {
+    "navAbout": "About",
+    "navProducts": "Products",
+    "navCatalog": "Catalog",
+    "navLearn": "Learn",
+    "navContact": "Contact",
+    "navTeamLogin": "Internal Tools",
+    "shopNow": "Shop now",
+    "backToHome": "Back to website",
+    "heroTag": "freemir",
+    "heroTitle": "Make cooking easy",
+    "aboutAccent": "Make Cooking Easy",
+    "aboutP1": "freemir is a modern kitchenware brand built on a simple belief: Make Cooking Easy. We design practical, reliable, and thoughtfully crafted kitchen products that help families cook with greater ease and confidence.",
+    "aboutP2": "From everyday meals to special moments, freemir supports a smoother and more enjoyable cooking experience. Inspired by modern lifestyles, we focus on innovation, functionality, and user-friendly design to simplify cooking and promote healthier living.",
+    "featuredTitle": "Featured series",
+    "featuredLead": "Discover our popular cookware lines — designed for real kitchens and everyday cooking.",
+    "fromPrice": "From RM {{price}}",
+    "statsTitle": "Why families choose freemir",
+    "categoriesTitle": "Shop by category",
+    "categoriesLead": "Find the right cookware for every recipe and every kitchen.",
+    "catalogTitle": "Product catalog",
+    "catalogLead": "Browse highlights from our range. Full product details, comparisons, and guides are coming soon.",
+    "catalogLeadDb": "Featured products from our catalog — names and prices in Rupiah synced from the database.",
+    "catalogEmpty": "Product data is not available yet. Sync SKU info in the team tools, then refresh this page.",
+    "learnTitle": "Compare & learn",
+    "learnLead": "Soon you can compare products side by side and explore detailed guides for each item.",
+    "compareTitle": "Compare products",
+    "compareDesc": "See specs, materials, and sizes next to each other before you decide.",
+    "learnProductTitle": "Learn about products",
+    "learnProductDesc": "Published product information, care tips, and usage guides in one place.",
+    "comingSoon": "Coming soon",
+    "footerMission": "As we continue to grow, freemir is expanding to serve families around the world — bringing better kitchen experiences to every home.",
+    "contactUsTitle": "Contact us",
+    "contactEmail": "Email",
+    "contactWhatsApp": "WhatsApp",
+    "contactCountryId": "Indonesia",
+    "contactCountryMy": "Malaysia",
+    "contactAddressLabel": "Office",
+    "contactAddress": "KITIC Kav.49, Desa Nagasari, Kecamatan Serang Baru, Kabupaten Bekasi 17330",
+    "contactHoursLabel": "Operating hours",
+    "contactHours": "08.30 – 17.30",
+    "followUsTitle": "Follow us",
+    "footerCopyright": "© {{year}} freemir Indonesia. All rights reserved.",
+    "footerRights": "All rights reserved.",
+    "teamAccess": "Internal Tools",
+    "teamBar": "Freemir team member?",
+    "teamSignIn": "Sign in to internal tools",
+    "series": {
+      "titanium": {
+        "title": "Titanium non-stick series",
+        "desc": "Durable coating for everyday frying and sautéing with easy cleanup."
+      },
+      "pressure2l": {
+        "title": "2L mini pressure cooker",
+        "desc": "Cook faster with a compact non-stick pressure pot for busy households."
+      },
+      "wok30": {
+        "title": "30cm non-stick wok",
+        "desc": "Large capacity wok for family meals — even heat, less sticking."
+      }
+    },
+    "stats": {
+      "years": "Years serving families",
+      "markets": "Markets & channels",
+      "skus": "Product lines",
+      "rating": "Customer satisfaction"
+    },
+    "categories": {
+      "kuali": "Woks & pans",
+      "periuk": "Pots",
+      "pressure": "Pressure cookers",
+      "rice": "Rice cookers",
+      "blender": "Blenders",
+      "airfryer": "Air fryers",
+      "utensils": "Kitchen utensils",
+      "knife": "Knife sets"
+    },
+    "catalog": {
+      "nonstick-top": {
+        "title": "Top non-stick pan series",
+        "items": {
+          "0": "Non-stick fry pan 24cm",
+          "1": "Non-stick fry pan 28cm",
+          "2": "Non-stick wok 30cm",
+          "3": "Non-stick cookware set"
+        }
+      },
+      "sus316": {
+        "title": "SUS316 stainless steel series",
+        "items": {
+          "0": "Stainless wok 28cm",
+          "1": "Stainless wok 32cm",
+          "2": "Stainless soup pot",
+          "3": "Stainless cookware set"
+        }
+      },
+      "steamer": {
+        "title": "Steamer series",
+        "items": {
+          "0": "2-tier steamer pot",
+          "1": "3-tier steamer pot"
+        }
+      },
+      "accessories": {
+        "title": "Kitchen accessories",
+        "items": {
+          "0": "Silicone spatula",
+          "1": "Soup ladle",
+          "2": "Splatter guard"
+        }
+      }
+    }
+  },
   "login": {
     "signIn": "Sign In",
     "createAccount": "Create Account",

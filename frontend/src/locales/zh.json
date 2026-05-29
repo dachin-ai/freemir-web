@@ -59,6 +59,93 @@
   "common": {
     "verifyingSession": "验证会话中..."
   },
+  "landing": {
+    "navAbout": "关于",
+    "navProducts": "产品",
+    "navCatalog": "目录",
+    "navLearn": "了解",
+    "navContact": "联系",
+    "navTeamLogin": "内部工具",
+    "shopNow": "立即选购",
+    "backToHome": "返回网站首页",
+    "heroTag": "freemir",
+    "heroTitle": "让烹饪更轻松",
+    "aboutAccent": "Make Cooking Easy",
+    "aboutP1": "freemir 是现代厨房用具品牌，秉持一个简单信念：让烹饪更轻松。我们设计实用、可靠、用心打造的厨房产品，帮助家庭更从容、更有信心地下厨。",
+    "aboutP2": "从日常三餐到特别时刻，freemir 让烹饪体验更顺畅、更愉快。我们关注创新、功能与人性化设计，简化烹饪，倡导更健康的生活。",
+    "featuredTitle": "精选系列",
+    "featuredLead": "探索热门厨具系列 — 为真实厨房与日常烹饪而设计。",
+    "fromPrice": "RM {{price}} 起",
+    "statsTitle": "家庭选择 freemir 的理由",
+    "categoriesTitle": "按分类选购",
+    "categoriesLead": "为每道菜、每个厨房找到合适的厨具。",
+    "catalogTitle": "产品目录",
+    "catalogLead": "浏览精选产品。完整详情、对比与指南即将上线。",
+    "catalogLeadDb": "精选产品来自目录 — 名称与印尼盾价格从数据库同步。",
+    "catalogEmpty": "暂无产品数据。请在团队工具中同步 SKU 信息后刷新本页。",
+    "learnTitle": "对比与学习",
+    "learnLead": "即将支持产品对比与详细使用指南。",
+    "compareTitle": "产品对比",
+    "compareDesc": "并排查看规格、材质与尺寸，轻松做决定。",
+    "learnProductTitle": "了解产品",
+    "learnProductDesc": "集中展示产品信息、保养技巧与使用说明。",
+    "comingSoon": "即将推出",
+    "footerMission": "随着品牌成长，freemir 正走向全球更多家庭 — 为每个家庭带来更好的厨房体验。",
+    "contactUsTitle": "联系我们",
+    "contactEmail": "邮箱",
+    "contactWhatsApp": "WhatsApp",
+    "contactCountryId": "印尼",
+    "contactCountryMy": "马来西亚",
+    "contactAddressLabel": "地址",
+    "contactAddress": "KITIC Kav.49, Desa Nagasari, Kecamatan Serang Baru, Kabupaten Bekasi 17330",
+    "contactHoursLabel": "营业时间",
+    "contactHours": "08.30 – 17.30",
+    "followUsTitle": "关注我们",
+    "footerCopyright": "© {{year}} freemir Indonesia. All rights reserved.",
+    "footerRights": "版权所有。",
+    "teamAccess": "内部工具",
+    "teamBar": "Freemir 团队成员？",
+    "teamSignIn": "登录内部工具",
+    "series": {
+      "titanium": { "title": "钛系不粘系列", "desc": "耐用涂层，适合日常煎炒，清洁省心。" },
+      "pressure2l": { "title": "2升迷你压力锅", "desc": "小巧不粘压力锅，忙碌家庭也能快速出餐。" },
+      "wok30": { "title": "30cm 不粘炒锅", "desc": "大容量家庭炒锅，受热均匀，少粘锅。" }
+    },
+    "stats": {
+      "years": "服务家庭年数",
+      "markets": "市场与渠道",
+      "skus": "产品线",
+      "rating": "客户满意度"
+    },
+    "categories": {
+      "kuali": "炒锅平底锅",
+      "periuk": "汤锅",
+      "pressure": "压力锅",
+      "rice": "电饭煲",
+      "blender": "搅拌机",
+      "airfryer": "空气炸锅",
+      "utensils": "厨房用具",
+      "knife": "刀具套装"
+    },
+    "catalog": {
+      "nonstick-top": {
+        "title": "热门不粘锅系列",
+        "items": { "0": "不粘煎锅 24cm", "1": "不粘煎锅 28cm", "2": "不粘炒锅 30cm", "3": "不粘套装" }
+      },
+      "sus316": {
+        "title": "SUS316 不锈钢系列",
+        "items": { "0": "不锈钢炒锅 28cm", "1": "不锈钢炒锅 32cm", "2": "不锈钢汤锅", "3": "不锈钢套装" }
+      },
+      "steamer": {
+        "title": "蒸锅系列",
+        "items": { "0": "双层蒸锅", "1": "三层蒸锅" }
+      },
+      "accessories": {
+        "title": "厨房配件",
+        "items": { "0": "硅胶锅铲", "1": "汤勺", "2": "防溅网" }
+      }
+    }
+  },
   "login": {
     "signIn": "登录",
     "createAccount": "注册",

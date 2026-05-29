@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-    Button, Input, InputNumber, Segmented, Collapse, Dropdown, Modal,
+    Button, Input, InputNumber, Collapse, Dropdown,
     Row, Col, Typography, Table, Upload,
     message, Spin, Divider
 } from 'antd';
@@ -22,22 +22,21 @@ import {
     readCurrency, writeCurrency,
     SUPPORTED_CURRENCIES, CURRENCY_META, formatPrice,
 } from '../utils/currencyStorage';
+import './priceChecker.css';
 
 const { Title, Text } = Typography;
 const { Dragger } = Upload;
 
 /* ─── Reusable UI helpers ─── */
 const Label = ({ children }) => (
-    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>
-        {children}
-    </div>
+    <div className="pc-label">{children}</div>
 );
 
 const SectionHeading = ({ icon, children, color }) => {
     const { isDark } = useTheme();
-    const accent = color ?? (isDark ? '#6366f1' : '#0284c7');
+    const accent = color ?? (isDark ? '#38bdf8' : '#0284c7');
     return (
-        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-main)', fontFamily: "'Outfit', sans-serif", display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <div className="pc-section-heading">
             <span style={{ width: 28, height: 28, borderRadius: 6, background: `${accent}22`, border: `1px solid ${accent}40`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: accent, fontSize: 14, flexShrink: 0 }}>{icon}</span>
             {children}
         </div>
@@ -145,6 +144,7 @@ const PriceChecker = () => {
     const [fileList, setFileList] = useState([]);
     const [batchOverview, setBatchOverview] = useState(null);
     const [lastStockUploadAt, setLastStockUploadAt] = useState(null);
+    const [lastStockUploadFile, setLastStockUploadFile] = useState(null);
     const [downloadingWithPicture, setDownloadingWithPicture] = useState(false);
     const [exportLoading, setExportLoading] = useState(false);
 
@@ -167,6 +167,13 @@ const PriceChecker = () => {
         } catch {
             return '-';
         }
+    };
+
+    const formatFileSize = (bytes) => {
+        const size = Number(bytes || 0);
+        if (!Number.isFinite(size) || size <= 0) return '';
+        if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(2)} MB`;
+        return `${(size / 1024).toFixed(2)} KB`;
     };
 
     const fetchStockUploadStatus = async () => {
@@ -244,6 +251,10 @@ const PriceChecker = () => {
             const res = await api.post('/price-checker/upload-stock-data', formData);
             message.success(res.data.message || t('priceChecker.msgStockOk'));
             setLastStockUploadAt(res.data?.last_uploaded_at || null);
+            setLastStockUploadFile({
+                name: file?.name || '',
+                sizeLabel: formatFileSize(file?.size),
+            });
             onSuccess?.(res.data);
             logActivity('Price Checker (Upload Stock Data)');
         } catch (error) {
@@ -332,44 +343,46 @@ const PriceChecker = () => {
         }
     };
 
-    const runExportData = async (withPictures) => {
+    const runExportData = async (exportCurrency) => {
         setExportLoading(true);
         try {
             const res = await api.get('/price-checker/export-data', {
-                params: { include_pictures: withPictures ? 'true' : 'false' },
+                params: {
+                    include_pictures: 'false',
+                    currency: exportCurrency,
+                },
                 responseType: 'blob',
+                timeout: 300000,
             });
             const blob = new Blob(
                 [res.data],
                 { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
             );
             const href = URL.createObjectURL(blob);
-            const filename = withPictures ? 'Price_Checker_Export_With_Image.xlsx' : 'Price_Checker_Export.xlsx';
+            const filename = `Price_Checker_Export_${exportCurrency}.xlsx`;
             Object.assign(document.createElement('a'), { href, download: filename }).click();
-            message.success(withPictures ? t('priceChecker.msgExportPicReady') : t('priceChecker.msgExportReady'));
-            logActivity(withPictures
-                ? `Price Checker (Export Data With Picture ${currency})`
-                : `Price Checker (Export Data ${currency})`);
+            message.success(t('priceChecker.msgExportReady'));
+            logActivity(`Price Checker (Export Data ${exportCurrency})`);
         } catch (err) {
-            message.error(err.response?.data?.detail || t('priceChecker.msgExportFail'));
+            if (err?.code === 'ECONNABORTED') {
+                message.error('Export timeout. Please try again.');
+            } else if (err?.response?.data instanceof Blob) {
+                try {
+                    const text = await err.response.data.text();
+                    const parsed = JSON.parse(text);
+                    message.error(parsed?.detail || t('priceChecker.msgExportFail'));
+                } catch {
+                    message.error(t('priceChecker.msgExportFail'));
+                }
+            } else {
+                message.error(err.response?.data?.detail || t('priceChecker.msgExportFail'));
+            }
         } finally {
             setExportLoading(false);
         }
     };
 
-    const handleExportData = (withPictures) => {
-        if (!withPictures) {
-            runExportData(false);
-            return;
-        }
-        Modal.confirm({
-            title: t('priceChecker.exportConfirmTitle'),
-            content: t('priceChecker.exportConfirmContent'),
-            okText: t('priceChecker.exportConfirmOk'),
-            cancelText: t('priceChecker.exportConfirmCancel'),
-            onOk: () => runExportData(true),
-        });
-    };
+    const handleExportData = (exportCurrency) => runExportData(exportCurrency);
 
     /* ─── Table Column Definitions ─── */
     const copyableCellProps = (value, extraStyle = {}) => ({
@@ -660,8 +673,8 @@ const PriceChecker = () => {
         gap: 8,
         border: '1px solid var(--border)',
         borderRadius: 10,
-        padding: '9px 12px',
-        background: isDark ? 'rgba(15,23,42,0.72)' : 'rgba(248,250,252,0.95)',
+        padding: '10px 14px',
+        background: isDark ? 'rgba(15,23,42,0.72)' : '#ffffff',
         fontWeight: 700,
         color: 'var(--text-main)',
         cursor: 'pointer',
@@ -670,80 +683,137 @@ const PriceChecker = () => {
 
     /* ─── RENDER ─── */
     return (
-        <div>
+        <div className="price-checker-page">
             <PageHeader
+                className="pc-page-header"
                 title={<Bi i18nKey="priceChecker.title" />}
                 subtitle={<Bi i18nKey="priceChecker.subtitle" />}
                 accent="var(--indigo)"
                 actions={
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <Segmented
-                                value={currency}
-                                onChange={handleCurrencyChange}
-                                size="middle"
-                                options={SUPPORTED_CURRENCIES.map((code) => {
+                            <div
+                                style={{
+                                    position: 'relative',
+                                    display: 'grid',
+                                    gridTemplateColumns: '1fr 1fr',
+                                    gap: 8,
+                                    padding: 6,
+                                    borderRadius: 10,
+                                    border: '1px solid var(--border)',
+                                    background: isDark ? 'rgba(15,23,42,0.75)' : 'rgba(148,163,184,0.2)',
+                                    overflow: 'hidden',
+                                    minWidth: 170,
+                                }}
+                            >
+                                <span
+                                    style={{
+                                        position: 'absolute',
+                                        top: 6,
+                                        left: 6,
+                                        width: 'calc(50% - 10px)',
+                                        height: 'calc(100% - 12px)',
+                                        borderRadius: 8,
+                                        background: 'var(--fm-gradient)',
+                                        boxShadow: 'var(--fm-shadow-sm)',
+                                        transform: currency === 'IDR' ? 'translateX(0)' : 'translateX(calc(100% + 8px))',
+                                        transition: 'transform 220ms ease',
+                                        pointerEvents: 'none',
+                                    }}
+                                />
+                                {SUPPORTED_CURRENCIES.map((code) => {
                                     const meta = CURRENCY_META[code];
                                     const isActive = currency === code;
-                                    return {
-                                        value: code,
-                                        label: (
-                                            <span
-                                                style={{
-                                                    display: 'inline-flex',
-                                                    alignItems: 'center',
-                                                    gap: 8,
-                                                    fontWeight: isActive ? 800 : 600,
-                                                    fontSize: 13,
-                                                    paddingInline: 2,
-                                                    opacity: isActive ? 1 : 0.55,
-                                                    color: isActive ? '#ffffff' : 'var(--text-muted)',
-                                                    transform: isActive ? 'scale(1.02)' : 'scale(1)',
-                                                    transition: 'all 180ms ease',
-                                                }}
-                                            >
-                                                <FlagIcon code={meta.countryCode} width={22} />
-                                                {code}
-                                            </span>
-                                        ),
-                                    };
+                                    return (
+                                        <Button
+                                            key={code}
+                                            type="text"
+                                            onClick={() => handleCurrencyChange(code)}
+                                            style={{
+                                                height: 30,
+                                                borderRadius: 8,
+                                                fontWeight: 700,
+                                                fontSize: 13,
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: 8,
+                                                position: 'relative',
+                                                zIndex: 1,
+                                                color: isActive ? '#ffffff' : (isDark ? '#cbd5e1' : '#0f172a'),
+                                                background: 'transparent',
+                                            }}
+                                        >
+                                            <FlagIcon code={meta.countryCode} width={20} />
+                                            {code}
+                                        </Button>
+                                    );
                                 })}
-                                style={{
-                                    height: 38,
-                                    borderRadius: 10,
-                                    padding: 3,
-                                    background: isDark ? 'rgba(15,23,42,0.75)' : 'rgba(148,163,184,0.2)',
-                                    border: '1px solid var(--border)',
-                                }}
-                            />
+                            </div>
                             <Upload
                                 accept=".xlsx,.xls"
                                 showUploadList={false}
                                 customRequest={uploadStockData}
                             >
                                 <Button
-                                    icon={<UploadOutlined />}
+                                    icon={lastStockUploadFile?.name ? <CheckCircleFilled /> : <UploadOutlined />}
                                     loading={loadingDb}
-                                    style={{ height: 36, borderRadius: 8, fontWeight: 600, fontSize: 13 }}
+                                    style={{
+                                        height: 44,
+                                        borderRadius: 10,
+                                        fontWeight: 600,
+                                        fontSize: 13,
+                                        minWidth: 210,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'flex-start',
+                                        color: lastStockUploadFile?.name ? '#10b981' : undefined,
+                                        borderColor: lastStockUploadFile?.name ? 'rgba(16,185,129,0.45)' : undefined,
+                                        background: lastStockUploadFile?.name
+                                            ? (isDark ? 'rgba(16,185,129,0.12)' : 'rgba(16,185,129,0.08)')
+                                            : undefined,
+                                    }}
+                                    title={lastStockUploadFile?.name || t('priceChecker.uploadStock')}
                                 >
-                                    <Bi i18nKey="priceChecker.uploadStock" />
+                                    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.15 }}>
+                                        <span><Bi i18nKey="priceChecker.uploadStock" /></span>
+                                        {lastStockUploadFile?.name ? (
+                                            <span
+                                                style={{
+                                                    maxWidth: 150,
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap',
+                                                    fontSize: 11,
+                                                    fontWeight: 500,
+                                                    color: isDark ? 'rgba(167,243,208,0.95)' : '#047857',
+                                                }}
+                                            >
+                                                {lastStockUploadFile.name}
+                                                {lastStockUploadFile.sizeLabel ? ` (${lastStockUploadFile.sizeLabel})` : ''}
+                                            </span>
+                                        ) : null}
+                                    </span>
                                 </Button>
                             </Upload>
                             <Button
+                                type="primary"
+                                className="fm-btn-primary"
                                 icon={<DatabaseOutlined />}
                                 onClick={syncNeonData}
                                 loading={loadingDb}
                                 style={{
-                                    height: 36, borderRadius: 8, fontWeight: 600, fontSize: 13,
-                                    background: 'var(--indigo)', color: '#fff', border: 'none',
-                                    boxShadow: '0 2px 8px rgba(99,102,241,0.25)',
+                                    height: 44,
+                                    borderRadius: 10,
+                                    fontSize: 13,
+                                    paddingInline: 16,
                                 }}
                             >
                                 <Bi i18nKey="priceChecker.syncPrice" />
                             </Button>
                         </div>
                         <div style={{ textAlign: 'right', maxWidth: 420 }}>
-                            <Text style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block' }}>
+                            <Text className="pc-hint" style={{ display: 'block' }}>
                                 {t('priceChecker.lastStockUpload', { time: formatWibDateTime(lastStockUploadAt) })}
                             </Text>
                         </div>
@@ -754,6 +824,7 @@ const PriceChecker = () => {
             {/* MODE SWITCH + EXPORT */}
             <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
                 <div
+                    className="pc-mode-switch"
                     style={{
                         position: 'relative',
                         display: 'grid',
@@ -762,7 +833,6 @@ const PriceChecker = () => {
                         padding: 6,
                         borderRadius: 12,
                         border: '1px solid var(--border)',
-                        background: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(148,163,184,0.12)',
                         overflow: 'hidden',
                         width: 330,
                         maxWidth: '100%',
@@ -776,8 +846,8 @@ const PriceChecker = () => {
                             width: 'calc(50% - 10px)',
                             height: 'calc(100% - 12px)',
                             borderRadius: 9,
-                            background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                            boxShadow: '0 8px 18px rgba(79,70,229,0.35)',
+                            background: 'var(--fm-gradient)',
+                            boxShadow: '0 8px 18px rgba(14,165,233,0.35)',
                             transform: inputMode === 'Batch' ? 'translateX(0)' : 'translateX(calc(100% + 8px))',
                             transition: 'transform 220ms ease',
                             pointerEvents: 'none',
@@ -785,6 +855,7 @@ const PriceChecker = () => {
                     />
                     <Button
                         type="text"
+                        className={`pc-mode-pill${inputMode === 'Batch' ? ' pc-mode-pill--active' : ''}`}
                         onClick={() => {
                             setInputMode('Batch');
                             setFileList([]);
@@ -794,17 +865,13 @@ const PriceChecker = () => {
                         style={{
                             height: 38,
                             borderRadius: 9,
-                            fontWeight: 700,
-                            fontSize: 13,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             gap: 8,
                             position: 'relative',
                             zIndex: 1,
-                            color: inputMode === 'Batch' ? '#fff' : 'var(--text-main)',
                             background: 'transparent',
-                            transition: 'color 180ms ease',
                         }}
                     >
                         <UnorderedListOutlined />
@@ -812,6 +879,7 @@ const PriceChecker = () => {
                     </Button>
                     <Button
                         type="text"
+                        className={`pc-mode-pill${inputMode === 'Direct' ? ' pc-mode-pill--active' : ''}`}
                         onClick={() => {
                             setInputMode('Direct');
                             setFileList([]);
@@ -821,17 +889,13 @@ const PriceChecker = () => {
                         style={{
                             height: 38,
                             borderRadius: 9,
-                            fontWeight: 700,
-                            fontSize: 13,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             gap: 8,
                             position: 'relative',
                             zIndex: 1,
-                            color: inputMode === 'Direct' ? '#fff' : 'var(--text-main)',
                             background: 'transparent',
-                            transition: 'color 180ms ease',
                         }}
                     >
                         <ThunderboltOutlined />
@@ -842,8 +906,8 @@ const PriceChecker = () => {
                 <Dropdown
                     menu={{
                         items: [
-                            { key: 'plain', label: t('priceChecker.exportWithoutImage'), onClick: () => handleExportData(false) },
-                            { key: 'img', label: t('priceChecker.exportWithImage'), onClick: () => handleExportData(true) },
+                            { key: 'idr', label: 'Export Data IDR', onClick: () => handleExportData('IDR') },
+                            { key: 'myr', label: 'Export Data MYR', onClick: () => handleExportData('MYR') },
                         ],
                     }}
                     trigger={['click']}
@@ -857,10 +921,10 @@ const PriceChecker = () => {
                             borderRadius: 10,
                             fontWeight: 700,
                             fontSize: 13,
-                            background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                            background: 'var(--fm-gradient)',
                             color: '#fff',
-                            border: '1px solid rgba(99,102,241,0.45)',
-                            boxShadow: '0 4px 10px rgba(79,70,229,0.24)',
+                            border: '1px solid rgba(2,132,199,0.45)',
+                            boxShadow: '0 4px 10px rgba(14,165,233,0.24)',
                         }}
                     >
                         {t('priceChecker.exportData')} <DownOutlined style={{ fontSize: 11 }} />
@@ -873,10 +937,11 @@ const PriceChecker = () => {
             {inputMode === 'Batch' && (
                 <div>
                     <div style={{ marginBottom: 18 }}>
-                        <Text style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 10 }}>
+                        <Text className="pc-label" style={{ display: 'block', marginBottom: 10 }}>
                             <Bi i18nKey="priceChecker.batchMethod" />
                         </Text>
                         <div
+                            className="pc-mode-switch"
                             style={{
                                 position: 'relative',
                                 display: 'grid',
@@ -885,7 +950,6 @@ const PriceChecker = () => {
                                 padding: 6,
                                 borderRadius: 12,
                                 border: '1px solid var(--border)',
-                                background: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(148,163,184,0.12)',
                                 width: '100%',
                                 overflow: 'hidden',
                             }}
@@ -898,8 +962,8 @@ const PriceChecker = () => {
                                     width: 'calc(50% - 10px)',
                                     height: 'calc(100% - 12px)',
                                     borderRadius: 9,
-                                    background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                                    boxShadow: '0 8px 18px rgba(79,70,229,0.35)',
+                                    background: 'var(--fm-gradient)',
+                                    boxShadow: '0 8px 18px rgba(14,165,233,0.35)',
                                     transform: method === 'Listing' ? 'translateX(0)' : 'translateX(calc(100% + 8px))',
                                     transition: 'transform 220ms ease',
                                     pointerEvents: 'none',
@@ -907,20 +971,18 @@ const PriceChecker = () => {
                             />
                             <Button
                                 type="text"
+                                className={`pc-method-pill${method === 'Listing' ? ' pc-method-pill--active' : ''}`}
                                 onClick={() => { setMethod('Listing'); setFileList([]); setBatchOverview(null); }}
                                 style={{
                                     height: 44,
                                     borderRadius: 9,
-                                    fontWeight: 700,
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     gap: 8,
                                     position: 'relative',
                                     zIndex: 1,
-                                    color: method === 'Listing' ? '#fff' : 'var(--text-main)',
                                     background: 'transparent',
-                                    transition: 'color 180ms ease',
                                 }}
                             >
                                 <UnorderedListOutlined />
@@ -928,20 +990,18 @@ const PriceChecker = () => {
                             </Button>
                             <Button
                                 type="text"
+                                className={`pc-method-pill${method === 'SKU' ? ' pc-method-pill--active' : ''}`}
                                 onClick={() => { setMethod('SKU'); setFileList([]); setBatchOverview(null); }}
                                 style={{
                                     height: 44,
                                     borderRadius: 9,
-                                    fontWeight: 700,
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     gap: 8,
                                     position: 'relative',
                                     zIndex: 1,
-                                    color: method === 'SKU' ? '#fff' : 'var(--text-main)',
                                     background: 'transparent',
-                                    transition: 'color 180ms ease',
                                 }}
                             >
                                 <BarcodeOutlined />
@@ -956,7 +1016,7 @@ const PriceChecker = () => {
                                 <SectionHeading icon={<DownloadOutlined />}>Step 1 - <Bi i18nKey="priceChecker.downloadTemplate" /> <RightOutlined style={{ fontSize: 12, marginLeft: 2 }} /></SectionHeading>
                             </div>
                             <div style={{ padding: '18px 20px' }}>
-                                <Text style={{ fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 16 }}>
+                                <Text className="pc-muted" style={{ display: 'block', marginBottom: 16 }}>
                                     <Bi i18nKey="priceChecker.downloadTemplateHint" />
                                 </Text>
                                 <Button
@@ -965,10 +1025,10 @@ const PriceChecker = () => {
                                     onClick={() => downloadTemplate(method)}
                                     style={{
                                         height: 44, borderRadius: 8, fontWeight: 600, fontSize: 13,
-                                        background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                                        background: 'var(--fm-gradient)',
                                         color: '#fff',
                                         border: 'none',
-                                        boxShadow: '0 4px 12px rgba(79,70,229,0.35)',
+                                        boxShadow: '0 4px 12px rgba(14,165,233,0.35)',
                                     }}
                                 >
                                     {t('priceChecker.downloadMethodTemplate', { method })}
@@ -1020,7 +1080,7 @@ const PriceChecker = () => {
                                 <SectionHeading icon={<RiseOutlined />}>Step 3 - <Bi i18nKey="priceChecker.startCalculation" /></SectionHeading>
                             </div>
                             <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                <Text style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                                <Text className="pc-muted">
                                     {fileList.length ? t('priceChecker.fileReady') : t('priceChecker.fileNotReady')}
                                 </Text>
                                 <Button
@@ -1033,7 +1093,7 @@ const PriceChecker = () => {
                                         background: !fileList.length ? 'var(--bg-panel)' : 'var(--indigo)',
                                         color: !fileList.length ? 'var(--text-muted)' : '#fff',
                                         border: !fileList.length ? '1px solid var(--border)' : 'none',
-                                        boxShadow: !fileList.length ? 'none' : '0 2px 8px rgba(99,102,241,0.25)',
+                                        boxShadow: !fileList.length ? 'none' : '0 2px 8px rgba(2,132,199,0.25)',
                                     }}
                                 >
                                     {calcLoading ? <Bi i18nKey="priceChecker.processing" /> : <Bi i18nKey="priceChecker.startBatch" />}
@@ -1055,7 +1115,7 @@ const PriceChecker = () => {
                                         <div style={{ fontSize: 40, fontWeight: 800, color: 'var(--indigo)', fontFamily: "'Outfit', sans-serif" }}>
                                             {batchOverview.summary.total}
                                         </div>
-                                        <Text style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}><Bi i18nKey="priceChecker.totalRows" /></Text>
+                                        <Text className="pc-stat-label"><Bi i18nKey="priceChecker.totalRows" /></Text>
                                     </div>
                                 </Col>
                                 <Col xs={24} md={8}>
@@ -1066,7 +1126,7 @@ const PriceChecker = () => {
                                                 {batchOverview.summary.valid}
                                             </span>
                                         </div>
-                                        <Text style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}><Bi i18nKey="priceChecker.validItems" /></Text>
+                                        <Text className="pc-stat-label"><Bi i18nKey="priceChecker.validItems" /></Text>
                                     </div>
                                 </Col>
                                 <Col xs={24} md={8}>
@@ -1077,14 +1137,14 @@ const PriceChecker = () => {
                                                 {batchOverview.summary.invalid}
                                             </span>
                                         </div>
-                                        <Text style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}><Bi i18nKey="priceChecker.invalidItems" /></Text>
+                                        <Text className="pc-stat-label"><Bi i18nKey="priceChecker.invalidItems" /></Text>
                                     </div>
                                 </Col>
                             </Row>
 
                             {/* Preview Table (scrollable) */}
                             <div style={{ marginBottom: 6 }}>
-                                <Text style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                <Text className="pc-label">
                                     <Bi i18nKey="priceChecker.dataPreview" />
                                 </Text>
                             </div>
@@ -1140,14 +1200,14 @@ const PriceChecker = () => {
                         ? 'linear-gradient(145deg, rgba(30,41,59,0.95) 0%, rgba(15,23,42,0.98) 100%)'
                         : 'linear-gradient(145deg, #ffffff 0%, #f8fafc 100%)',
                     borderRadius: 16,
-                    border: isDark ? '1px solid rgba(99,102,241,0.25)' : '1px solid rgba(99,102,241,0.2)',
+                    border: isDark ? '1px solid rgba(2,132,199,0.25)' : '1px solid rgba(2,132,199,0.2)',
                     padding: '24px',
                     boxShadow: isDark
                         ? '0 10px 30px rgba(2, 6, 23, 0.45)'
                         : '0 10px 30px rgba(15, 23, 42, 0.08)',
                 }}>
                     <div style={{ marginBottom: 16 }}>
-                        <Text style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.7px' }}>
+                        <Text className="pc-label">
                             <Bi i18nKey="priceChecker.directInput" />
                         </Text>
                     </div>
@@ -1210,9 +1270,9 @@ const PriceChecker = () => {
                         onClick={doCalculateDirect}
                         style={{
                             marginTop: 18, height: 42, borderRadius: 9, fontWeight: 700, fontSize: 13,
-                            color: '#fff', border: '1px solid rgba(99,102,241,0.42)', paddingInline: 26,
-                            background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                            boxShadow: '0 3px 8px rgba(79,70,229,0.2)',
+                            color: '#fff', border: '1px solid rgba(2,132,199,0.42)', paddingInline: 26,
+                            background: 'var(--fm-gradient)',
+                            boxShadow: '0 3px 8px rgba(14,165,233,0.2)',
                         }}
                     >
                         <Bi i18nKey="priceChecker.calculate" />
@@ -1221,7 +1281,7 @@ const PriceChecker = () => {
                     {calcLoading && (
                         <div style={{ textAlign: 'center', padding: '40px 0' }}>
                             <Spin size="large" />
-                            <div style={{ marginTop: 12, color: 'var(--text-muted)', fontSize: 13 }}><Bi i18nKey="priceChecker.calculating" /></div>
+                            <div className="pc-muted" style={{ marginTop: 12 }}><Bi i18nKey="priceChecker.calculating" /></div>
                         </div>
                     )}
 
@@ -1250,7 +1310,7 @@ const PriceChecker = () => {
                                         ? `${Number(availableMatch[1]).toLocaleString()} • ${availableMatch[2]}`
                                         : availableRaw;
                                     return [
-                                        { label: `Warning Price (${currency})`, value: warningValue, color: '#8b5cf6', compact: false, md: 7 },
+                                        { label: `Warning Price (${currency})`, value: warningValue, color: '#0ea5e9', compact: false, md: 7 },
                                         { label: 'Available Stock', value: availableValue, color: '#06b6d4', compact: false, md: 7 },
                                         { label: 'Bundle Discount', value: `${Number(directResult.summary.bundle_discount) * 100}%`, color: 'var(--indigo)', compact: true, md: 3 },
                                         { label: 'Clearance Status', value: directResult.summary.clearance, color: '#f59e0b', compact: true, md: 3 },
@@ -1259,8 +1319,8 @@ const PriceChecker = () => {
                                 })().map(({ label, value, color, compact, md }) => (
                                     <Col key={label} xs={24} sm={12} md={md}>
                                         <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 10, padding: compact ? '12px 10px' : '14px 12px', textAlign: 'center', height: '100%' }}>
-                                            <div style={{ fontSize: compact ? 20 : 24, fontWeight: 800, color, fontFamily: "'Outfit', sans-serif", lineHeight: 1.15, wordBreak: 'break-word' }}>{value}</div>
-                                            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginTop: 4 }}>{label}</div>
+                                            <div className="pc-stat-value" style={{ fontSize: compact ? 20 : 24, color }}>{value}</div>
+                                            <div className="pc-metric-label">{label}</div>
                                         </div>
                                     </Col>
                                 ))}
@@ -1285,7 +1345,7 @@ const PriceChecker = () => {
                                                     background: isDark
                                                         ? 'linear-gradient(180deg, rgba(15,23,42,0.95) 0%, rgba(2,6,23,0.98) 100%)'
                                                         : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-                                                    border: isDark ? '1px solid rgba(99,102,241,0.24)' : '1px solid rgba(99,102,241,0.18)',
+                                                    border: isDark ? '1px solid rgba(2,132,199,0.24)' : '1px solid rgba(2,132,199,0.18)',
                                                     borderRadius: 14,
                                                     overflow: 'hidden',
                                                     minHeight: 220,
@@ -1300,7 +1360,7 @@ const PriceChecker = () => {
                                                     padding: 8,
                                                     background: isDark
                                                         ? 'linear-gradient(180deg, rgba(30,41,59,0.7) 0%, rgba(15,23,42,0.8) 100%)'
-                                                        : 'linear-gradient(180deg, #eef2ff 0%, #e2e8f0 100%)',
+                                                        : 'linear-gradient(180deg, #e0f2fe 0%, #e2e8f0 100%)',
                                                     borderBottom: '1px solid var(--border)',
                                                 }}>
                                                     <div style={{
@@ -1318,8 +1378,8 @@ const PriceChecker = () => {
                                                 </div>
                                                 <div style={{ padding: '8px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 6 }}>
                                                     <div>
-                                                        <Text strong style={{ display: 'block', marginBottom: 2, fontSize: 11.5, wordBreak: 'break-all', letterSpacing: '0.2px' }}>{item.sku}</Text>
-                                                        <Text type="secondary" style={{ display: 'block', fontSize: 10.5, lineHeight: 1.25 }}>{item.name || '-'}</Text>
+                                                        <Text strong className="pc-sku-code" style={{ display: 'block', marginBottom: 2, wordBreak: 'break-all' }}>{item.sku}</Text>
+                                                        <Text className="pc-sku-name" style={{ display: 'block' }}>{item.name || '-'}</Text>
                                                     </div>
                                                     {item.link ? (
                                                         <a
@@ -1330,8 +1390,8 @@ const PriceChecker = () => {
                                                                 fontSize: 10,
                                                                 color: 'var(--indigo)',
                                                                 fontWeight: 600,
-                                                                background: isDark ? 'rgba(99,102,241,0.14)' : 'rgba(99,102,241,0.12)',
-                                                                border: '1px solid rgba(99,102,241,0.35)',
+                                                                background: isDark ? 'rgba(2,132,199,0.14)' : 'rgba(2,132,199,0.12)',
+                                                                border: '1px solid rgba(2,132,199,0.35)',
                                                                 borderRadius: 6,
                                                                 padding: '4px 7px',
                                                                 width: 'fit-content',
@@ -1370,7 +1430,7 @@ const PriceChecker = () => {
                                         {
                                             key: 'breakdown',
                                             label: (
-                                                <div style={foldLabelStyle}>
+                                                <div className="pc-fold-label" style={foldLabelStyle}>
                                                     <AppstoreOutlined style={{ color: 'var(--indigo)' }} />
                                                     Composition
                                                 </div>
@@ -1412,7 +1472,7 @@ const PriceChecker = () => {
                                         {
                                             key: 'evaluation',
                                             label: (
-                                                <div style={foldLabelStyle}>
+                                                <div className="pc-fold-label" style={foldLabelStyle}>
                                                     <RiseOutlined style={{ color: 'var(--indigo)' }} />
                                                     Price Tier
                                                 </div>
@@ -1454,7 +1514,7 @@ const PriceChecker = () => {
                                         {
                                             key: 'stock-evaluation',
                                             label: (
-                                                <div style={foldLabelStyle}>
+                                                <div className="pc-fold-label" style={foldLabelStyle}>
                                                     <BarChartOutlined style={{ color: 'var(--indigo)' }} />
                                                     Stock Tier
                                                 </div>

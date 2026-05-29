@@ -244,7 +244,7 @@ const SkuReviewAiPanel = ({ aiSummary, aiLoading, onGenerate, t }) => (
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 200 }}>
-                <ThunderboltOutlined style={{ color: '#8b5cf6', fontSize: 18 }} />
+                <ThunderboltOutlined style={{ color: '#0ea5e9', fontSize: 18 }} />
                 <div>
                     <Text strong>{t('skuReviewAnalysis.aiTitle')}</Text>
                     <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
@@ -257,7 +257,7 @@ const SkuReviewAiPanel = ({ aiSummary, aiLoading, onGenerate, t }) => (
                 icon={<ThunderboltOutlined />}
                 loading={aiLoading}
                 onClick={onGenerate}
-                style={{ background: '#7c3aed', border: 'none' }}
+                style={{ background: '#0ea5e9', border: 'none' }}
             >
                 {aiLoading ? t('skuReviewAnalysis.aiGenerating') : t('skuReviewAnalysis.aiGenerateBtn')}
             </Button>
@@ -758,7 +758,7 @@ const SkuReviewAnalysis = () => {
             <PageHeader
                 title={t('skuReviewAnalysis.title')}
                 subtitle={t('skuReviewAnalysis.subtitle')}
-                accent="#6366f1"
+                accent="#0ea5e9"
             />
 
             <div
@@ -848,7 +848,7 @@ const SkuReviewAnalysis = () => {
                 <div>
                     {/* Top stat row */}
                     <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
-                        <Col xs={12} sm={8}><StatCard label={t('skuReviewAnalysis.statSourceRows')} value={result.stats.source_rows} color="#6366f1" /></Col>
+                        <Col xs={12} sm={8}><StatCard label={t('skuReviewAnalysis.statSourceRows')} value={result.stats.source_rows} color="#0ea5e9" /></Col>
                         <Col xs={12} sm={8}><StatCard label={t('skuReviewAnalysis.statExpandedRows')} value={result.stats.expanded_rows} color="#06b6d4" /></Col>
                         <Col xs={12} sm={8}><StatCard label={t('skuReviewAnalysis.statUniqueSkus')} value={result.stats.unique_skus} color="#10b981" /></Col>
                         <Col xs={12} sm={8}><StatCard label={t('skuReviewAnalysis.statUniqueOrders')} value={result.stats.unique_orders} color="#0ea5e9" /></Col>
@@ -888,7 +888,7 @@ const SkuReviewAnalysis = () => {
 
                     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                            <BarChartOutlined style={{ color: '#6366f1' }} />
+                            <BarChartOutlined style={{ color: '#0ea5e9' }} />
                             <Text strong>{t('skuReviewAnalysis.summaryTitle')}</Text>
                         </div>
                         <Tabs items={tabItems} />

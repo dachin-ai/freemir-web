@@ -4,13 +4,22 @@
    PREMIUM DARK THEME
    ============================================ */
 :root {
-  --indigo:       #6366f1;
-  --indigo-dark:  #4f46e5;
-  --indigo-dim:   #312e81;
+  /* Freemir blue — satu sumber (selaras Price Checker) */
+  --fm-blue:        #38bdf8;
+  --fm-blue-dark:   #0ea5e9;
+  --fm-blue-darker: #0284c7;
+  --fm-gradient:    linear-gradient(135deg, #7dd3fc 0%, #38bdf8 45%, #0ea5e9 100%);
+  --fm-shadow:      0 4px 14px rgba(14, 165, 233, 0.35);
+  --fm-shadow-sm:   0 2px 10px rgba(14, 165, 233, 0.28);
+  --fm-shadow-lg:   0 8px 22px rgba(14, 165, 233, 0.42);
 
-  --bg-app:       #020617; /* Slate 950 */
-  --bg-panel:     #0f172a; /* Slate 900 */
-  --bg-card:      #1e293b; /* Slate 800 */
+  --indigo:       var(--fm-blue);
+  --indigo-dark:  var(--fm-blue-dark);
+  --indigo-dim:   #0c4a6e;
+
+  --bg-app:       #060b12;
+  --bg-panel:     #0c1420;
+  --bg-card:      #152232;
   
   --text-main:    #ffffff; /* Perfect contrast */
   --text-muted:   #94a3b8; /* Slate 400 */
@@ -30,7 +39,7 @@
   cursor: text;
 }
 .copyable-table .ant-table-cell:hover {
-  background: rgba(99, 102, 241, 0.08) !important;
+  background: rgba(56, 189, 248, 0.1) !important;
 }
 :root[data-theme="light"] .copyable-table .ant-table-cell:hover {
   background: rgba(14, 165, 233, 0.12) !important;
@@ -67,17 +76,21 @@
    LIGHT MODE — musim panas: langit & air, biru segar (bukan hijau)
    ============================================ */
 :root[data-theme="light"] {
-  /* Aksen: sky blue (segar, tetap “matang” — bukan biru neon) */
-  --indigo:       #0284c7; /* sky-600 */
-  --indigo-dark:  #0369a1; /* sky-700 */
-  --indigo-dim:   #e0f2fe; /* sky-100 */
+  --fm-blue:        #0ea5e9;
+  --fm-blue-dark:   #0284c7;
+  --fm-blue-darker: #0369a1;
+  --fm-gradient:    linear-gradient(135deg, #7dd3fc 0%, #38bdf8 45%, #0ea5e9 100%);
+
+  --indigo:       var(--fm-blue);
+  --indigo-dark:  var(--fm-blue-dark);
+  --indigo-dim:   #e0f7ff;
 
   --bg-app:       #f0f9ff; /* sky-50 */
   --bg-panel:     #eff6ff; /* blue-50 — sedikit lebih “udara” */
   --bg-card:      #ffffff;
 
   --text-main:    #0c4a6e; /* sky-900 */
-  --text-muted:   #5b8fb8; /* antara sky & slate, enak di mata */
+  --text-muted:   #64748b; /* slate-500 — kontras lebih jelas di latar terang */
 
   --border:       #bae6fd; /* sky-200 */
   --border-light: #dbeafe; /* blue-100 */
@@ -179,19 +192,19 @@ body::before {
     radial-gradient(ellipse 30% 25% at 4%  96%,  rgba(255,237,180,0.22) 0%, transparent 60%),
 
     /* galactic core — diagonal center-ish, tilted upper-right */
-    radial-gradient(ellipse 14% 10% at 58% 40%,  rgba(220,210,255,0.22) 0%, rgba(139,92,246,0.14) 50%, transparent 78%),
+    radial-gradient(ellipse 14% 10% at 58% 40%,  rgba(186,230,253,0.22) 0%, rgba(14,165,233,0.14) 50%, transparent 78%),
     /* diagonal disk — tilted ~35deg, sweeps from bottom-left to top-right */
-    radial-gradient(ellipse 80% 6%  at 50% 50%,  rgba(99,102,241,0.10)  0%, transparent 100%),
+    radial-gradient(ellipse 80% 6%  at 50% 50%,  rgba(2,132,199,0.10)  0%, transparent 100%),
     /* spiral arm — upper-right */
-    radial-gradient(ellipse 38% 13% at 80% 18%,  rgba(139,92,246,0.09)  0%, transparent 80%),
+    radial-gradient(ellipse 38% 13% at 80% 18%,  rgba(14,165,233,0.09)  0%, transparent 80%),
     /* spiral arm — lower-left (blends into warm glow area) */
     radial-gradient(ellipse 35% 12% at 20% 82%,  rgba(120,100,200,0.07) 0%, transparent 80%),
     /* spiral arm — upper-left faint */
     radial-gradient(ellipse 25% 10% at 14% 18%,  rgba(167,139,250,0.06) 0%, transparent 75%),
     /* spiral arm — lower-right faint */
-    radial-gradient(ellipse 25% 10% at 86% 82%,  rgba(99,102,241,0.06)  0%, transparent 75%),
+    radial-gradient(ellipse 25% 10% at 86% 82%,  rgba(2,132,199,0.06)  0%, transparent 75%),
     /* outer halo */
-    radial-gradient(ellipse 95% 75% at 55% 42%,  rgba(99,102,241,0.04)  0%, transparent 100%),
+    radial-gradient(ellipse 95% 75% at 55% 42%,  rgba(2,132,199,0.04)  0%, transparent 100%),
     /* accent nebula — top-right pink */
     radial-gradient(ellipse 28% 20% at 92% 8%,   rgba(236,72,153,0.05)  0%, transparent 70%);
   transform: rotate(-32deg) scale(1.55);
@@ -349,27 +362,37 @@ h4.ant-typography {
 }
 
 /* ============================================
-   BUTTONS
+   BUTTONS — Freemir primary (Price Checker style)
    ============================================ */
-.ant-btn-primary {
-  background: var(--indigo) !important;
-  border-color: var(--indigo) !important;
+.fm-btn-primary,
+.pc-live-cta,
+.ant-btn.fm-btn-primary,
+.ant-btn-primary:not(.ant-btn-dangerous):not(.ant-btn-link) {
+  background: var(--fm-gradient) !important;
+  border: none !important;
   color: #ffffff !important;
   font-weight: 600 !important;
-  border-radius: 8px !important;
-  box-shadow: 0 2px 12px rgba(99,102,241,0.4) !important;
+  border-radius: 10px !important;
+  box-shadow: var(--fm-shadow) !important;
+  transition: transform 0.18s ease, box-shadow 0.2s ease, filter 0.2s ease !important;
 }
 
-.ant-btn-primary:hover {
-  background: var(--indigo-dark) !important;
-  border-color: var(--indigo-dark) !important;
+.fm-btn-primary:hover:not(:disabled),
+.pc-live-cta:hover:not(:disabled),
+.ant-btn.fm-btn-primary:hover:not(:disabled),
+.ant-btn-primary:not(.ant-btn-dangerous):not(.ant-btn-link):hover:not(:disabled) {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  box-shadow: var(--fm-shadow-lg) !important;
+  color: #ffffff !important;
 }
 
-:root[data-theme="light"] .ant-btn-primary {
-  box-shadow: 0 2px 14px rgba(2, 132, 199, 0.28) !important;
-}
-:root[data-theme="light"] .ant-btn-primary:hover {
-  box-shadow: 0 4px 18px rgba(2, 132, 199, 0.38) !important;
+.fm-btn-primary:active:not(:disabled),
+.pc-live-cta:active:not(:disabled),
+.ant-btn.fm-btn-primary:active:not(:disabled),
+.ant-btn-primary:not(.ant-btn-dangerous):active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: var(--fm-shadow-sm) !important;
 }
 
 /* ============================================
@@ -421,30 +444,16 @@ h4.ant-typography {
   background: transparent !important;
 }
 
-/* Price Checker: CTA button feel more alive */
+/* Price Checker & tools: CTA = same as fm-btn-primary */
 .pc-live-cta {
-  background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 52%, #7c3aed 100%) !important;
-  box-shadow: 0 10px 24px rgba(99, 102, 241, 0.34), 0 0 0 1px rgba(255, 255, 255, 0.08) inset !important;
-  transition: transform 0.18s ease, box-shadow 0.2s ease, filter 0.2s ease !important;
-}
-
-.pc-live-cta:hover {
-  transform: translateY(-1px);
-  filter: saturate(1.06);
-  box-shadow: 0 14px 30px rgba(99, 102, 241, 0.42), 0 0 0 1px rgba(255, 255, 255, 0.14) inset !important;
-}
-
-.pc-live-cta:active {
-  transform: translateY(0);
-  box-shadow: 0 8px 18px rgba(99, 102, 241, 0.32), 0 0 0 1px rgba(255, 255, 255, 0.1) inset !important;
+  height: auto;
+  min-height: 44px;
+  padding-inline: 20px !important;
+  box-shadow: var(--fm-shadow), 0 0 0 1px rgba(255, 255, 255, 0.08) inset !important;
 }
 
 .pc-live-cta .anticon {
   font-size: 15px;
-}
-
-:root[data-theme="light"] .pc-live-cta {
-  box-shadow: 0 10px 22px rgba(2, 132, 199, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.12) inset !important;
 }
 
 /* Quick Links: Close editor — merah / danger, tetap “premium” */
@@ -579,16 +588,16 @@ h4.ant-typography {
    ============================================ */
 .ant-alert-info {
   background: var(--indigo-dim) !important;
-  border: 1px solid rgba(99,102,241,0.4) !important;
+  border: 1px solid rgba(2, 132, 199, 0.4) !important;
   border-radius: 10px !important;
 }
 
-.ant-alert-info .ant-alert-icon { color: #818cf8 !important; }
+.ant-alert-info .ant-alert-icon { color: #38bdf8 !important; }
 :root[data-theme="light"] .ant-alert-info {
   background: rgba(224, 242, 254, 0.75) !important;
   border: 1px solid rgba(2, 132, 199, 0.22) !important;
 }
-:root[data-theme="light"] .ant-alert-info .ant-alert-icon { color: #0284c7 !important; }
+:root[data-theme="light"] .ant-alert-info .ant-alert-icon { color: #0ea5e9 !important; }
 .ant-alert-message { color: var(--text-main) !important; font-weight: 600 !important; }
 .ant-alert-description { color: var(--text-muted) !important; font-size: 13px !important; }
 
@@ -694,12 +703,12 @@ h4.ant-typography {
 }
 
 .fm-header-profile-trigger:focus-visible {
-  outline: 2px solid #6366f1;
+  outline: 2px solid var(--indigo);
   outline-offset: 2px;
 }
 
 :root[data-theme="light"] .fm-header-profile-trigger:focus-visible {
-  outline-color: #0284c7;
+  outline-color: #0ea5e9;
 }
 
 .fm-header-profile-trigger:hover {

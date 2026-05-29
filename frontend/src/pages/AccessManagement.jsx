@@ -44,7 +44,7 @@ const PERM_TOOLS = [
 
 const GROUP_STYLE = {
     admin:   { color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  border: 'rgba(245,158,11,0.3)'  },
-    freemir: { color: '#6366f1', bg: 'rgba(99,102,241,0.10)',  border: 'rgba(99,102,241,0.25)' },
+    freemir: { color: '#0ea5e9', bg: 'rgba(2,132,199,0.10)',  border: 'rgba(2,132,199,0.25)' },
     shopee:  { color: '#f97316', bg: 'rgba(249,115,22,0.10)',  border: 'rgba(249,115,22,0.25)' },
     tiktok:  { color: '#ec4899', bg: 'rgba(236,72,153,0.10)',  border: 'rgba(236,72,153,0.25)' },
 };

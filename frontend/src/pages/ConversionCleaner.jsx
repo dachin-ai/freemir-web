@@ -35,7 +35,7 @@ const Top5Table = ({ data, metricLabel }) => {
         { title: 'Name', dataIndex: 'name', key: 'name', ellipsis: true },
         {
             title: metricLabel, dataIndex: 'value', key: 'value', align: 'right',
-            render: (val) => <Text strong style={{ color: '#6366f1' }}>{Number(val).toLocaleString()}</Text>
+            render: (val) => <Text strong style={{ color: '#0ea5e9' }}>{Number(val).toLocaleString()}</Text>
         }
     ];
     return (
@@ -147,7 +147,7 @@ const ConversionCleaner = () => {
                     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: '24px', marginBottom: 24 }}>
                         <SectionHeading emoji="📋">File Requirements</SectionHeading>
                         <Text style={{ fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 12 }}>
-                            Upload a Shopee <strong style={{ color: 'var(--text-main)' }}>CSV</strong> Seller Conversion Report containing at least <strong style={{ color: '#6366f1' }}>34 columns</strong>.
+                            Upload a Shopee <strong style={{ color: 'var(--text-main)' }}>CSV</strong> Seller Conversion Report containing at least <strong style={{ color: '#0ea5e9' }}>34 columns</strong>.
                         </Text>
                         <div style={{ background: 'var(--bg-panel)', padding: '12px 16px', borderRadius: 8, border: '1px solid var(--border)' }}>
                             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
@@ -201,8 +201,8 @@ const ConversionCleaner = () => {
                             <p className="ant-upload-text" style={{ color: 'var(--text-main)', fontSize: 16 }}>Click or drag a Conversion CSV here</p>
                             <p className="ant-upload-hint" style={{ color: 'var(--text-muted)', fontSize: 13 }}>Shopee SellerConversionReport format only (.csv)</p>
                         </Dragger>
-                        <Button block loading={loading} onClick={handleUpload} icon={<CloudUploadOutlined />}
-                            style={{ height: 48, borderRadius: 8, fontWeight: 700, fontSize: 15, background: 'var(--indigo)', color: '#fff', border: 'none', boxShadow: '0 4px 14px rgba(99,102,241,0.3)' }}>
+                        <Button type="primary" className="fm-btn-primary" block loading={loading} onClick={handleUpload} icon={<CloudUploadOutlined />}
+                            style={{ height: 48, borderRadius: 10, fontWeight: 700, fontSize: 15 }}>
                             {loading ? 'Processing Report...' : 'Clean & Analyze'}
                         </Button>
                     </div>
@@ -213,15 +213,15 @@ const ConversionCleaner = () => {
                             <Divider style={{ borderColor: 'var(--border)' }} />
 
                             {/* Date Range Badge */}
-                            <div style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 8, padding: '10px 16px', marginBottom: 20, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ background: 'rgba(2,132,199,0.1)', border: '1px solid rgba(2,132,199,0.3)', borderRadius: 8, padding: '10px 16px', marginBottom: 20, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                                 <span>📅</span>
-                                <Text style={{ color: '#818cf8', fontWeight: 600, fontSize: 13 }}>Period: {result.stats.date_range}</Text>
+                                <Text style={{ color: '#38bdf8', fontWeight: 600, fontSize: 13 }}>Period: {result.stats.date_range}</Text>
                             </div>
 
                             {/* Stats Row */}
                             <Row gutter={[12, 12]} style={{ marginBottom: 24 }}>
                                 <Col xs={12} md={8}>
-                                    <StatCard label="Total Rows" value={result.stats.total_rows} color="#6366f1" />
+                                    <StatCard label="Total Rows" value={result.stats.total_rows} color="#0ea5e9" />
                                 </Col>
                                 <Col xs={12} md={8}>
                                     <StatCard label="Unique Affiliates" value={result.stats.unique_affiliates} color="#06b6d4" />

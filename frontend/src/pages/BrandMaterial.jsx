@@ -13,6 +13,7 @@ import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { toolsPath } from '../routes/paths';
 import BrandMaterialSkuDetail from './BrandMaterialSkuDetail';
 import BrandMaterialSkuList from './BrandMaterialSkuList';
 
@@ -166,13 +167,13 @@ export default function BrandMaterial() {
     }, [reloadToken]);
 
     const openSkuFolder = useCallback((row) => {
-        navigate(`/brand-material/${encodeURIComponent(row.sku)}`, {
+        navigate(toolsPath(`brand-material/${encodeURIComponent(row.sku)}`), {
             state: { skuInfoImageUrl: row.skuInfoImageUrl || '' },
         });
     }, [navigate]);
 
     const backToSkuList = useCallback(() => {
-        navigate('/brand-material');
+        navigate(toolsPath('brand-material'));
     }, [navigate]);
 
     const selectedItems = useMemo(
@@ -311,7 +312,7 @@ export default function BrandMaterial() {
             closeEdit();
             await refreshAfterChange();
             if (activeSku && sku !== activeSku) {
-                navigate(`/brand-material/${encodeURIComponent(sku)}`);
+                navigate(toolsPath(`brand-material/${encodeURIComponent(sku)}`));
             }
             logActivity('Material Library (Edit)');
         } catch (e) {
@@ -419,7 +420,7 @@ export default function BrandMaterial() {
             closeEdit();
             await refreshAfterChange();
             if (activeSku) {
-                navigate('/brand-material');
+                navigate(toolsPath('brand-material'));
             }
         } catch {
             message.error(t('brandMaterial.msgDeleteFail'));

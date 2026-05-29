@@ -22,6 +22,10 @@ from services.price_checker_logic import (
     sync_google_sheets_to_vps_postgres,
     upload_stock_data_to_google_sheet,
     resolve_photo_maps_for_skus,
+    _item_price,
+    _item_stock,
+    parse_idr_price,
+    parse_stock_value,
 )
 from pydantic import BaseModel
 from datetime import datetime, timezone
@@ -182,6 +186,134 @@ def _to_valid_number(value):
         return num
     except Exception:
         return None
+
+
+def _has_valid_warning_price(item: dict, currency: str) -> bool:
+    return parse_idr_price(_item_price(item or {}, "Warning", currency)) >= 1
+
+
+def _is_valid_export_tiers(tiers: dict) -> bool:
+    warning = (tiers or {}).get("Warning", "Invalid")
+    if str(warning) == "Invalid":
+        return False
+    num = _to_valid_number(warning)
+    return num is not None and num > 0
+
+
+def _export_tiers_from_item(item: dict, currency: str) -> dict:
+    tiers = {}
+    for pt in PRICE_TYPES:
+        val = parse_idr_price(_item_price(item, pt, currency))
+        tiers[pt] = int(round(val)) if val >= 1 else "Invalid"
+    return tiers
+
+
+def _append_recomputed_bundle_rows(
+    db,
+    *,
+    currency: str,
+    price_db: dict,
+    name_map: dict,
+    link_map: dict,
+    merged_rows: list,
+    merged_keys: set,
+) -> None:
+    """Recompute multi-SKU bundles for the selected currency.
+
+    Ensures MYR export includes valid Malaysia bundles even when they were
+    previously calculated/cached only under another currency (e.g. IDR).
+    """
+    bundle_skus = (
+        db.query(PriceCheckerBundleCache.bundle_sku)
+        .filter(PriceCheckerBundleCache.sku_count > 1)
+        .distinct()
+        .all()
+    )
+    seen_bundle_sku: set[str] = set()
+    for (bundle_sku_raw,) in bundle_skus:
+        bundle_sku = str(bundle_sku_raw or "").strip()
+        if not bundle_sku or bundle_sku in seen_bundle_sku:
+            continue
+        seen_bundle_sku.add(bundle_sku)
+
+        bundle_key = f"{currency}|{bundle_sku}"
+        if bundle_key in merged_keys:
+            continue
+
+        price_info = calculate_prices(
+            bundle_sku,
+            price_db,
+            name_map,
+            link_map,
+            photo_map={},
+            brand_photo_meta_map={},
+            brand_photo_map={},
+            currency=currency,
+        )
+        if not _is_valid_bundle_result(price_info):
+            continue
+
+        row_data = _build_bundle_cache_row_data(
+            source="export_recalc",
+            currency=currency,
+            sku_string=bundle_sku,
+            price_info=price_info,
+            breakdown=[],
+            compact=False,
+        )
+        if not row_data:
+            continue
+        merged_keys.add(bundle_key)
+        merged_rows.append(row_data)
+
+
+def _build_synthetic_single_sku_row(
+    *,
+    sku: str,
+    raw_sku: str,
+    item: dict,
+    currency: str,
+    name_map: dict,
+    link_map: dict,
+) -> dict | None:
+    tiers = _export_tiers_from_item(item, currency)
+    if not _is_valid_export_tiers(tiers):
+        return None
+
+    stock_types = get_stock_types_for(currency)
+    synthetic_stocks = {st: parse_stock_value(_item_stock(item, st)) for st in stock_types}
+    sku_link = (link_map or {}).get(raw_sku) or (link_map or {}).get(sku) or ""
+    sku_name = (name_map or {}).get(raw_sku) or (name_map or {}).get(sku) or sku
+    c_val = parse_idr_price(_item_price(item, "Clearance", currency))
+
+    synthetic_payload = {
+        "bundle_sku": sku,
+        "currency": currency,
+        "summary": {
+            "bundle_discount": 0.0,
+            "clearance": "Yes" if c_val >= 1 else "-",
+            "gift": "Yes" if "gift" in str((item or {}).get("Category", "")).lower() else "-",
+            "gift_discount": 0.0,
+            "available_stock": _summarize_available_stock(synthetic_stocks),
+            "category": (item or {}).get("Category", ""),
+        },
+        "tiers": tiers,
+        "stocks": synthetic_stocks,
+        "items": [{
+            "sku": sku,
+            "name": sku_name,
+            "link": sku_link,
+        }],
+        "breakdown": [],
+    }
+    return {
+        "bundle_key": f"{currency}|{sku}",
+        "bundle_sku": sku,
+        "sku_count": 1,
+        "currency": currency,
+        "source": "sku_info",
+        "payload": synthetic_payload,
+    }
 
 
 def _summarize_available_stock(stock_map: dict) -> str:
@@ -346,19 +478,26 @@ def get_template(method: str):
 
 
 @router.get("/export-data", dependencies=[Depends(require_tool_access("price_checker"))])
-def export_cached_data(include_pictures: bool = False):
+def export_cached_data(include_pictures: bool = False, currency: str = CURRENCIES[0]):
+    currency = normalize_currency(currency)
     db = SessionLocal()
     try:
-        rows = db.query(PriceCheckerBundleCache).order_by(
+        rows = db.query(PriceCheckerBundleCache).filter(
+            PriceCheckerBundleCache.currency == currency,
+        ).order_by(
             PriceCheckerBundleCache.sku_count.asc(),
             PriceCheckerBundleCache.created_at.desc(),
         ).all()
 
-        # Keep newest row per bundle_key, then order shortest bundle first.
+        # Keep newest valid row per bundle_key, then order shortest bundle first.
         dedup_db = OrderedDict()
         for row in rows:
-            if row.bundle_key not in dedup_db:
-                dedup_db[row.bundle_key] = row
+            if row.bundle_key in dedup_db:
+                continue
+            payload = row.payload or {}
+            if not _is_valid_export_tiers(payload.get("tiers", {})):
+                continue
+            dedup_db[row.bundle_key] = row
         unique_rows_db = sorted(
             dedup_db.values(),
             key=lambda r: (int(r.sku_count or 0), str(r.bundle_sku or "")),
@@ -371,8 +510,6 @@ def export_cached_data(include_pictures: bool = False):
         link_map = db_cache.get("link_map")
         if not price_db:
             price_db, name_map, link_map = load_product_database()
-        default_currency = CURRENCIES[0]
-        stock_types = get_stock_types_for(default_currency)
         merged_rows = list(unique_rows_db)
         merged_keys = {r.bundle_key for r in unique_rows_db}
 
@@ -380,49 +517,43 @@ def export_cached_data(include_pictures: bool = False):
             sku = str(raw_sku or "").strip().upper()
             if not sku:
                 continue
-            warning_num = _to_valid_number((item or {}).get("Warning"))
-            if warning_num is None or warning_num <= 0:
+            if not _has_valid_warning_price(item or {}, currency):
                 continue
 
-            bundle_key = f"{default_currency}|{sku}"
+            bundle_key = f"{currency}|{sku}"
             if bundle_key in merged_keys:
                 continue
-            merged_keys.add(bundle_key)
 
-            sku_link = (link_map or {}).get(raw_sku) or (link_map or {}).get(sku) or ""
-            sku_name = (name_map or {}).get(raw_sku) or (name_map or {}).get(sku) or sku
-            synthetic_stocks = {st: int((item or {}).get(st, 0) or 0) for st in stock_types}
-            synthetic_payload = {
-                "bundle_sku": sku,
-                "currency": default_currency,
-                "summary": {
-                    "bundle_discount": 0.0,
-                    "clearance": "Yes" if _to_valid_number((item or {}).get("Clearance") or 0) and _to_valid_number((item or {}).get("Clearance") or 0) >= 1 else "-",
-                    "gift": "Yes" if "gift" in str((item or {}).get("Category", "")).lower() else "-",
-                    "gift_discount": 0.0,
-                    "available_stock": _summarize_available_stock(synthetic_stocks),
-                    "category": (item or {}).get("Category", ""),
-                },
-                "tiers": {pt: (item or {}).get(pt, "Invalid") for pt in PRICE_TYPES},
-                "stocks": synthetic_stocks,
-                "items": [{
-                    "sku": sku,
-                    "name": sku_name,
-                    "link": sku_link,
-                }],
-                "breakdown": [],
-            }
-            merged_rows.append({
-                "bundle_key": bundle_key,
-                "bundle_sku": sku,
-                "sku_count": 1,
-                "currency": default_currency,
-                "source": "sku_info",
-                "payload": synthetic_payload,
-            })
+            synthetic_row = _build_synthetic_single_sku_row(
+                sku=sku,
+                raw_sku=raw_sku,
+                item=item or {},
+                currency=currency,
+                name_map=name_map or {},
+                link_map=link_map or {},
+            )
+            if not synthetic_row:
+                continue
+            merged_keys.add(bundle_key)
+            merged_rows.append(synthetic_row)
+
+        # Include valid multi-SKU bundles for this currency (e.g. MYR bundles
+        # that were only cached from IDR runs).
+        _append_recomputed_bundle_rows(
+            db,
+            currency=currency,
+            price_db=price_db or {},
+            name_map=name_map or {},
+            link_map=link_map or {},
+            merged_rows=merged_rows,
+            merged_keys=merged_keys,
+        )
 
         if not merged_rows:
-            raise HTTPException(status_code=404, detail="Belum ada data valid untuk diexport.")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Belum ada data valid untuk diexport ({currency}).",
+            )
 
         merged_rows = sorted(
             merged_rows,
@@ -434,16 +565,23 @@ def export_cached_data(include_pictures: bool = False):
 
         export_df = _build_export_dataframe(merged_rows)
         if export_df.empty:
-            raise HTTPException(status_code=404, detail="Tidak ada data valid untuk diexport.")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Tidak ada data valid untuk diexport ({currency}).",
+            )
 
         file_bytes = convert_df_to_excel_multisheet(
             export_df,
             method="SKU",
             include_pictures=include_pictures,
-            currency=CURRENCIES[0],
+            currency=currency,
         )
 
-        filename = "Price_Checker_Export_With_Image.xlsx" if include_pictures else "Price_Checker_Export.xlsx"
+        suffix = f"_{currency}"
+        if include_pictures:
+            filename = f"Price_Checker_Export{suffix}_With_Image.xlsx"
+        else:
+            filename = f"Price_Checker_Export{suffix}.xlsx"
         headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
         return Response(
             content=file_bytes,

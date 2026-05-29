@@ -31,7 +31,7 @@ const API = '/shopee-affiliate';
 const getTokens = (isDark) => ({
   page:    { padding: 24, minHeight: '100vh', background: 'var(--bg-app)' },
   card:    { background: isDark ? 'rgba(30,41,59,0.6)' : '#ffffff', border: '1px solid var(--border)', borderRadius: 12 },
-  infoBox: { padding: '10px 14px', background: isDark ? 'rgba(99,102,241,0.1)' : '#eef2ff', border: `1px solid ${isDark ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.4)'}`, borderRadius: 8 },
+  infoBox: { padding: '10px 14px', background: isDark ? 'rgba(2,132,199,0.1)' : '#eef2ff', border: `1px solid ${isDark ? 'rgba(2,132,199,0.3)' : 'rgba(2,132,199,0.4)'}`, borderRadius: 8 },
   warnBox: { padding: '10px 14px', background: isDark ? 'rgba(250,173,20,0.08)' : '#fffbeb', border: `1px solid ${isDark ? 'rgba(250,173,20,0.25)' : 'rgba(250,173,20,0.5)'}`, borderRadius: 8 },
   label:   { color: 'var(--text-muted)', fontSize: 12, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase' },
 });
@@ -185,9 +185,9 @@ const UploadTab = ({ stores, storesLoading, isDark }) => {
                   <span>All uploaded files in this batch will be tagged as <strong>{manualDate.format('DD MMMM YYYY')}</strong>.</span>
                 </div>
               ) : (
-                <div style={{ ...S.infoBox, color: isDark ? '#a5b4fc' : 'var(--text-main)', fontSize: 12, marginTop: 8, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <div style={{ ...S.infoBox, color: isDark ? '#7dd3fc' : 'var(--text-main)', fontSize: 12, marginTop: 8, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                   <InfoCircleOutlined style={{ marginTop: 2, flexShrink: 0 }} />
-                  <span>Dates are <strong>auto-detected</strong> from filenames (e.g. <code style={{ background: 'rgba(99,102,241,0.2)', padding: '1px 5px', borderRadius: 4 }}>_20260401</code> or <code style={{ background: 'rgba(99,102,241,0.2)', padding: '1px 5px', borderRadius: 4 }}>202604101458</code>). Batch uploading is allowed.</span>
+                  <span>Dates are <strong>auto-detected</strong> from filenames (e.g. <code style={{ background: 'rgba(2,132,199,0.2)', padding: '1px 5px', borderRadius: 4 }}>_20260401</code> or <code style={{ background: 'rgba(2,132,199,0.2)', padding: '1px 5px', borderRadius: 4 }}>202604101458</code>). Batch uploading is allowed.</span>
                 </div>
               )
             }
@@ -397,7 +397,7 @@ const AnalyticsTab = ({ stores, isDark }) => {
       </div>
       {sub && <div style={{ color: isDark ? '#64748b' : '#94a3b8', fontSize: 11, marginBottom: 3 }}>{sub}</div>}
       <div style={{ height: 3, background: isDark ? '#1e293b' : '#e2e8f0', borderRadius: 4 }}>
-        <div style={{ height: '100%', width: `${(gmv / max) * 100}%`, background: 'linear-gradient(90deg,#6366f1,#22c55e)', borderRadius: 4 }} />
+        <div style={{ height: '100%', width: `${(gmv / max) * 100}%`, background: 'linear-gradient(90deg,#0ea5e9,#22c55e)', borderRadius: 4 }} />
       </div>
     </div>
   );
@@ -529,13 +529,13 @@ const ReportTab = ({ stores, isDark }) => {
       roiCol(),
       numCol('Units Sold', 'units'),
       numCol('Clicks', 'clicks'),
-      { title: 'Creators', dataIndex: 'creator_count', align: 'right', width: 90, onHeaderCell: getHeaderCell, render: v => <span style={{ color: isDark ? '#a5b4fc' : '#4f46e5', fontWeight: 600 }}>{v}</span> }
+      { title: 'Creators', dataIndex: 'creator_count', align: 'right', width: 90, onHeaderCell: getHeaderCell, render: v => <span style={{ color: isDark ? '#7dd3fc' : '#0ea5e9', fontWeight: 600 }}>{v}</span> }
     ];
   } else if (dimension === 'by_creator') {
     columns = [
       { title: 'No', render: (_, __, i) => i+1, width: 50, align: 'center', onHeaderCell: getHeaderCell },
       { title: 'Username', dataIndex: 'username', width: 180, onHeaderCell: getHeaderCell,
-        render: v => <span style={{ color: isDark ? '#a5b4fc' : '#4f46e5', fontFamily: 'monospace' }}>@{v}</span> },
+        render: v => <span style={{ color: isDark ? '#7dd3fc' : '#0ea5e9', fontFamily: 'monospace' }}>@{v}</span> },
       { title: 'Creator Name', dataIndex: 'name', width: 200, onHeaderCell: getHeaderCell,
         render: v => <span style={{ color: textPrimary }}>{v}</span> },
       numCol('GMV Completed', 'gmv_completed', 'Rp '),
@@ -572,7 +572,7 @@ const ReportTab = ({ stores, isDark }) => {
   const expandedRow = record => {
     const subCols = [
       { title: 'Username', dataIndex: 'username', width: 180, onHeaderCell: getHeaderCell,
-        render: v => <span style={{ color: isDark ? '#a5b4fc' : '#4f46e5' }}>@{v}</span> },
+        render: v => <span style={{ color: isDark ? '#7dd3fc' : '#0ea5e9' }}>@{v}</span> },
       { title: 'Creator Name', dataIndex: 'name', width: 200, onHeaderCell: getHeaderCell },
       { title: 'GMV Potential (Rp)', dataIndex: 'gmv_potential', align: 'right', width: 150, onHeaderCell: getHeaderCell,
         render: v => <span style={{ color: '#22c55e', fontFamily: 'monospace' }}>Rp {fmtRp(v)}</span> },
@@ -707,7 +707,7 @@ const ComparisonTab = ({ stores, isDark }) => {
       render: r => <span style={{ color: textPrimary, fontFamily: 'monospace' }}>{prefix}{fmtRp(r[`b_${metricKey}`])}</span>
     },
     {
-      title: <span style={{ color: isDark ? '#a5b4fc' : '#4338ca' }}>Δ {label}</span>,
+      title: <span style={{ color: isDark ? '#7dd3fc' : '#0ea5e9' }}>Δ {label}</span>,
       align: 'center', width: 110, onHeaderCell: getHeaderCell,
       sorter: (a, b) => (a[`delta_${metricKey}`] || -999) - (b[`delta_${metricKey}`] || -999),
       render: r => <DeltaBadge val={r[`delta_${metricKey}`]} />
@@ -734,7 +734,7 @@ const ComparisonTab = ({ stores, isDark }) => {
       }
     },
     {
-      title: <span style={{ color: isDark ? '#a5b4fc' : '#4338ca' }}>Δ ROI</span>,
+      title: <span style={{ color: isDark ? '#7dd3fc' : '#0ea5e9' }}>Δ ROI</span>,
       align: 'center', width: 110, onHeaderCell: getHeaderCell,
       sorter: (a, b) => (a.delta_roi || -999) - (b.delta_roi || -999),
       render: r => <DeltaBadge val={r.delta_roi} />

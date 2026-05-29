@@ -5,11 +5,12 @@ import { ArrowRightOutlined, LockOutlined, TagOutlined, InboxOutlined, FileSearc
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { toolsPath } from '../routes/paths';
 
 const { Title, Text } = Typography;
 
 const SUITE_ACCENTS = {
-    freemir: '#6366f1',
+    freemir: '#0ea5e9',
     shopee: '#f97316',
     tiktok: '#ec4899',
 };
@@ -17,18 +18,18 @@ const SUITE_ACCENTS = {
 const CATEGORY_ORDER = ['freemir', 'shopee', 'tiktok'];
 
 const TOOL_ITEMS = [
-    { toolKey: 'price_checker', icon: <TagOutlined />, path: '/price-checker', active: true, category: 'freemir' },
-    { toolKey: 'order_planner', icon: <InboxOutlined />, path: '/warehouse-order', active: true, category: 'freemir' },
-    { toolKey: 'product_performance', icon: <BarChartOutlined />, path: '/product-performance', active: true, category: 'freemir' },
-    { toolKey: 'photo_downloader', icon: <PictureOutlined />, path: '/photo-downloader', active: true, category: 'freemir' },
-    { toolKey: 'brand_material', icon: <FileImageOutlined />, path: '/brand-material', active: true, category: 'freemir' },
-    { toolKey: 'sku_review', icon: <FileSearchOutlined />, path: '/sku-review', active: true, category: 'freemir' },
-    { toolKey: 'order_review', icon: <FileSearchOutlined />, path: '/order-loss', active: true, category: 'shopee' },
-    { toolKey: 'affiliate_performance', icon: <BarChartOutlined />, path: '/shopee-affiliate', active: true, category: 'shopee' },
-    { toolKey: 'livestream_display', icon: <VideoCameraOutlined />, path: '/livestream-display', active: true, category: 'shopee' },
-    { toolKey: 'pre_sales', icon: <FundProjectionScreenOutlined />, path: '/pre-sales', active: true, category: 'tiktok' },
-    { toolKey: 'affiliate_analyzer', icon: <RiseOutlined />, path: '/affiliate-analyzer', active: true, category: 'tiktok' },
-    { toolKey: 'ads_analyzer', icon: <PieChartOutlined />, path: '/tiktok-ads', active: true, category: 'tiktok' },
+    { toolKey: 'price_checker', icon: <TagOutlined />, path: toolsPath('price-checker'), active: true, category: 'freemir' },
+    { toolKey: 'order_planner', icon: <InboxOutlined />, path: toolsPath('warehouse-order'), active: true, category: 'freemir' },
+    { toolKey: 'product_performance', icon: <BarChartOutlined />, path: toolsPath('product-performance'), active: true, category: 'freemir' },
+    { toolKey: 'photo_downloader', icon: <PictureOutlined />, path: toolsPath('photo-downloader'), active: true, category: 'freemir' },
+    { toolKey: 'brand_material', icon: <FileImageOutlined />, path: toolsPath('brand-material'), active: true, category: 'freemir' },
+    { toolKey: 'sku_review', icon: <FileSearchOutlined />, path: toolsPath('sku-review'), active: true, category: 'freemir' },
+    { toolKey: 'order_review', icon: <FileSearchOutlined />, path: toolsPath('order-loss'), active: true, category: 'shopee' },
+    { toolKey: 'affiliate_performance', icon: <BarChartOutlined />, path: toolsPath('shopee-affiliate'), active: true, category: 'shopee' },
+    { toolKey: 'livestream_display', icon: <VideoCameraOutlined />, path: toolsPath('livestream-display'), active: true, category: 'shopee' },
+    { toolKey: 'pre_sales', icon: <FundProjectionScreenOutlined />, path: toolsPath('pre-sales'), active: true, category: 'tiktok' },
+    { toolKey: 'affiliate_analyzer', icon: <RiseOutlined />, path: toolsPath('affiliate-analyzer'), active: true, category: 'tiktok' },
+    { toolKey: 'ads_analyzer', icon: <PieChartOutlined />, path: toolsPath('tiktok-ads'), active: true, category: 'tiktok' },
 ];
 
 const Dashboard = () => {
@@ -64,9 +65,9 @@ const Dashboard = () => {
             <div style={{
                 position: 'relative', overflow: 'hidden',
                 background: isDark
-                    ? 'linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(99,102,241,0.05) 50%, rgba(236,72,153,0.03) 100%)'
-                    : 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(99,102,241,0.02) 50%, transparent 100%)',
-                border: `1px solid ${isDark ? 'rgba(99,102,241,0.25)' : 'rgba(99,102,241,0.15)'}`,
+                    ? 'linear-gradient(135deg, rgba(14,165,233,0.15) 0%, rgba(14,165,233,0.05) 50%, rgba(236,72,153,0.03) 100%)'
+                    : 'linear-gradient(135deg, rgba(2,132,199,0.08) 0%, rgba(2,132,199,0.02) 50%, transparent 100%)',
+                border: `1px solid ${isDark ? 'rgba(56,189,248,0.25)' : 'rgba(2,132,199,0.15)'}`,
                 borderRadius: 20, padding: '48px 56px', marginBottom: 64,
                 boxShadow: isDark
                     ? '0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)'
@@ -74,7 +75,7 @@ const Dashboard = () => {
             }}>
                 <div style={{
                     position: 'absolute', top: -80, right: -80, width: 280, height: 280, borderRadius: '50%',
-                    background: 'radial-gradient(circle, rgba(99,102,241,0.25) 0%, transparent 70%)',
+                    background: 'radial-gradient(circle, rgba(14,165,233,0.25) 0%, transparent 70%)',
                     pointerEvents: 'none', animation: 'float 6s ease-in-out infinite'
                 }} />
                 <div style={{
@@ -111,7 +112,7 @@ const Dashboard = () => {
                             <Button
                                 icon={<UnlockOutlined />}
                                 size="small"
-                                onClick={() => navigate('/request-access')}
+                                onClick={() => navigate(toolsPath('request-access'))}
                                 style={{
                                     flexShrink: 0,
                                     marginTop: 6,
@@ -120,9 +121,9 @@ const Dashboard = () => {
                                     fontWeight: 600,
                                     height: 30,
                                     padding: '0 12px',
-                                    background: isDark ? 'rgba(99,102,241,0.15)' : '#6366f1',
-                                    border: isDark ? '1px solid rgba(99,102,241,0.4)' : 'none',
-                                    color: isDark ? '#a5b4fc' : '#ffffff',
+                                    background: isDark ? 'rgba(14,165,233,0.15)' : '#0ea5e9',
+                                    border: isDark ? '1px solid rgba(56,189,248,0.4)' : 'none',
+                                    color: isDark ? '#7dd3fc' : '#ffffff',
                                 }}
                             >
                                 {t('lobbyPage.requestAccessTop')}
@@ -130,7 +131,7 @@ const Dashboard = () => {
                             <Button
                                 icon={<LinkOutlined />}
                                 size="small"
-                                onClick={() => navigate('/quick-links')}
+                                onClick={() => navigate(toolsPath('quick-links'))}
                                 style={{
                                     borderRadius: 8,
                                     fontSize: 12,
@@ -290,7 +291,7 @@ const Dashboard = () => {
                                                     <Button
                                                         size="middle"
                                                         icon={<LockOutlined />}
-                                                        onClick={(e) => { e.stopPropagation(); navigate('/request-access'); }}
+                                                        onClick={(e) => { e.stopPropagation(); navigate(toolsPath('request-access')); }}
                                                         style={{
                                                             borderRadius: 8,
                                                             fontSize: 13,

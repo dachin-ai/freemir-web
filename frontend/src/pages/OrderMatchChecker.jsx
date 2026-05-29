@@ -190,8 +190,8 @@ const OrderMatchChecker = () => {
                             <p className="ant-upload-hint" style={{ color: 'var(--text-muted)', fontSize: 13 }}>Supports .xlsx and .csv files. Header names auto-detected.</p>
                         </Dragger>
 
-                        <Button block loading={loading} onClick={handleUpload} icon={<ScanOutlined />}
-                            style={{ height: 48, borderRadius: 8, fontWeight: 700, fontSize: 15, background: 'var(--indigo)', color: '#fff', border: 'none', boxShadow: '0 4px 14px rgba(99,102,241,0.3)' }}>
+                        <Button type="primary" className="fm-btn-primary" block loading={loading} onClick={handleUpload} icon={<ScanOutlined />}
+                            style={{ height: 48, borderRadius: 10, fontWeight: 700, fontSize: 15 }}>
                             {loading ? 'Running Match Verification...' : 'Run Order Match Check'}
                         </Button>
                     </div>
@@ -204,7 +204,7 @@ const OrderMatchChecker = () => {
 
                             <Row gutter={[16, 16]} style={{ marginBottom: 28 }}>
                                 <Col xs={12} md={6}>
-                                    <MetricCard label="Total Orders" value={result.metrics.total_orders.toLocaleString()} color="#6366f1" />
+                                    <MetricCard label="Total Orders" value={result.metrics.total_orders.toLocaleString()} color="#0ea5e9" />
                                 </Col>
                                 <Col xs={12} md={6}>
                                     <MetricCard label="Matched Orders" value={result.metrics.matched_orders.toLocaleString()} color="#10b981" icon="✅" />

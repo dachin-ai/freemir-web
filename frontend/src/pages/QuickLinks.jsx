@@ -24,11 +24,11 @@ const LEGACY_KEY = 'fm_lobby_links_v1';
 /** 8 accent swatches — full card surface */
 const ACCENT_PALETTE = [
   { id: 'cyan', hex: '#06b6d4' },
-  { id: 'indigo', hex: '#6366f1' },
+  { id: 'indigo', hex: '#0ea5e9' },
   { id: 'emerald', hex: '#10b981' },
   { id: 'amber', hex: '#f59e0b' },
   { id: 'rose', hex: '#f43f5e' },
-  { id: 'violet', hex: '#8b5cf6' },
+  { id: 'violet', hex: '#0ea5e9' },
   { id: 'sky', hex: '#0ea5e9' },
   { id: 'slate', hex: '#64748b' },
 ];
@@ -624,15 +624,13 @@ const QuickLinks = () => {
               size="middle"
               icon={<ArrowRightOutlined />}
               onClick={() => window.open(item.url, '_blank', 'noopener,noreferrer')}
+              className="fm-btn-primary"
               style={{
                 height: 40,
                 minWidth: 128,
                 paddingInline: 24,
                 borderRadius: 999,
                 fontWeight: 700,
-                background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 60%, #7c3aed 100%)',
-                border: 'none',
-                boxShadow: isDark ? '0 8px 20px rgba(99,102,241,0.35)' : '0 8px 18px rgba(79,70,229,0.25)',
               }}
             >
               {t('lobbyPage.quickLinks.visit')}
@@ -954,7 +952,7 @@ const QuickLinks = () => {
                       padding: '20px 14px',
                       borderRadius: 12,
                       border: `1px dashed ${draggingLinkId ? 'var(--indigo)' : 'var(--border)'}`,
-                      background: draggingLinkId ? (isDark ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.06)') : 'transparent',
+                      background: draggingLinkId ? (isDark ? 'rgba(2,132,199,0.08)' : 'rgba(2,132,199,0.06)') : 'transparent',
                       textAlign: 'center',
                     }}
                   >

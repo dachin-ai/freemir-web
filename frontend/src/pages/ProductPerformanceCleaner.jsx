@@ -351,7 +351,7 @@ function UploadTab({ weeks }) {
 
             <div style={sectionCard}>
                 <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                    <SectionHeading icon={<AppstoreOutlined />} color="#6366f1">{t('productPerf.platformAvailabilityTitle', { count: storeCount })}</SectionHeading>
+                    <SectionHeading icon={<AppstoreOutlined />} color="#0ea5e9">{t('productPerf.platformAvailabilityTitle', { count: storeCount })}</SectionHeading>
                     <Space wrap align="center">
                         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                             <CheckOutlined style={{ color: '#22c55e' }} /> {t('productPerf.legendPlatformUploaded')} &nbsp;
@@ -389,7 +389,7 @@ function UploadTab({ weeks }) {
                     <div style={{ padding: '16px 20px' }}>
                         <Row gutter={[16, 12]} style={{ marginBottom: 16 }}>
                             {[
-                                { label: t('productPerf.statPeriod'), val: `${preview.week_start} – ${preview.week_end}`, accent: '#6366f1' },
+                                { label: t('productPerf.statPeriod'), val: `${preview.week_start} – ${preview.week_end}`, accent: '#0ea5e9' },
                                 { label: t('productPerf.statRecordsSaved'), val: preview.saved, accent: '#10b981' },
                                 { label: t('productPerf.statShowing'), val: `${preview.preview.length} / ${preview.saved}`, accent: '#3b82f6' },
                             ].map(({ label, val, accent }) => (
@@ -902,7 +902,7 @@ function ConverterTab() {
                     children: (
                         <div style={sectionCard}>
                             <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-                                <SectionHeading icon={<DatabaseOutlined />} color="#8b5cf6">{t('productPerf.convDataViewTitle')}</SectionHeading>
+                                <SectionHeading icon={<DatabaseOutlined />} color="#0ea5e9">{t('productPerf.convDataViewTitle')}</SectionHeading>
                                 <Space style={{ marginLeft: 'auto' }}>
                                     <Select
                                         allowClear
@@ -1072,7 +1072,7 @@ function BrandTab({ weeks }) {
                     <Space direction="vertical" style={{ width: '100%' }} size={16}>
                         <div style={sectionCard}>
                             <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)' }}>
-                                <SectionHeading icon={<ThunderboltOutlined />} color="#6366f1">{t('productPerf.computeSectionTitle')}</SectionHeading>
+                                <SectionHeading icon={<ThunderboltOutlined />} color="#0ea5e9">{t('productPerf.computeSectionTitle')}</SectionHeading>
                             </div>
                             <div style={{ padding: '16px 20px' }}>
                                 <Space wrap align="end">
@@ -1094,7 +1094,7 @@ function BrandTab({ weeks }) {
                                     <Button loading={computing} onClick={handleCompute}
                                         disabled={!computeWeek}
                                         icon={<ThunderboltOutlined />}
-                                        style={{ height: 36, borderRadius: 8, fontWeight: 700, background: '#6366f1', color: '#fff', border: 'none', boxShadow: '0 2px 8px rgba(99,102,241,0.25)' }}>
+                                        style={{ height: 36, borderRadius: 8, fontWeight: 700, background: '#0ea5e9', color: '#fff', border: 'none', boxShadow: '0 2px 8px rgba(2,132,199,0.25)' }}>
                                         {t('productPerf.btnComputeSku')}
                                     </Button>
                                     <Popconfirm

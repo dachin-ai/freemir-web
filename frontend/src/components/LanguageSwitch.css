@@ -1,0 +1,64 @@
+.fm-lang-switch {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: stretch;
+  min-width: 132px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--fm-lang-border, #dce8f0);
+  background: var(--fm-lang-bg, #f6fafc);
+  box-sizing: border-box;
+}
+
+.fm-lang-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / 3);
+  height: calc(100% - 6px);
+  border-radius: 999px;
+  background: var(--fm-gradient);
+  box-shadow: var(--fm-shadow-sm);
+  transform: translateX(calc(var(--lang-index, 0) * 100%));
+  transition: transform 0.28s cubic-bezier(0.34, 1.2, 0.64, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.fm-lang-switch-btn {
+  position: relative;
+  z-index: 1;
+  border: none;
+  background: transparent;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--fm-lang-muted, #5c6f82);
+  cursor: pointer;
+  border-radius: 999px;
+  transition: color 0.2s ease;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.fm-lang-switch-btn.is-active {
+  color: #fff;
+}
+
+.fm-lang-switch-btn:not(.is-active):hover {
+  color: var(--fm-lang-active-text, #0ea5e9);
+}
+
+/* Landing page theme tokens */
+.landing-root .fm-lang-switch {
+  --fm-lang-border: var(--fm-border);
+  --fm-lang-bg: var(--fm-bg-soft);
+  --fm-lang-muted: var(--fm-muted);
+  --fm-lang-active-text: var(--fm-blue);
+}
+
+.landing-root[data-theme='dark'] .fm-lang-switch-thumb {
+  box-shadow: 0 2px 12px rgba(94, 184, 232, 0.35);
+}

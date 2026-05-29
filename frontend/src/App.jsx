@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { ConfigProvider, theme, Spin } from 'antd';
 import enUS from 'antd/locale/en_US';
 import zhCN from 'antd/locale/zh_CN';
@@ -8,6 +8,7 @@ import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { LangProvider, useLang } from './context/LangContext';
 import MainLayout from './layout/MainLayout';
 import LoginPage from './pages/LoginPage';
+import LandingPage from './pages/LandingPage';
 import PriceChecker from './pages/PriceChecker';
 import Dashboard from './pages/Dashboard';
 import OrderLossReview from './pages/OrderLossReview';
@@ -32,14 +33,21 @@ import QuickLinks from './pages/QuickLinks';
 import SkuReviewAnalysis from './pages/SkuReviewAnalysis';
 import PermissionGate from './components/PermissionGate';
 import { useTranslation } from 'react-i18next';
+import { LEGACY_TOOL_REDIRECTS, PATH_HOME, PATH_LOGIN, PATH_TOOLS } from './routes/paths';
 
 const antdLocales = { en: enUS, zh: zhCN, id: idID };
+
+function LegacyBrandMaterialSkuRedirect() {
+  const { sku } = useParams();
+  return <Navigate to={`${PATH_TOOLS}/brand-material/${encodeURIComponent(sku || '')}`} replace />;
+}
 
 // Protected route wrapper
 function ProtectedApp() {
   const { user, loading } = useAuth();
   const { isDark } = useTheme();
   const { t } = useTranslation();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -57,12 +65,32 @@ function ProtectedApp() {
   }
 
   if (!user) {
-    return <LoginPage />;
+    return (
+      <Routes>
+        <Route path={PATH_HOME} element={<LandingPage />} />
+        <Route path={PATH_LOGIN} element={<LoginPage />} />
+        <Route
+          path={`${PATH_TOOLS}/*`}
+          element={<Navigate to={PATH_LOGIN} replace state={{ from: location.pathname }} />}
+        />
+        <Route path="*" element={<Navigate to={PATH_HOME} replace />} />
+      </Routes>
+    );
   }
 
   return (
     <Routes>
-      <Route path="/" element={<MainLayout />}>
+      <Route path={PATH_HOME} element={<LandingPage />} />
+      <Route path={PATH_LOGIN} element={<Navigate to={PATH_TOOLS} replace />} />
+      {LEGACY_TOOL_REDIRECTS.map((segment) => (
+        <Route
+          key={segment}
+          path={`/${segment}`}
+          element={<Navigate to={`${PATH_TOOLS}/${segment}`} replace />}
+        />
+      ))}
+      <Route path="/brand-material/:sku" element={<LegacyBrandMaterialSkuRedirect />} />
+      <Route path={PATH_TOOLS} element={<MainLayout />}>
         <Route index element={<Dashboard />} />
         <Route path="price-checker" element={<PermissionGate toolKey="price_checker"><PriceChecker /></PermissionGate>} />
         <Route path="order-loss" element={<PermissionGate toolKey="order_review"><OrderLossReview /></PermissionGate>} />
@@ -88,8 +116,9 @@ function ProtectedApp() {
           <Route index element={<PermissionGate toolKey="brand_material"><BrandMaterial /></PermissionGate>} />
           <Route path=":sku" element={<PermissionGate toolKey="brand_material"><BrandMaterial /></PermissionGate>} />
         </Route>
-        <Route path="*" element={<Navigate to="/" />} />
+        <Route path="*" element={<Navigate to={PATH_TOOLS} replace />} />
       </Route>
+      <Route path="*" element={<Navigate to={PATH_HOME} replace />} />
     </Routes>
   );
 }
@@ -104,7 +133,7 @@ function AppContent() {
       theme={{
         algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm,
         token: {
-          colorPrimary: isDark ? '#6366f1' : '#0284c7',
+          colorPrimary: isDark ? '#38bdf8' : '#0ea5e9', /* = --fm-blue per theme */
           colorBgBase:       isDark ? '#0f172a'              : '#f0f9ff',
           colorBgContainer:  isDark ? 'rgba(30,41,59,0.6)'   : '#ffffff',
           colorBgElevated:   isDark ? 'rgba(30,41,59,0.8)'   : '#ffffff',

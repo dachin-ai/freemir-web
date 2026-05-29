@@ -3,11 +3,14 @@ import { Typography } from 'antd';
 
 const { Title, Text } = Typography;
 
-const PageHeader = ({ title, subtitle, accent = 'var(--indigo)', actions }) => (
-    <div style={{
+const PageHeader = ({ title, subtitle, accent = 'var(--indigo)', actions, className }) => (
+    <div
+        className={className}
+        style={{
         display: 'flex', alignItems: 'flex-start',
         justifyContent: 'space-between', marginBottom: 28,
-    }}>
+    }}
+    >
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
             <div style={{
                 width: 3, height: 36, borderRadius: 2,
@@ -21,7 +24,7 @@ const PageHeader = ({ title, subtitle, accent = 'var(--indigo)', actions }) => (
                     {title}
                 </Title>
                 {subtitle && (
-                    <Text style={{ color: '#64748b', fontSize: 13 }}>
+                    <Text style={{ color: 'var(--text-muted)', fontSize: 14, lineHeight: 1.5 }}>
                         {subtitle}
                     </Text>
                 )}

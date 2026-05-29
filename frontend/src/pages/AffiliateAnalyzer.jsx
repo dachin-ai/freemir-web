@@ -12,7 +12,7 @@ const { Dragger } = Upload;
 const NEGATIVE_METRICS = ['Refunded GMV', 'Refunded Items', 'Cancellation Rate'];
 
 const MetricCard = ({ label, value, sub, isDark }) => (
-    <div style={{ background: isDark ? 'rgba(99,102,241,0.08)' : '#f8fafc', border: `1px solid ${isDark ? 'rgba(99,102,241,0.2)' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 20px', textAlign: 'center' }}>
+    <div style={{ background: isDark ? 'rgba(2,132,199,0.08)' : '#f8fafc', border: `1px solid ${isDark ? 'rgba(2,132,199,0.2)' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 20px', textAlign: 'center' }}>
         <Text style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</Text>
         <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-main)', marginTop: 4 }}>{value}</div>
         <Text style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</Text>
@@ -20,8 +20,8 @@ const MetricCard = ({ label, value, sub, isDark }) => (
 );
 
 const SectionHeader = ({ icon, text, isDark }) => (
-    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-main)', margin: '28px 0 16px', paddingBottom: 10, borderBottom: `2px solid ${isDark ? 'rgba(99,102,241,0.2)' : '#e2e8f0'}`, display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ width: 28, height: 28, borderRadius: 6, background: isDark ? 'rgba(99,102,241,0.15)' : '#eef2ff', border: `1px solid ${isDark ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.3)'}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#6366f1', fontSize: 14, flexShrink: 0 }}>{icon}</span>
+    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-main)', margin: '28px 0 16px', paddingBottom: 10, borderBottom: `2px solid ${isDark ? 'rgba(2,132,199,0.2)' : '#e2e8f0'}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ width: 28, height: 28, borderRadius: 6, background: isDark ? 'rgba(2,132,199,0.15)' : '#eef2ff', border: `1px solid ${isDark ? 'rgba(2,132,199,0.3)' : 'rgba(2,132,199,0.3)'}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#0ea5e9', fontSize: 14, flexShrink: 0 }}>{icon}</span>
         {text}
     </div>
 );
@@ -40,8 +40,8 @@ function fmtNum(val) {
 }
 
 const Top5Box = ({ title, data, isDark }) => (
-    <div style={{ background: isDark ? 'rgba(15,23,42,0.6)' : '#ffffff', border: `1px solid ${isDark ? 'rgba(99,102,241,0.2)' : '#e2e8f0'}`, borderLeft: '3px solid #6366f1', borderRadius: 8, padding: '14px 18px', marginBottom: 20 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 8, paddingBottom: 6, borderBottom: `1px solid ${isDark ? 'rgba(99,102,241,0.1)' : '#f1f5f9'}` }}>
+    <div style={{ background: isDark ? 'rgba(15,23,42,0.6)' : '#ffffff', border: `1px solid ${isDark ? 'rgba(2,132,199,0.2)' : '#e2e8f0'}`, borderLeft: '3px solid #0ea5e9', borderRadius: 8, padding: '14px 18px', marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 8, paddingBottom: 6, borderBottom: `1px solid ${isDark ? 'rgba(2,132,199,0.1)' : '#f1f5f9'}` }}>
             {title}
         </div>
         {data && data.length > 0 ? data.map((item, i) => {
@@ -54,7 +54,7 @@ const Top5Box = ({ title, data, isDark }) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', fontSize: 13 }}>
                     <span style={{ color: 'var(--text-muted)', fontWeight: 600, minWidth: 22 }}>{i + 1}.</span>
                     <span style={{ flex: 1, color: 'var(--text-main)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
-                    <span style={{ fontWeight: 700, color: isDark ? '#a5b4fc' : '#4f46e5', marginLeft: 12, whiteSpace: 'nowrap' }}>{valStr}</span>
+                    <span style={{ fontWeight: 700, color: isDark ? '#7dd3fc' : '#0ea5e9', marginLeft: 12, whiteSpace: 'nowrap' }}>{valStr}</span>
                 </div>
             );
         }) : <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>No data</Text>}
@@ -183,7 +183,7 @@ const AffiliateAnalyzer = () => {
             <Row gutter={[24, 24]}>
                 <Col xs={24} lg={8}>
                     {/* Controls */}
-                    <div style={{ background: isDark ? 'rgba(15,23,42,0.6)' : '#ffffff', padding: 24, borderRadius: 12, border: `1px solid ${isDark ? 'rgba(99,102,241,0.2)' : '#e2e8f0'}` }}>
+                    <div style={{ background: isDark ? 'rgba(15,23,42,0.6)' : '#ffffff', padding: 24, borderRadius: 12, border: `1px solid ${isDark ? 'rgba(2,132,199,0.2)' : '#e2e8f0'}` }}>
                         <div style={{ marginBottom: 20 }}>
                             <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>Analysis Mode</div>
                             <Radio.Group value={mode} onChange={e => setMode(e.target.value)} optionType="button" buttonStyle="solid" style={{ width: '100%', display: 'flex' }}>
@@ -213,7 +213,7 @@ const AffiliateAnalyzer = () => {
                         <Button block loading={loading} onClick={handleRun} icon={<PlayCircleOutlined />}
                             style={{
                                 height: 48, borderRadius: 8, fontWeight: 700, fontSize: 15,
-                                background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)', color: '#fff', border: 'none',
+                                background: 'var(--fm-gradient)', color: '#fff', border: 'none', boxShadow: 'var(--fm-shadow)',
                             }}>
                             {loading ? 'Processing...' : 'Start Analysis'}
                         </Button>
@@ -222,14 +222,14 @@ const AffiliateAnalyzer = () => {
 
                 <Col xs={24} lg={16}>
                     {!result && (
-                        <div style={{ background: isDark ? 'rgba(15,23,42,0.4)' : '#f8fafc', border: `1px dashed ${isDark ? 'rgba(99,102,241,0.3)' : '#cbd5e1'}`, borderRadius: 12, height: '100%', minHeight: 400, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
-                            <UploadOutlined style={{ fontSize: 40, color: isDark ? 'rgba(99,102,241,0.5)' : '#94a3b8' }} />
+                        <div style={{ background: isDark ? 'rgba(15,23,42,0.4)' : '#f8fafc', border: `1px dashed ${isDark ? 'rgba(2,132,199,0.3)' : '#cbd5e1'}`, borderRadius: 12, height: '100%', minHeight: 400, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+                            <UploadOutlined style={{ fontSize: 40, color: isDark ? 'rgba(2,132,199,0.5)' : '#94a3b8' }} />
                             <Text style={{ color: 'var(--text-muted)', fontSize: 15, fontWeight: 500 }}>Upload both files and click Start Analysis</Text>
                         </div>
                     )}
 
                     {result && (
-                        <div style={{ background: isDark ? 'rgba(15,23,42,0.6)' : '#ffffff', padding: 24, borderRadius: 12, border: `1px solid ${isDark ? 'rgba(99,102,241,0.2)' : '#e2e8f0'}` }}>
+                        <div style={{ background: isDark ? 'rgba(15,23,42,0.6)' : '#ffffff', padding: 24, borderRadius: 12, border: `1px solid ${isDark ? 'rgba(2,132,199,0.2)' : '#e2e8f0'}` }}>
                             <SectionHeader icon={<PieChartOutlined />} text="Summary Overview" isDark={isDark} />
                             <Row gutter={[12, 12]} style={{ marginBottom: 24 }}>
                                 <Col xs={12} md={8}><MetricCard label={`Total ${mode}s`} value={result.summary.total_entities} sub="Across both periods" isDark={isDark} /></Col>

@@ -142,7 +142,7 @@ export default function RequestAccess() {
                                 loading={loading}
                                 disabled={!selected}
                                 size="large"
-                                style={{ background: 'linear-gradient(135deg,#6366f1,#3b82f6)', border: 'none' }}
+                                style={{ background: 'var(--fm-gradient)', border: 'none', boxShadow: 'var(--fm-shadow)' }}
                             >
                                 {t('accessRequest.submit')}
                             </Button>

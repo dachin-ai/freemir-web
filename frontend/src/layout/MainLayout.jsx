@@ -8,6 +8,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useLang } from '../context/LangContext';
 import Bi from '../components/Bi';
 import { changePassword } from '../api';
+import { PATH_TOOLS, toolsPath } from '../routes/paths';
 
 /** Prevent DingTalk / AliDocs iframe from swallowing clicks inside the settings panel. */
 const stopPanelEvent = (e) => {
@@ -33,25 +34,25 @@ const MainLayout = () => {
   /* Dark: indigo. Light: musim panas (langit & air, biru segar). */
   const ta = isDark
     ? {
-        grad: 'linear-gradient(135deg, #6366f1 0%, #3b82f6 100%)',
-        siderGlow: '0 4px 14px rgba(99,102,241,0.5)',
-        keyIcon: '#6366f1',
-        toggleIcon: '#6366f1',
-        toggleBg: 'rgba(99,102,241,0.1)',
-        toggleBorder: 'rgba(99,102,241,0.25)',
-        wajanFill: 'rgba(99,102,241,0.18)',
-        wajanStroke: 'rgba(99,102,241,0.95)',
-        wajanInner: 'rgba(99,102,241,0.14)',
-        wajanLine: 'rgba(99,102,241,0.32)',
-        wajanDot: 'rgba(99,102,241,1)',
-        wajanRing: 'rgba(99,102,241,0.85)',
-        wajanRingStroke: 'rgba(99,102,241,0.4)',
+        grad: 'var(--fm-gradient)',
+        siderGlow: '0 4px 14px rgba(14,165,233,0.45)',
+        keyIcon: '#38bdf8',
+        toggleIcon: '#38bdf8',
+        toggleBg: 'rgba(14,165,233,0.12)',
+        toggleBorder: 'rgba(56,189,248,0.28)',
+        wajanFill: 'rgba(14,165,233,0.18)',
+        wajanStroke: 'rgba(56,189,248,0.95)',
+        wajanInner: 'rgba(14,165,233,0.14)',
+        wajanLine: 'rgba(56,189,248,0.32)',
+        wajanDot: 'rgba(14,165,233,1)',
+        wajanRing: 'rgba(56,189,248,0.85)',
+        wajanRingStroke: 'rgba(14,165,233,0.4)',
       }
     : {
-        grad: 'linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)',
-        siderGlow: '0 4px 18px rgba(2, 132, 199, 0.32)',
-        keyIcon: '#0284c7',
-        toggleIcon: '#0369a1',
+        grad: 'var(--fm-gradient)',
+        siderGlow: '0 4px 18px rgba(14, 165, 233, 0.35)',
+        keyIcon: '#0ea5e9',
+        toggleIcon: '#0ea5e9',
         toggleBg: 'rgba(14, 165, 233, 0.12)',
         toggleBorder: 'rgba(2, 132, 199, 0.22)',
         wajanFill: 'rgba(14, 165, 233, 0.16)',
@@ -76,19 +77,19 @@ const MainLayout = () => {
   };
 
   const menuItems = [
-    { key: '/', icon: <HomeOutlined />, label: <Bi i18nKey="layout.lobby" /> },
-    { key: '/quick-links', icon: <LinkOutlined />, label: <Bi i18nKey="layout.quickLinks" /> },
+    { key: PATH_TOOLS, icon: <HomeOutlined />, label: <Bi i18nKey="layout.lobby" /> },
+    { key: toolsPath('quick-links'), icon: <LinkOutlined />, label: <Bi i18nKey="layout.quickLinks" /> },
     {
       key: 'group-freemir',
       label: <Bi i18nKey="layout.freemirSuite" />,
       icon: <AppstoreOutlined />,
       children: [
-        { key: '/price-checker', label: lockedLabel(<Bi i18nKey="layout.priceChecker" />, 'price_checker'), style: !hasAccess('price_checker') ? { opacity: 0.6 } : {} },
-        { key: '/warehouse-order', label: lockedLabel(<Bi i18nKey="layout.orderPlanner" />, 'order_planner'), style: !hasAccess('order_planner') ? { opacity: 0.6 } : {} },
-        { key: '/product-performance', label: lockedLabel(<Bi i18nKey="layout.productPerformance" />, 'product_performance'), style: !hasAccess('product_performance') ? { opacity: 0.6 } : {} },
-        { key: '/photo-downloader', label: lockedLabel(<Bi i18nKey="layout.photoDownloader" />, 'photo_downloader'), style: !hasAccess('photo_downloader') ? { opacity: 0.6 } : {} },
-        { key: '/brand-material', label: lockedLabel(<Bi i18nKey="layout.brandMaterial" />, 'brand_material'), style: !hasAccess('brand_material') ? { opacity: 0.6 } : {} },
-        { key: '/sku-review', label: <Bi i18nKey="layout.skuReviewAnalysis" /> },
+        { key: toolsPath('price-checker'), label: lockedLabel(<Bi i18nKey="layout.priceChecker" />, 'price_checker'), style: !hasAccess('price_checker') ? { opacity: 0.6 } : {} },
+        { key: toolsPath('warehouse-order'), label: lockedLabel(<Bi i18nKey="layout.orderPlanner" />, 'order_planner'), style: !hasAccess('order_planner') ? { opacity: 0.6 } : {} },
+        { key: toolsPath('product-performance'), label: lockedLabel(<Bi i18nKey="layout.productPerformance" />, 'product_performance'), style: !hasAccess('product_performance') ? { opacity: 0.6 } : {} },
+        { key: toolsPath('photo-downloader'), label: lockedLabel(<Bi i18nKey="layout.photoDownloader" />, 'photo_downloader'), style: !hasAccess('photo_downloader') ? { opacity: 0.6 } : {} },
+        { key: toolsPath('brand-material'), label: lockedLabel(<Bi i18nKey="layout.brandMaterial" />, 'brand_material'), style: !hasAccess('brand_material') ? { opacity: 0.6 } : {} },
+        { key: toolsPath('sku-review'), label: <Bi i18nKey="layout.skuReviewAnalysis" /> },
       ]
     },
     {
@@ -96,9 +97,9 @@ const MainLayout = () => {
       label: <Bi i18nKey="layout.shopeeSuite" />,
       icon: <ShoppingOutlined />,
       children: [
-        { key: '/order-loss', label: lockedLabel(<Bi i18nKey="layout.orderReview" />, 'order_review'), style: !hasAccess('order_review') ? { opacity: 0.6 } : {} },
-        { key: '/shopee-affiliate', label: lockedLabel(<Bi i18nKey="layout.affiliatePerformance" />, 'affiliate_performance'), style: !hasAccess('affiliate_performance') ? { opacity: 0.6 } : {} },
-        { key: '/livestream-display', label: lockedLabel(<Bi i18nKey="layout.livestreamDisplay" />, 'livestream_display'), style: !hasAccess('livestream_display') ? { opacity: 0.6 } : {} },
+        { key: toolsPath('order-loss'), label: lockedLabel(<Bi i18nKey="layout.orderReview" />, 'order_review'), style: !hasAccess('order_review') ? { opacity: 0.6 } : {} },
+        { key: toolsPath('shopee-affiliate'), label: lockedLabel(<Bi i18nKey="layout.affiliatePerformance" />, 'affiliate_performance'), style: !hasAccess('affiliate_performance') ? { opacity: 0.6 } : {} },
+        { key: toolsPath('livestream-display'), label: lockedLabel(<Bi i18nKey="layout.livestreamDisplay" />, 'livestream_display'), style: !hasAccess('livestream_display') ? { opacity: 0.6 } : {} },
       ]
     },
     {
@@ -106,29 +107,29 @@ const MainLayout = () => {
       label: <Bi i18nKey="layout.tiktokSuite" />,
       icon: <PlaySquareOutlined />,
       children: [
-        { key: '/pre-sales', label: lockedLabel(<Bi i18nKey="layout.preSalesChecker" />, 'pre_sales'), style: !hasAccess('pre_sales') ? { opacity: 0.6 } : {} },
-        { key: '/affiliate-analyzer', label: lockedLabel(<Bi i18nKey="layout.affiliateAnalyzer" />, 'affiliate_analyzer'), style: !hasAccess('affiliate_analyzer') ? { opacity: 0.6 } : {} },
-        { key: '/tiktok-ads', label: lockedLabel(<Bi i18nKey="layout.adsAnalyzer" />, 'ads_analyzer'), style: !hasAccess('ads_analyzer') ? { opacity: 0.6 } : {} },
+        { key: toolsPath('pre-sales'), label: lockedLabel(<Bi i18nKey="layout.preSalesChecker" />, 'pre_sales'), style: !hasAccess('pre_sales') ? { opacity: 0.6 } : {} },
+        { key: toolsPath('affiliate-analyzer'), label: lockedLabel(<Bi i18nKey="layout.affiliateAnalyzer" />, 'affiliate_analyzer'), style: !hasAccess('affiliate_analyzer') ? { opacity: 0.6 } : {} },
+        { key: toolsPath('tiktok-ads'), label: lockedLabel(<Bi i18nKey="layout.adsAnalyzer" />, 'ads_analyzer'), style: !hasAccess('ads_analyzer') ? { opacity: 0.6 } : {} },
       ]
     },
-    { key: '/request-access', icon: <UnlockOutlined />, label: <Bi i18nKey="layout.requestAccess" /> },
-    ...(hasAccess('admin') ? [{ key: '/access-management', icon: <TeamOutlined />, label: <Bi i18nKey="layout.accessManagement" /> }] : []),
+    { key: toolsPath('request-access'), icon: <UnlockOutlined />, label: <Bi i18nKey="layout.requestAccess" /> },
+    ...(hasAccess('admin') ? [{ key: toolsPath('access-management'), icon: <TeamOutlined />, label: <Bi i18nKey="layout.accessManagement" /> }] : []),
   ];
 
   // Map route → toolKey to determine if restricted
   const ROUTE_TOOL_MAP = {
-    '/price-checker': 'price_checker',
-    '/warehouse-order': 'order_planner',
-    '/order-loss': 'order_review',
-    '/shopee-affiliate': 'affiliate_performance',
-    '/pre-sales': 'pre_sales',
-    '/affiliate-analyzer': 'affiliate_analyzer',
-    '/tiktok-ads': 'ads_analyzer',
-    '/access-management': 'admin',
-    '/product-performance': 'product_performance',
-    '/livestream-display': 'livestream_display',
-    '/photo-downloader': 'photo_downloader',
-    '/brand-material': 'brand_material',
+    [toolsPath('price-checker')]: 'price_checker',
+    [toolsPath('warehouse-order')]: 'order_planner',
+    [toolsPath('order-loss')]: 'order_review',
+    [toolsPath('shopee-affiliate')]: 'affiliate_performance',
+    [toolsPath('pre-sales')]: 'pre_sales',
+    [toolsPath('affiliate-analyzer')]: 'affiliate_analyzer',
+    [toolsPath('tiktok-ads')]: 'ads_analyzer',
+    [toolsPath('access-management')]: 'admin',
+    [toolsPath('product-performance')]: 'product_performance',
+    [toolsPath('livestream-display')]: 'livestream_display',
+    [toolsPath('photo-downloader')]: 'photo_downloader',
+    [toolsPath('brand-material')]: 'brand_material',
   };
 
   const handleMenuClick = ({ key }) => {
@@ -228,8 +229,8 @@ const MainLayout = () => {
         {/* Navigation */}
         <Menu
           selectedKeys={[
-            location.pathname.startsWith('/brand-material')
-              ? '/brand-material'
+            location.pathname.startsWith(`${PATH_TOOLS}/brand-material`)
+              ? toolsPath('brand-material')
               : location.pathname,
           ]}
           defaultOpenKeys={openKeys}
@@ -425,13 +426,11 @@ const MainLayout = () => {
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              background: isDark
-                                ? 'linear-gradient(145deg, #818cf8 0%, #6366f1 45%, #4f46e5 100%)'
-                                : 'linear-gradient(145deg, #38bdf8 0%, #0284c7 50%, #0369a1 100%)',
+                              background: 'var(--fm-gradient)',
                               color: '#fff',
                               flexShrink: 0,
                               marginTop: 1,
-                              boxShadow: isDark ? '0 2px 10px rgba(99,102,241,0.45)' : '0 2px 10px rgba(2,132,199,0.35)',
+                              boxShadow: isDark ? '0 2px 10px rgba(14,165,233,0.45)' : '0 2px 10px rgba(2,132,199,0.35)',
                             }}
                           >
                             <KeyOutlined style={{ fontSize: 22, filter: 'drop-shadow(0 1px 0 rgba(0,0,0,0.2))' }} />
@@ -449,7 +448,7 @@ const MainLayout = () => {
                           size="large"
                           icon={<KeyOutlined style={{ fontSize: 18 }} />}
                           onClick={() => { setSettingsOpen(false); setChangePwdOpen(true); }}
-                          style={{ height: 44, borderRadius: 10, fontWeight: 600, borderColor: isDark ? 'rgba(99,102,241,0.45)' : 'rgba(2,132,199,0.35)', color: ta.keyIcon }}
+                          style={{ height: 44, borderRadius: 10, fontWeight: 600, borderColor: isDark ? 'rgba(56,189,248,0.45)' : 'rgba(2,132,199,0.35)', color: ta.keyIcon }}
                         >
                           {t('layout.changePassword')}
                         </Button>
@@ -487,13 +486,13 @@ const MainLayout = () => {
                     gap: 12,
                     padding: '8px 16px 8px 10px',
                     borderRadius: 12,
-                    border: `1px solid ${isDark ? 'rgba(99,102,241,0.32)' : 'rgba(2,132,199,0.22)'}`,
+                    border: `1px solid ${isDark ? 'rgba(56,189,248,0.32)' : 'rgba(2,132,199,0.22)'}`,
                     background: isDark
-                      ? 'linear-gradient(135deg, rgba(99,102,241,0.18) 0%, rgba(30,41,59,0.85) 100%)'
+                      ? 'linear-gradient(135deg, rgba(14,165,233,0.18) 0%, rgba(30,41,59,0.85) 100%)'
                       : 'linear-gradient(135deg, rgba(56,189,248,0.16) 0%, rgba(255,255,255,1) 100%)',
                     cursor: 'pointer',
                     boxShadow: isDark
-                      ? 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 10px rgba(99,102,241,0.22)'
+                      ? 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 10px rgba(14,165,233,0.22)'
                       : '0 2px 10px rgba(2,132,199,0.12)',
                     transition: 'transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease',
                     maxWidth: 340,

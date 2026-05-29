@@ -190,14 +190,14 @@ const OrderLossReview = () => {
                         </Dragger>
 
                         <Button
+                            type="primary"
+                            className="fm-btn-primary"
                             block
                             loading={loading}
                             onClick={handleUpload}
                             icon={<CloudUploadOutlined />}
                             style={{
-                                height: 48, borderRadius: 8, fontWeight: 700, fontSize: 15,
-                                background: 'var(--indigo)', color: '#fff', border: 'none',
-                                boxShadow: '0 4px 14px rgba(99,102,241,0.3)',
+                                height: 48, borderRadius: 10, fontWeight: 700, fontSize: 15,
                             }}
                         >
                             {loading ? <Bi i18nKey="orderLoss.running" /> : <Bi i18nKey="orderLoss.startAudit" />}

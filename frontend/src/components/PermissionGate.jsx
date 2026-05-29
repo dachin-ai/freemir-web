@@ -81,7 +81,7 @@ const PermissionGate = ({ toolKey, children }) => {
                     type="primary"
                     icon={<ArrowLeftOutlined />}
                     size="large"
-                    onClick={() => navigate('/')}
+                    onClick={() => navigate('/tools')} 
                     style={{
                         borderRadius: 12,
                         height: 44,

@@ -302,7 +302,7 @@ const UserActivity = () => {
               <XAxis dataKey="tool" interval={0} angle={-20} textAnchor="end" height={80} />
               <YAxis allowDecimals={false} domain={[0, "dataMax + 2"]} />
               <Tooltip />
-              <Bar dataKey={selectedMetric} fill="#6366f1">
+              <Bar dataKey={selectedMetric} fill="#0ea5e9">
                 <LabelList dataKey={selectedMetric} content={renderBarValueLabel} />
               </Bar>
             </BarChart>

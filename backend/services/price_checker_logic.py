@@ -27,6 +27,9 @@ if os.path.exists("/etc/secrets/credentials.json"):
 else:
     CREDENTIALS_FILE = "credentials.json"
 
+# Synced from SKU_Info but not used in price-check calculations.
+SHEET_EXTRA_PRICE_TIERS = ["Original"]
+
 PRICE_TYPES = [
     "Warning", "Daily-Discount", "Daily-Livestream", "Daily-Mid-Creator",
     "Daily-Top-Creator", "Daily-FS", "Daily-Shopee-FS", "DD-FS",
@@ -325,9 +328,10 @@ def sync_google_sheets_to_vps_postgres() -> int:
                 # Resolve currency-prefixed price columns. Older sheets without prefix
                 # ("Warning", "Clearance") still work and are treated as IDR.
                 price_col_lookup: Dict[str, Dict[str, str]] = {}
+                sheet_price_tiers = ["Clearance", *SHEET_EXTRA_PRICE_TIERS, *PRICE_TYPES]
                 for currency in CURRENCIES:
                     cur_lookup: Dict[str, str] = {}
-                    for tier in ["Clearance", *PRICE_TYPES]:
+                    for tier in sheet_price_tiers:
                         resolved = col(f"{currency}-{tier}")
                         if resolved is None and currency == CURRENCIES[0]:
                             # Legacy fallback: unprefixed column counts as default currency.
@@ -370,7 +374,7 @@ def sync_google_sheets_to_vps_postgres() -> int:
                     currencies_data: Dict[str, Dict[str, Any]] = {}
                     for currency, cur_lookup in price_col_lookup.items():
                         cur_dict: Dict[str, Any] = {}
-                        for tier in ["Clearance", *PRICE_TYPES]:
+                        for tier in sheet_price_tiers:
                             src_col = cur_lookup.get(tier)
                             cur_dict[tier] = _parse_price_cell(row[src_col]) if src_col else None
                         currencies_data[currency] = cur_dict

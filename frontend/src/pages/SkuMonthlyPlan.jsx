@@ -177,14 +177,14 @@ const SkuMonthlyPlan = () => {
                         </Dragger>
 
                         <Button
+                            type="primary"
+                            className="fm-btn-primary"
                             block
                             loading={loading}
                             onClick={handleUpload}
                             icon={<CloudUploadOutlined />}
                             style={{
-                                height: 48, borderRadius: 8, fontWeight: 700, fontSize: 15,
-                                background: 'var(--indigo)', color: '#fff', border: 'none',
-                                boxShadow: '0 4px 14px rgba(99,102,241,0.3)',
+                                height: 48, borderRadius: 10, fontWeight: 700, fontSize: 15,
                             }}
                         >
                             {loading ? 'Processing & Formatting Data...' : 'Process Data'}
@@ -199,7 +199,7 @@ const SkuMonthlyPlan = () => {
 
                             <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
                                 <Col xs={24} sm={12} md={6}>
-                                    <div style={statCardStyle('var(--indigo)', 'rgba(99,102,241,0.05)')}>
+                                    <div style={statCardStyle('var(--indigo)', 'rgba(2,132,199,0.05)')}>
                                         <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--text-main)', fontFamily: "'Outfit', sans-serif" }}>
                                             {result.summary.total_rows.toLocaleString()}
                                         </div>
@@ -219,11 +219,11 @@ const SkuMonthlyPlan = () => {
                                     </div>
                                 </Col>
                                 <Col xs={24} sm={12} md={6}>
-                                    <div style={statCardStyle('#8b5cf6', 'rgba(139,92,246,0.05)')}>
+                                    <div style={statCardStyle('#0ea5e9', 'rgba(14,165,233,0.05)')}>
                                         <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--text-main)', fontFamily: "'Outfit', sans-serif" }}>
                                             {result.summary.unique_stores.toLocaleString()}
                                         </div>
-                                        <Text style={{ fontSize: 11, fontWeight: 600, color: '#8b5cf6', textTransform: 'uppercase' }}>
+                                        <Text style={{ fontSize: 11, fontWeight: 600, color: '#0ea5e9', textTransform: 'uppercase' }}>
                                             Stores Audited
                                         </Text>
                                     </div>

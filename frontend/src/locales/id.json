@@ -59,6 +59,93 @@
   "common": {
     "verifyingSession": "Memverifikasi sesi..."
   },
+  "landing": {
+    "navAbout": "Tentang",
+    "navProducts": "Produk",
+    "navCatalog": "Katalog",
+    "navLearn": "Pelajari",
+    "navContact": "Kontak",
+    "navTeamLogin": "Alat Internal",
+    "shopNow": "Belanja sekarang",
+    "backToHome": "Kembali ke website",
+    "heroTag": "freemir",
+    "heroTitle": "Make cooking easy",
+    "aboutAccent": "Make Cooking Easy",
+    "aboutP1": "freemir adalah brand peralatan dapur modern yang dibangun dari keyakinan sederhana: Make Cooking Easy. Kami merancang produk dapur yang praktis, andal, dan dibuat dengan penuh pertimbangan agar keluarga bisa memasak dengan lebih mudah dan percaya diri.",
+    "aboutP2": "Dari menu harian hingga momen istimewa, freemir mendukung pengalaman memasak yang lebih lancar dan menyenangkan. Terinspirasi gaya hidup modern, kami fokus pada inovasi, fungsi, dan desain ramah pengguna.",
+    "featuredTitle": "Seri unggulan",
+    "featuredLead": "Temukan lini peralatan masak populer kami — untuk dapur nyata dan masakan sehari-hari.",
+    "fromPrice": "Dari RM {{price}}",
+    "statsTitle": "Mengapa keluarga memilih freemir",
+    "categoriesTitle": "Belanja per kategori",
+    "categoriesLead": "Temukan peralatan yang tepat untuk setiap resep dan dapur.",
+    "catalogTitle": "Katalog produk",
+    "catalogLead": "Jelajahi pilihan unggulan kami. Detail lengkap, perbandingan, dan panduan segera hadir.",
+    "catalogLeadDb": "Produk unggulan dari katalog kami — nama dan harga Rupiah dari database.",
+    "catalogEmpty": "Data produk belum tersedia. Sinkronkan SKU info di tools tim, lalu muat ulang halaman ini.",
+    "learnTitle": "Bandingkan & pelajari",
+    "learnLead": "Segera Anda bisa membandingkan produk dan membaca panduan lengkap setiap item.",
+    "compareTitle": "Bandingkan produk",
+    "compareDesc": "Lihat spesifikasi, bahan, dan ukuran secara berdampingan sebelum memutuskan.",
+    "learnProductTitle": "Pelajari produk",
+    "learnProductDesc": "Informasi produk, tips perawatan, dan panduan penggunaan dalam satu tempat.",
+    "comingSoon": "Segera hadir",
+    "footerMission": "Seiring pertumbuhan kami, freemir terus berkembang untuk melayani keluarga di seluruh dunia — menghadirkan pengalaman dapur yang lebih baik di setiap rumah.",
+    "contactUsTitle": "Hubungi Kami",
+    "contactEmail": "Email",
+    "contactWhatsApp": "WhatsApp",
+    "contactCountryId": "Indonesia",
+    "contactCountryMy": "Malaysia",
+    "contactAddressLabel": "Alamat",
+    "contactAddress": "KITIC Kav.49, Desa Nagasari, Kecamatan Serang Baru, Kabupaten Bekasi 17330",
+    "contactHoursLabel": "Jam operasional",
+    "contactHours": "08.30 – 17.30",
+    "followUsTitle": "Ikuti kami",
+    "footerCopyright": "© {{year}} freemir Indonesia. All rights reserved.",
+    "footerRights": "Hak cipta dilindungi.",
+    "teamAccess": "Alat Internal",
+    "teamBar": "Anggota tim Freemir?",
+    "teamSignIn": "Masuk ke tools internal",
+    "series": {
+      "titanium": { "title": "Siri titanium anti lekat", "desc": "Lapisan tahan lama untuk menggoreng dan menumis harian." },
+      "pressure2l": { "title": "Periuk tekanan mini 2L", "desc": "Masak lebih cepat dengan periuk tekanan ringkas anti lekat." },
+      "wok30": { "title": "Kuali anti lekat 30cm", "desc": "Kapasiti besar untuk masakan keluarga — panas merata." }
+    },
+    "stats": {
+      "years": "Tahun melayani keluarga",
+      "markets": "Pasaran & saluran",
+      "skus": "Lini produk",
+      "rating": "Kepuasan pelanggan"
+    },
+    "categories": {
+      "kuali": "Kuali & kuali",
+      "periuk": "Periuk",
+      "pressure": "Periuk tekanan",
+      "rice": "Periuk nasi",
+      "blender": "Blender",
+      "airfryer": "Air fryer",
+      "utensils": "Peralatan dapur",
+      "knife": "Set pisau"
+    },
+    "catalog": {
+      "nonstick-top": {
+        "title": "Siri kuali anti lekat top",
+        "items": { "0": "Kuali 24cm", "1": "Kuali 28cm", "2": "Kuali 30cm", "3": "Set periuk anti lekat" }
+      },
+      "sus316": {
+        "title": "Siri keluli tahan karat SUS316",
+        "items": { "0": "Kuali keluli 28cm", "1": "Kuali keluli 32cm", "2": "Periuk sup", "3": "Set keluli" }
+      },
+      "steamer": {
+        "title": "Siri periuk kukus",
+        "items": { "0": "Periuk kukus 2 tingkat", "1": "Periuk kukus 3 tingkat" }
+      },
+      "accessories": {
+        "title": "Aksesori dapur",
+        "items": { "0": "Spatula silikon", "1": "Senduk sup", "2": "Penapis percikan" }
+      }
+    }
+  },
   "login": {
     "signIn": "Masuk",
     "createAccount": "Buat akun",

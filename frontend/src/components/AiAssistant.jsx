@@ -150,7 +150,7 @@ const AiAssistant = () => {
                         height: 60,
                         boxShadow: '0 4px 12px rgba(56, 189, 248, 0.4)',
                         zIndex: 9999,
-                        background: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+                        background: 'var(--fm-gradient)',
                         border: 'none',
                     }}
                     onClick={() => setIsOpen(true)}
@@ -180,7 +180,7 @@ const AiAssistant = () => {
                     {/* HEADER */}
                     <div style={{
                         padding: '16px 20px',
-                        background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.1), rgba(129, 140, 248, 0.1))',
+                        background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(14, 165, 233, 0.08))',
                         borderBottom: '1px solid var(--border)',
                         display: 'flex',
                         justifyContent: 'space-between',

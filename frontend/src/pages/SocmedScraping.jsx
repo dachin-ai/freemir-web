@@ -109,7 +109,7 @@ const SocmedScraping = () => {
 
                 {/* Metrics Row */}
                 <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
-                    <Col xs={12} md={6}><MetricCard label="Followers" value={Number(kv1.followers)?.toLocaleString() || kv1.followers} color="#6366f1" /></Col>
+                    <Col xs={12} md={6}><MetricCard label="Followers" value={Number(kv1.followers)?.toLocaleString() || kv1.followers} color="#0ea5e9" /></Col>
                     <Col xs={12} md={6}><MetricCard label="Likes" value={Number(kv2.likes)?.toLocaleString() || kv2.likes} color="#ec4899" /></Col>
                     <Col xs={12} md={6}><MetricCard label="Comments" value={Number(kv2.comment_count)?.toLocaleString() || kv2.comment_count} color="#f59e0b" /></Col>
                     <Col xs={12} md={6}><MetricCard label="Views" value={Number(kv2['Video Play Count'])?.toLocaleString() || kv2['Video Play Count']} color="#38bdf8" /></Col>
@@ -160,7 +160,7 @@ const SocmedScraping = () => {
                         <MetricCard label="Posts Scraped" value={result.count} color="#10b981" />
                     </Col>
                     <Col xs={24} md={8}>
-                        <MetricCard label="Platform" value={platform === 'instagram' ? 'Instagram' : 'TikTok'} color="#6366f1" />
+                        <MetricCard label="Platform" value={platform === 'instagram' ? 'Instagram' : 'TikTok'} color="#0ea5e9" />
                     </Col>
                     <Col xs={24} md={8}>
                         <MetricCard label="Errors" value={result.errors?.length || 0} color={result.errors?.length > 0 ? '#ef4444' : '#10b981'} />

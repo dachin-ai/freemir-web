@@ -2,7 +2,7 @@ import { readFmValue, writeFmValue } from './fmStorage';
 
 export const FM_THEME_STORAGE_KEY = 'fm_theme';
 export const SUPPORTED_THEMES = ['dark', 'light'];
-export const DEFAULT_THEME = 'dark';
+export const DEFAULT_THEME = 'light';
 
 export function readThemeMode() {
   return readFmValue(FM_THEME_STORAGE_KEY, {
