@@ -435,6 +435,7 @@
     "title": "Price Checker & Pembanding",
     "subtitle": "Mendukung metode Listing, SKU, dan Input Langsung",
     "uploadStock": "Upload Stock",
+    "uploadStockShort": "Stok",
     "syncPrice": "Sync Price",
     "lastStockUpload": "Last Update: {{time}}",
     "listingMethod": "Metode Listing",

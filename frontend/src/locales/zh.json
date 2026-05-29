@@ -436,6 +436,7 @@
     "title": "价格检查与比较器",
     "subtitle": "支持列表法、SKU法和直接输入法",
     "uploadStock": "Upload Stock",
+    "uploadStockShort": "库存",
     "syncPrice": "Sync Price",
     "lastStockUpload": "Last Update: {{time}}",
     "listingMethod": "列表法",

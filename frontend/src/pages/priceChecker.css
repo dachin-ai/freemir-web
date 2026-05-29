@@ -188,3 +188,12 @@
   font-weight: 600 !important;
   color: var(--pc-muted) !important;
 }
+
+.price-checker-page .pc-upload-stock-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.price-checker-page .pc-upload-stock-btn .ant-btn-icon {
+  margin-inline-end: 6px !important;
+}

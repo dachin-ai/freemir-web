@@ -1,11 +1,8 @@
-import React from 'react';
+import React, { useId } from 'react';
 
-/**
- * Inline SVG country flags rendered at a uniform box (default 22×14) so that
- * different countries align consistently in dropdowns / Segmented controls.
- * Each flag's own viewBox keeps its internal proportions; `preserveAspectRatio
- * = "none"` lets the SVG stretch to fill the requested box exactly.
- */
+/** Standard flag ratio (width : height = 2 : 1). */
+const FLAG_RATIO = 2;
+
 const baseSvgStyle = {
     display: 'block',
     borderRadius: 2,
@@ -13,13 +10,22 @@ const baseSvgStyle = {
     flexShrink: 0,
 };
 
+function flagSize(width, height) {
+    const w = Number(width) || 22;
+    if (height != null && height !== '') {
+        return { width: w, height: Number(height) };
+    }
+    return { width: w, height: Math.max(8, Math.round(w / FLAG_RATIO)) };
+}
+
 function IndonesiaFlag({ width, height }) {
+    const { width: w, height: h } = flagSize(width, height);
     return (
         <svg
-            width={width}
-            height={height}
+            width={w}
+            height={h}
             viewBox="0 0 30 20"
-            preserveAspectRatio="none"
+            preserveAspectRatio="xMidYMid meet"
             xmlns="http://www.w3.org/2000/svg"
             style={baseSvgStyle}
             aria-label="Bendera Indonesia"
@@ -30,13 +36,14 @@ function IndonesiaFlag({ width, height }) {
     );
 }
 
-function MalaysiaFlag({ width, height }) {
+function MalaysiaFlag({ width, height, maskId }) {
+    const { width: w, height: h } = flagSize(width, height);
     return (
         <svg
-            width={width}
-            height={height}
+            width={w}
+            height={h}
             viewBox="0 0 28 14"
-            preserveAspectRatio="none"
+            preserveAspectRatio="xMidYMid meet"
             xmlns="http://www.w3.org/2000/svg"
             style={baseSvgStyle}
             aria-label="Bendera Malaysia"
@@ -46,12 +53,12 @@ function MalaysiaFlag({ width, height }) {
                 <rect key={y} y={y} width="28" height="1" fill="#FFFFFF" />
             ))}
             <rect width="14" height="7" fill="#010066" />
-            <mask id="crescent-mask">
+            <mask id={maskId}>
                 <rect width="14" height="7" fill="#000" />
                 <circle cx="6.8" cy="3.5" r="2" fill="#FFF" />
                 <circle cx="7.6" cy="3.5" r="2" fill="#000" />
             </mask>
-            <rect width="14" height="7" fill="#FFCC00" mask="url(#crescent-mask)" />
+            <rect width="14" height="7" fill="#FFCC00" mask={`url(#${maskId})`} />
             <polygon
                 points="10.2,2 10.6,3.1 11.8,3.1 10.8,3.8 11.2,5 10.2,4.3 9.2,5 9.6,3.8 8.6,3.1 9.8,3.1"
                 fill="#FFCC00"
@@ -60,9 +67,10 @@ function MalaysiaFlag({ width, height }) {
     );
 }
 
-export default function FlagIcon({ code, width = 22, height = 14 }) {
+export default function FlagIcon({ code, width = 22, height }) {
+    const maskId = useId().replace(/:/g, '');
     const upper = String(code || '').toUpperCase();
     if (upper === 'ID') return <IndonesiaFlag width={width} height={height} />;
-    if (upper === 'MY') return <MalaysiaFlag width={width} height={height} />;
+    if (upper === 'MY') return <MalaysiaFlag width={width} height={height} maskId={`my-crescent-${maskId}`} />;
     return null;
 }

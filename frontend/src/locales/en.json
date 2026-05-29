@@ -461,6 +461,7 @@
     "title": "Price Checker & Comparator",
     "subtitle": "Supports Listing Method, SKU Method, and Direct Input",
     "uploadStock": "Upload Stock",
+    "uploadStockShort": "Stock",
     "syncPrice": "Sync Price",
     "lastStockUpload": "Last Update: {{time}}",
     "listingMethod": "Listing Method",

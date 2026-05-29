@@ -110,6 +110,41 @@ def _is_image_url(url: str) -> bool:
     return bool(re.search(r"\.(jpe?g|png|gif|webp|svg)(\?|$)", url, re.IGNORECASE))
 
 
+def _is_cdn_picture_url(url: str) -> bool:
+    """True for Shopee/Aliyun/GCS picture URLs that often lack a file extension."""
+    if not url or not isinstance(url, str):
+        return False
+    u = url.lower()
+    if _is_image_url(url):
+        return True
+    hints = (
+        "aliyuncs.com",
+        "shopee",
+        "googleusercontent.com",
+        "storage.googleapis.com",
+        "product_performance",
+        "/file/",
+        "image.",
+        "photo",
+        "picture",
+    )
+    return any(h in u for h in hints)
+
+
+def normalize_upper_key_map(data: Dict | None) -> Dict:
+    """Map with both original and UPPER keys (link/name maps from DB vary in casing)."""
+    out: Dict = {}
+    for k, v in (data or {}).items():
+        if k is None:
+            continue
+        raw = str(k).strip()
+        if not raw:
+            continue
+        out[raw] = v
+        out[raw.upper()] = v
+    return out
+
+
 def _is_combined_sku_name(name: str, sku: str) -> bool:
     if not name or not sku:
         return False
@@ -676,22 +711,28 @@ def slim_sku_items_for_cache(sku_items: list | None) -> list:
 
 
 def export_link_for_item(item: dict | None) -> str:
-    """Best URL for Excel SKU Link column (embed image or show as text)."""
+    """Best URL for Excel SKU Link column — match batch calculate_prices (link first)."""
     if not isinstance(item, dict):
         return ""
+    # Same priority as calculate_prices → result["SKU n Link"] (batch download SKU).
     link = str(item.get("link") or "").strip()
     image = str(item.get("image") or "").strip()
     gcs = str(item.get("previewGcsPath") or "").strip()
-    if _is_image_url(link):
+
+    if link and (_is_image_url(link) or _is_cdn_picture_url(link)):
         return link
-    if _is_image_url(image):
+    if image and (_is_image_url(image) or _is_cdn_picture_url(image)):
+        return image
+    if link:
+        return link
+    if image:
         return image
     if gcs:
         pub = brand_material_public_url(gcs)
         if pub:
             return pub
         return f"gcs:{gcs}"
-    return link or image or ""
+    return ""
 
 
 def build_sku_export_item(
@@ -769,16 +810,33 @@ def build_sku_items_for_export(
 def resolve_photo_maps_for_skus(db, skus: set) -> tuple[dict, dict]:
     """
     Batch-resolve brand main photos + Product Performance fallbacks.
-    Skips expensive PP lookup when every SKU already has a brand main photo.
+    Still queries PP when brand row exists but has no usable URL/path.
     """
     brand_photo_meta_map = get_brand_main_photo_map(db, skus)
     need_pp: set = set()
     for s in skus:
-        key = (s or "").strip().upper()
-        if key and key not in brand_photo_meta_map:
-            need_pp.add(s)
+        raw = str(s or "").strip()
+        key = raw.upper()
+        if not key:
+            continue
+        meta = brand_photo_meta_map.get(key) or {}
+        has_brand_pic = bool(
+            (meta.get("url") or "").strip()
+            or (meta.get("previewGcsPath") or "").strip()
+        )
+        if not has_brand_pic:
+            need_pp.add(raw)
+            need_pp.add(key)
     photo_map = get_sku_photo_map(db, need_pp) if need_pp else {}
-    return brand_photo_meta_map, photo_map
+    # Normalize keys to uppercase for consistent lookup in calculate/export.
+    photo_map_upper = {}
+    for k, v in photo_map.items():
+        if not k or not v:
+            continue
+        ku = str(k).strip().upper()
+        photo_map_upper[ku] = v
+        photo_map_upper[str(k).strip()] = v
+    return brand_photo_meta_map, photo_map_upper
 
 
 def calculate_prices(

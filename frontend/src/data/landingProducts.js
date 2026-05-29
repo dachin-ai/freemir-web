@@ -1,7 +1,11 @@
+import landingFeaturedSkus from './landingFeaturedSkus.json';
+
+export const LANDING_FEATURED_SKUS = landingFeaturedSkus;
+
 export const LANDING_STATS = [
   { id: 'years', value: '13+' },
   { id: 'markets', value: '10+' },
-  { id: 'skus', value: '16+' },
+  { id: 'skus', value: String(landingFeaturedSkus.length) },
   { id: 'rating', value: '5★' },
 ];
 

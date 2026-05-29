@@ -756,44 +756,28 @@ const PriceChecker = () => {
                                 customRequest={uploadStockData}
                             >
                                 <Button
+                                    className="pc-upload-stock-btn"
                                     icon={lastStockUploadFile?.name ? <CheckCircleFilled /> : <UploadOutlined />}
                                     loading={loadingDb}
                                     style={{
-                                        height: 44,
+                                        height: 38,
                                         borderRadius: 10,
                                         fontWeight: 600,
                                         fontSize: 13,
-                                        minWidth: 210,
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'flex-start',
+                                        paddingInline: 12,
                                         color: lastStockUploadFile?.name ? '#10b981' : undefined,
                                         borderColor: lastStockUploadFile?.name ? 'rgba(16,185,129,0.45)' : undefined,
                                         background: lastStockUploadFile?.name
                                             ? (isDark ? 'rgba(16,185,129,0.12)' : 'rgba(16,185,129,0.08)')
                                             : undefined,
                                     }}
-                                    title={lastStockUploadFile?.name || t('priceChecker.uploadStock')}
+                                    title={
+                                        lastStockUploadFile?.name
+                                            ? `${t('priceChecker.uploadStock')}: ${lastStockUploadFile.name}${lastStockUploadFile.sizeLabel ? ` (${lastStockUploadFile.sizeLabel})` : ''}`
+                                            : t('priceChecker.uploadStock')
+                                    }
                                 >
-                                    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.15 }}>
-                                        <span><Bi i18nKey="priceChecker.uploadStock" /></span>
-                                        {lastStockUploadFile?.name ? (
-                                            <span
-                                                style={{
-                                                    maxWidth: 150,
-                                                    overflow: 'hidden',
-                                                    textOverflow: 'ellipsis',
-                                                    whiteSpace: 'nowrap',
-                                                    fontSize: 11,
-                                                    fontWeight: 500,
-                                                    color: isDark ? 'rgba(167,243,208,0.95)' : '#047857',
-                                                }}
-                                            >
-                                                {lastStockUploadFile.name}
-                                                {lastStockUploadFile.sizeLabel ? ` (${lastStockUploadFile.sizeLabel})` : ''}
-                                            </span>
-                                        ) : null}
-                                    </span>
+                                    <Bi i18nKey="priceChecker.uploadStockShort" />
                                 </Button>
                             </Upload>
                             <Button
@@ -803,10 +787,10 @@ const PriceChecker = () => {
                                 onClick={syncNeonData}
                                 loading={loadingDb}
                                 style={{
-                                    height: 44,
+                                    height: 38,
                                     borderRadius: 10,
                                     fontSize: 13,
-                                    paddingInline: 16,
+                                    paddingInline: 14,
                                 }}
                             >
                                 <Bi i18nKey="priceChecker.syncPrice" />
@@ -906,8 +890,26 @@ const PriceChecker = () => {
                 <Dropdown
                     menu={{
                         items: [
-                            { key: 'idr', label: 'Export Data IDR', onClick: () => handleExportData('IDR') },
-                            { key: 'myr', label: 'Export Data MYR', onClick: () => handleExportData('MYR') },
+                            {
+                                key: 'idr',
+                                label: (
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                                        <FlagIcon code="ID" width={20} />
+                                        Export Data IDR
+                                    </span>
+                                ),
+                                onClick: () => handleExportData('IDR'),
+                            },
+                            {
+                                key: 'myr',
+                                label: (
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                                        <FlagIcon code="MY" width={20} />
+                                        Export Data MYR
+                                    </span>
+                                ),
+                                onClick: () => handleExportData('MYR'),
+                            },
                         ],
                     }}
                     trigger={['click']}

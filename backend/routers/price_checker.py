@@ -24,6 +24,7 @@ from services.price_checker_logic import (
     resolve_photo_maps_for_skus,
     build_sku_items_for_export,
     export_link_for_item,
+    normalize_upper_key_map,
     slim_sku_items_for_cache,
     _item_price,
     _item_stock,
@@ -146,7 +147,10 @@ def _build_bundle_cache_row_data(
     }
 
 
-def _build_export_dataframe(unique_rows: list[PriceCheckerBundleCache]) -> pd.DataFrame:
+def _build_export_dataframe(unique_rows: list, currency: str) -> pd.DataFrame:
+    currency = normalize_currency(currency)
+    stock_types = get_stock_types_for(currency)
+
     def _get(entry, key, default=None):
         if isinstance(entry, dict):
             return entry.get(key, default)
@@ -157,9 +161,10 @@ def _build_export_dataframe(unique_rows: list[PriceCheckerBundleCache]) -> pd.Da
         payload = _get(row, "payload", {}) or {}
         summary = payload.get("summary", {})
         tiers = payload.get("tiers", {})
-        stocks = payload.get("stocks", {})
+        stocks = payload.get("stocks", {}) or {}
         items = payload.get("items", []) or []
         breakdown = payload.get("breakdown", []) or []
+        row_stocks = {st: parse_stock_value(stocks.get(st, 0)) for st in stock_types}
         row_data = {
             "SKU": payload.get("bundle_sku", _get(row, "bundle_sku", "")),
             "Input Price": tiers.get("Warning", 0) if tiers.get("Warning") != "Invalid" else 0,
@@ -168,15 +173,16 @@ def _build_export_dataframe(unique_rows: list[PriceCheckerBundleCache]) -> pd.Da
             "Bundle Discount": summary.get("bundle_discount", 0),
             "Mark Clearance": summary.get("clearance", "-"),
             "Mark Gift": summary.get("gift", "-"),
-            "Available Stock": summary.get("available_stock") or _summarize_available_stock(stocks),
+            # Recompute from currency stock columns so MYR export never shows "IDR-Ready".
+            "Available Stock": _summarize_available_stock(row_stocks),
             "Logic Applied": " | ".join(
                 f"{b.get('SKU', '')}: {b.get('Logic Applied', '')}" for b in breakdown if b.get("Logic Applied")
             ),
         }
         for pt in PRICE_TYPES:
             row_data[pt] = tiers.get(pt, "Invalid")
-        for st, qty in stocks.items():
-            row_data[st] = qty
+        for st in stock_types:
+            row_data[st] = row_stocks[st]
         for idx, item in enumerate(items, start=1):
             row_data[f"SKU {idx} Link"] = export_link_for_item(item)
         for idx, item in enumerate(items, start=1):
@@ -332,13 +338,20 @@ def _row_payload(row) -> dict:
 
 def _enrich_merged_rows_for_export(db, merged_rows: list, name_map: dict, link_map: dict) -> None:
     """Resolve photo/link for every export row (fixes compact cache with empty items)."""
+    from sqlalchemy.orm.attributes import flag_modified
+
+    name_map = normalize_upper_key_map(name_map)
+    link_map = normalize_upper_key_map(link_map)
+
     all_skus: set[str] = set()
     for row in merged_rows:
         payload = _row_payload(row)
         bundle_sku = payload.get("bundle_sku") or (
             row.get("bundle_sku") if isinstance(row, dict) else getattr(row, "bundle_sku", "")
         )
-        all_skus.update(clean_sku_list(bundle_sku))
+        for s in clean_sku_list(bundle_sku):
+            all_skus.add(s)
+            all_skus.add(s.upper())
 
     brand_photo_meta_map, photo_map = resolve_photo_maps_for_skus(db, all_skus)
     brand_photo_map = {
@@ -357,12 +370,15 @@ def _enrich_merged_rows_for_export(db, merged_rows: list, name_map: dict, link_m
             continue
         payload["items"] = build_sku_items_for_export(
             skus,
-            name_map=name_map or {},
-            link_map=link_map or {},
+            name_map=name_map,
+            link_map=link_map,
             brand_photo_meta_map=brand_photo_meta_map,
             brand_photo_map=brand_photo_map,
             photo_map=photo_map,
         )
+        if not isinstance(row, dict):
+            row.payload = payload
+            flag_modified(row, "payload")
 
 
 def _summarize_available_stock(stock_map: dict) -> str:
@@ -559,6 +575,8 @@ def export_cached_data(include_pictures: bool = False, currency: str = CURRENCIE
         link_map = db_cache.get("link_map")
         if not price_db:
             price_db, name_map, link_map = load_product_database()
+        name_map = normalize_upper_key_map(name_map)
+        link_map = normalize_upper_key_map(link_map)
         merged_rows = list(unique_rows_db)
         merged_keys = {r.bundle_key for r in unique_rows_db}
 
@@ -614,7 +632,7 @@ def export_cached_data(include_pictures: bool = False, currency: str = CURRENCIE
 
         _enrich_merged_rows_for_export(db, merged_rows, name_map or {}, link_map or {})
 
-        export_df = _build_export_dataframe(merged_rows)
+        export_df = _build_export_dataframe(merged_rows, currency=currency)
         if export_df.empty:
             raise HTTPException(
                 status_code=404,
