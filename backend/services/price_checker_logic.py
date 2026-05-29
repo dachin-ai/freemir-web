@@ -785,6 +785,16 @@ def build_sku_export_item(
     }
 
 
+def payload_items_have_export_links(items: list | None) -> bool:
+    """True when every item row already has a resolvable export link."""
+    if not items:
+        return False
+    for it in items:
+        if not isinstance(it, dict) or not export_link_for_item(it):
+            return False
+    return True
+
+
 def build_sku_items_for_export(
     skus: list,
     *,
@@ -1022,6 +1032,7 @@ def convert_df_to_excel_multisheet(
     method: str = "Listing",
     include_pictures: bool = False,
     currency: str = CURRENCIES[0],
+    export_fast: bool = False,
 ) -> bytes:
     currency = normalize_currency(currency)
     stock_types = get_stock_types_for(currency)
@@ -1115,10 +1126,14 @@ def convert_df_to_excel_multisheet(
         identity_cols = ["Bundle Discount", "Mark Clearance", "Mark Gift"]
         stock_cols = ["Available Stock", "Gap Available Stock"] + stock_types + [f"Gap {st}" for st in stock_types]
 
-        processing_sheets = [("All", PRICE_TYPES), ("Reminder", PRICE_TYPES)]
-        for sc in SHEET_CONFIG:
-            if sc[0] == "All": continue 
-            processing_sheets.append(sc)
+        if export_fast and not include_pictures:
+            processing_sheets = [("All", PRICE_TYPES)]
+        else:
+            processing_sheets = [("All", PRICE_TYPES), ("Reminder", PRICE_TYPES)]
+            for sc in SHEET_CONFIG:
+                if sc[0] == "All":
+                    continue
+                processing_sheets.append(sc)
 
         for sheet_name, price_cols in processing_sheets:
             current_df = df.copy()
@@ -1154,13 +1169,35 @@ def convert_df_to_excel_multisheet(
             final_cols = [c for c in target_cols if c in current_df.columns]
             
             sheet_df = current_df[final_cols].fillna("").replace([np.inf, -np.inf], "")
+
+            # Bulk export path: one sheet, no images — much faster for large MYR/IDR catalogs.
+            if export_fast and not include_pictures:
+                sheet_df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=0)
+                worksheet = writer.sheets[sheet_name]
+                for col_num, value in enumerate(sheet_df.columns.values):
+                    if value in interleaved_price_cols:
+                        header_fmt = header_fmt_price
+                    elif value == "Available Stock":
+                        header_fmt = header_fmt_avail_stock
+                    elif value in stock_cols:
+                        header_fmt = header_fmt_stock
+                    else:
+                        header_fmt = header_fmt_dark
+                    worksheet.write(0, col_num, value, header_fmt)
+                for i, col_name in enumerate(final_cols):
+                    if col_name == "SKU":
+                        worksheet.set_column(i, i, 35)
+                    elif "Link" in col_name:
+                        worksheet.set_column(i, i, 24)
+                continue
+
             # Only create the sheet + header row; writing full data here then overwriting every
             # cell in the loop below doubled generation time for large exports.
             pd.DataFrame(columns=sheet_df.columns).to_excel(
                 writer, index=False, sheet_name=sheet_name
             )
             worksheet = writer.sheets[sheet_name]
-            
+
             for col_num, value in enumerate(sheet_df.columns.values):
                 if value in interleaved_price_cols:
                     header_fmt = header_fmt_price

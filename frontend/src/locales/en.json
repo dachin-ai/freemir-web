@@ -496,6 +496,8 @@
     "exportConfirmOk": "Continue",
     "exportConfirmCancel": "Cancel",
     "msgExportReady": "Export data ready.",
+    "msgExportWait": "Preparing export file…",
+    "msgExportMyrWait": "Preparing MYR export, please wait…",
     "msgExportPicReady": "Export with image ready.",
     "msgExportFail": "Failed to export data",
     "bundleSku": "Bundle SKU — separate with +, comma, or space",

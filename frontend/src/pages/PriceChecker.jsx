@@ -345,6 +345,10 @@ const PriceChecker = () => {
 
     const runExportData = async (exportCurrency) => {
         setExportLoading(true);
+        const exportHint = exportCurrency === 'MYR'
+            ? t('priceChecker.msgExportMyrWait', { defaultValue: 'Menyiapkan export MYR, mohon tunggu…' })
+            : t('priceChecker.msgExportWait', { defaultValue: 'Menyiapkan file export…' });
+        message.loading(exportHint, 0);
         try {
             const res = await api.get('/price-checker/export-data', {
                 params: {
@@ -352,7 +356,7 @@ const PriceChecker = () => {
                     currency: exportCurrency,
                 },
                 responseType: 'blob',
-                timeout: 300000,
+                timeout: 600000,
             });
             const blob = new Blob(
                 [res.data],
@@ -361,9 +365,11 @@ const PriceChecker = () => {
             const href = URL.createObjectURL(blob);
             const filename = `Price_Checker_Export_${exportCurrency}.xlsx`;
             Object.assign(document.createElement('a'), { href, download: filename }).click();
+            message.destroy();
             message.success(t('priceChecker.msgExportReady'));
             logActivity(`Price Checker (Export Data ${exportCurrency})`);
         } catch (err) {
+            message.destroy();
             if (err?.code === 'ECONNABORTED') {
                 message.error('Export timeout. Please try again.');
             } else if (err?.response?.data instanceof Blob) {

@@ -471,6 +471,8 @@
     "exportConfirmOk": "继续",
     "exportConfirmCancel": "取消",
     "msgExportReady": "数据导出已就绪。",
+    "msgExportWait": "正在准备导出文件…",
+    "msgExportMyrWait": "正在准备 MYR 导出，请稍候…",
     "msgExportPicReady": "含图片导出已就绪。",
     "msgExportFail": "导出数据失败",
     "bundleSku": "捆绑 SKU — 用 +、逗号或空格分隔",

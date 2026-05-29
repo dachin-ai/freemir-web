@@ -470,6 +470,8 @@
     "exportConfirmOk": "Lanjutkan",
     "exportConfirmCancel": "Batal",
     "msgExportReady": "Ekspor data siap.",
+    "msgExportWait": "Menyiapkan file export…",
+    "msgExportMyrWait": "Menyiapkan export MYR, mohon tunggu…",
     "msgExportPicReady": "Ekspor dengan gambar siap.",
     "msgExportFail": "Gagal mengekspor data",
     "bundleSku": "SKU bundel — pisahkan dengan +, koma, atau spasi",

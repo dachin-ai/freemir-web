@@ -25,6 +25,7 @@ from services.price_checker_logic import (
     build_sku_items_for_export,
     export_link_for_item,
     normalize_upper_key_map,
+    payload_items_have_export_links,
     slim_sku_items_for_cache,
     _item_price,
     _item_stock,
@@ -231,33 +232,48 @@ def _append_recomputed_bundle_rows(
     merged_rows: list,
     merged_keys: set,
 ) -> None:
-    """Recompute multi-SKU bundles for the selected currency.
-
-    Ensures MYR export includes valid Malaysia bundles even when they were
-    previously calculated/cached only under another currency (e.g. IDR).
-    """
+    """Recompute multi-SKU bundles missing a cache row for this currency."""
     bundle_skus = (
         db.query(PriceCheckerBundleCache.bundle_sku)
         .filter(PriceCheckerBundleCache.sku_count > 1)
         .distinct()
         .all()
     )
+    missing_bundles: list[str] = []
     seen_bundle_sku: set[str] = set()
     for (bundle_sku_raw,) in bundle_skus:
         bundle_sku = str(bundle_sku_raw or "").strip()
         if not bundle_sku or bundle_sku in seen_bundle_sku:
             continue
         seen_bundle_sku.add(bundle_sku)
-
         bundle_key = f"{currency}|{bundle_sku}"
-        if bundle_key in merged_keys:
-            continue
+        if bundle_key not in merged_keys:
+            missing_bundles.append(bundle_sku)
 
+    if not missing_bundles:
+        return
+
+    all_skus: set[str] = set()
+    for bundle_sku in missing_bundles:
+        all_skus.update(clean_sku_list(bundle_sku))
+
+    brand_photo_meta_map, photo_map = resolve_photo_maps_for_skus(db, all_skus)
+    brand_photo_map = {
+        sku: meta.get("url", "")
+        for sku, meta in brand_photo_meta_map.items()
+        if meta.get("url")
+    }
+
+    for bundle_sku in missing_bundles:
+        bundle_key = f"{currency}|{bundle_sku}"
         price_info = calculate_prices(
             bundle_sku,
             price_db,
             name_map,
             link_map,
+            photo_map=photo_map,
+            brand_photo_meta_map=brand_photo_meta_map,
+            brand_photo_map=brand_photo_map,
             currency=currency,
         )
         if not _is_valid_bundle_result(price_info):
@@ -337,21 +353,31 @@ def _row_payload(row) -> dict:
 
 
 def _enrich_merged_rows_for_export(db, merged_rows: list, name_map: dict, link_map: dict) -> None:
-    """Resolve photo/link for every export row (fixes compact cache with empty items)."""
+    """Resolve photo/link for export rows that are missing item links."""
     from sqlalchemy.orm.attributes import flag_modified
 
     name_map = normalize_upper_key_map(name_map)
     link_map = normalize_upper_key_map(link_map)
 
+    rows_needing: list[tuple] = []
     all_skus: set[str] = set()
     for row in merged_rows:
         payload = _row_payload(row)
+        if payload_items_have_export_links(payload.get("items")):
+            continue
         bundle_sku = payload.get("bundle_sku") or (
             row.get("bundle_sku") if isinstance(row, dict) else getattr(row, "bundle_sku", "")
         )
-        for s in clean_sku_list(bundle_sku):
+        skus = clean_sku_list(bundle_sku)
+        if not skus:
+            continue
+        rows_needing.append((row, payload, skus))
+        for s in skus:
             all_skus.add(s)
             all_skus.add(s.upper())
+
+    if not rows_needing:
+        return
 
     brand_photo_meta_map, photo_map = resolve_photo_maps_for_skus(db, all_skus)
     brand_photo_map = {
@@ -360,14 +386,7 @@ def _enrich_merged_rows_for_export(db, merged_rows: list, name_map: dict, link_m
         if meta.get("url")
     }
 
-    for row in merged_rows:
-        payload = _row_payload(row)
-        bundle_sku = payload.get("bundle_sku") or (
-            row.get("bundle_sku") if isinstance(row, dict) else getattr(row, "bundle_sku", "")
-        )
-        skus = clean_sku_list(bundle_sku)
-        if not skus:
-            continue
+    for row, payload, skus in rows_needing:
         payload["items"] = build_sku_items_for_export(
             skus,
             name_map=name_map,
@@ -544,7 +563,10 @@ def get_template(method: str):
 
 @router.get("/export-data", dependencies=[Depends(require_tool_access("price_checker"))])
 def export_cached_data(include_pictures: bool = False, currency: str = CURRENCIES[0]):
+    import time
+
     currency = normalize_currency(currency)
+    t0 = time.perf_counter()
     db = SessionLocal()
     try:
         rows = db.query(PriceCheckerBundleCache).filter(
@@ -631,6 +653,7 @@ def export_cached_data(include_pictures: bool = False, currency: str = CURRENCIE
         )
 
         _enrich_merged_rows_for_export(db, merged_rows, name_map or {}, link_map or {})
+        t_enrich = time.perf_counter()
 
         export_df = _build_export_dataframe(merged_rows, currency=currency)
         if export_df.empty:
@@ -638,12 +661,20 @@ def export_cached_data(include_pictures: bool = False, currency: str = CURRENCIE
                 status_code=404,
                 detail=f"Tidak ada data valid untuk diexport ({currency}).",
             )
+        t_df = time.perf_counter()
 
         file_bytes = convert_df_to_excel_multisheet(
             export_df,
             method="SKU",
             include_pictures=include_pictures,
             currency=currency,
+            export_fast=not include_pictures,
+        )
+        t_xlsx = time.perf_counter()
+        print(
+            f"[export-data {currency}] rows={len(export_df)} "
+            f"merge={t_enrich - t0:.1f}s df={t_df - t_enrich:.1f}s "
+            f"xlsx={t_xlsx - t_df:.1f}s total={t_xlsx - t0:.1f}s"
         )
 
         suffix = f"_{currency}"
