@@ -15,6 +15,7 @@ from models import FreemirPrice, FreemirName
 from services.product_performance_logic import get_sku_photo_map, parse_sku_tokens
 from services.brand_material_logic import (
     GCS_BUCKET,
+    brand_material_public_url,
     download_gcs_object_bytes,
     get_brand_main_photo_map,
     get_brand_main_photo_url_map,
@@ -658,6 +659,113 @@ def generate_breakdown_table(
 
     return breakdown_data
 
+def slim_sku_items_for_cache(sku_items: list | None) -> list:
+    """Keep photo/link fields in bundle cache without full breakdown payload."""
+    keys = (
+        "sku", "name", "link", "image", "imageSource",
+        "brandMaterialId", "previewUrl", "previewGcsPath",
+    )
+    out = []
+    for it in sku_items or []:
+        if not isinstance(it, dict):
+            continue
+        row = {k: it[k] for k in keys if it.get(k) not in (None, "")}
+        if row.get("sku"):
+            out.append(row)
+    return out
+
+
+def export_link_for_item(item: dict | None) -> str:
+    """Best URL for Excel SKU Link column (embed image or show as text)."""
+    if not isinstance(item, dict):
+        return ""
+    link = str(item.get("link") or "").strip()
+    image = str(item.get("image") or "").strip()
+    gcs = str(item.get("previewGcsPath") or "").strip()
+    if _is_image_url(link):
+        return link
+    if _is_image_url(image):
+        return image
+    if gcs:
+        pub = brand_material_public_url(gcs)
+        if pub:
+            return pub
+        return f"gcs:{gcs}"
+    return link or image or ""
+
+
+def build_sku_export_item(
+    sku: str,
+    *,
+    name_map: Dict,
+    link_map: Dict,
+    brand_photo_meta_map: Dict,
+    brand_photo_map: Dict,
+    photo_map: Dict,
+) -> dict:
+    """Resolve one SKU row for export/UI (brand material → SKU link → product performance)."""
+    raw_name = name_map.get(sku, "") or name_map.get((sku or "").upper(), "") or ""
+    sku_name = _normalize_sku_name(sku, raw_name)
+    sku_link = link_map.get(sku, "") or link_map.get((sku or "").upper(), "") or ""
+    sku_key = (sku or "").strip().upper()
+    brand_meta = brand_photo_meta_map.get(sku_key) or {}
+    brand_image = brand_photo_map.get(sku_key) or brand_meta.get("url") or None
+    brand_material_id = brand_meta.get("materialId")
+    brand_preview_url = (brand_meta.get("previewUrl") or "").strip() or None
+    preview_gcs = (brand_meta.get("previewGcsPath") or "").strip() or ""
+
+    image_url = None
+    export_link = sku_link
+    image_source = None
+    if brand_material_id:
+        image_source = "brand_material"
+        image_url = brand_preview_url
+        export_link = brand_image or sku_link
+    elif _is_image_url(sku_link):
+        image_url = sku_link
+    else:
+        image_url = photo_map.get(sku_key) or photo_map.get(sku)
+
+    if image_source is None:
+        if image_url and _is_image_url(sku_link) and image_url == sku_link:
+            image_source = "sku_info"
+        elif image_url:
+            image_source = "product_performance"
+
+    return {
+        "sku": sku,
+        "name": sku_name,
+        "link": export_link,
+        "image": image_url,
+        "imageSource": image_source,
+        "brandMaterialId": brand_material_id,
+        "previewUrl": brand_preview_url,
+        "previewGcsPath": preview_gcs,
+    }
+
+
+def build_sku_items_for_export(
+    skus: list,
+    *,
+    name_map: Dict,
+    link_map: Dict,
+    brand_photo_meta_map: Dict,
+    brand_photo_map: Dict,
+    photo_map: Dict,
+) -> list:
+    return [
+        build_sku_export_item(
+            sku,
+            name_map=name_map,
+            link_map=link_map,
+            brand_photo_meta_map=brand_photo_meta_map,
+            brand_photo_map=brand_photo_map,
+            photo_map=photo_map,
+        )
+        for sku in skus
+    ]
+
+
 def resolve_photo_maps_for_skus(db, skus: set) -> tuple[dict, dict]:
     """
     Batch-resolve brand main photos + Product Performance fallbacks.
@@ -720,47 +828,21 @@ def calculate_prices(
 
     for i, sku in enumerate(skus):
         idx = i + 1
-        raw_name = name_map.get(sku, "") or name_map.get((sku or "").upper(), "") or ""
-        sku_name = _normalize_sku_name(sku, raw_name)
-        sku_link = link_map.get(sku, "") or link_map.get((sku or "").upper(), "") or ""
-        sku_key = (sku or "").strip().upper()
-        brand_meta = brand_photo_meta_map.get(sku_key) or {}
-        brand_image = brand_photo_map.get(sku_key) or brand_meta.get("url") or None
-        brand_material_id = brand_meta.get("materialId")
-        brand_preview_url = (brand_meta.get("previewUrl") or "").strip() or None
-
-        image_url = None
-        export_link = sku_link
-        image_source = None
-        if brand_material_id:
-            image_source = "brand_material"
-            image_url = brand_preview_url
-            export_link = brand_image or sku_link
-        elif _is_image_url(sku_link):
-            image_url = sku_link
-        elif photo_map.get(sku):
-            image_url = photo_map.get(sku)
-
-        result[f"SKU {idx} Link"] = export_link
-        result[f"SKU {idx} Name"] = sku_name
-        if image_source is None:
-            if image_url and _is_image_url(sku_link) and image_url == sku_link:
-                image_source = "sku_info"
-            elif image_url:
-                image_source = "product_performance"
-
-        sku_items.append({
-            "sku": sku,
-            "name": sku_name,
-            # Keep "open product link" aligned with image-source priority:
-            # prefer Brand Material main photo URL, then fallback to SKU_Info link.
-            "link": export_link,
-            "image": image_url,
-            "imageSource": image_source,
-            "brandMaterialId": brand_material_id,
-            "previewUrl": brand_preview_url,
-            "stock": {st: parse_stock_value(_item_stock(price_db.get(sku, {}), st)) for st in stock_types}
-        })
+        item = build_sku_export_item(
+            sku,
+            name_map=name_map,
+            link_map=link_map,
+            brand_photo_meta_map=brand_photo_meta_map,
+            brand_photo_map=brand_photo_map,
+            photo_map=photo_map,
+        )
+        result[f"SKU {idx} Link"] = item["link"]
+        result[f"SKU {idx} Name"] = item["name"]
+        item["stock"] = {
+            st: parse_stock_value(_item_stock(price_db.get(sku, {}), st))
+            for st in stock_types
+        }
+        sku_items.append(item)
         category_value = str(price_db.get(sku, {}).get("Category", "")).strip()
         categories_per_sku.append((sku, category_value))
 
@@ -905,7 +987,13 @@ def convert_df_to_excel_multisheet(
     def _get_image_bytes(url: str) -> bytes | None:
         if not include_pictures:
             return None
-        return fetch_framed_image_bytes(url, image_cache)
+        link_value = str(url or "").strip()
+        if link_value.startswith("gcs:"):
+            return fetch_framed_image_bytes(
+                gcs_object_path=link_value[4:],
+                cache=image_cache,
+            )
+        return fetch_framed_image_bytes(link_value, image_cache)
 
     with pd.ExcelWriter(output, engine='xlsxwriter', engine_kwargs={'options': {'nan_inf_to_errors': True}}) as writer:
         workbook = writer.book

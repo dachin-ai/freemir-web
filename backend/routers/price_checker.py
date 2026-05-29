@@ -22,6 +22,9 @@ from services.price_checker_logic import (
     sync_google_sheets_to_vps_postgres,
     upload_stock_data_to_google_sheet,
     resolve_photo_maps_for_skus,
+    build_sku_items_for_export,
+    export_link_for_item,
+    slim_sku_items_for_cache,
     _item_price,
     _item_stock,
     parse_idr_price,
@@ -126,7 +129,11 @@ def _build_bundle_cache_row_data(
         },
         "tiers": {pt: price_info.get(pt, "Invalid") for pt in PRICE_TYPES},
         "stocks": {st: int(price_info.get(st, 0) or 0) for st in get_stock_types_for(currency)},
-        "items": [] if compact else price_info.get("sku_items", []),
+        "items": (
+            slim_sku_items_for_cache(price_info.get("sku_items", []))
+            if compact
+            else price_info.get("sku_items", [])
+        ),
         "breakdown": [] if compact else (breakdown or []),
     }
     return {
@@ -171,7 +178,7 @@ def _build_export_dataframe(unique_rows: list[PriceCheckerBundleCache]) -> pd.Da
         for st, qty in stocks.items():
             row_data[st] = qty
         for idx, item in enumerate(items, start=1):
-            row_data[f"SKU {idx} Link"] = item.get("link", "")
+            row_data[f"SKU {idx} Link"] = export_link_for_item(item)
         for idx, item in enumerate(items, start=1):
             row_data[f"SKU {idx} Name"] = item.get("name", "")
         records.append(row_data)
@@ -245,9 +252,6 @@ def _append_recomputed_bundle_rows(
             price_db,
             name_map,
             link_map,
-            photo_map={},
-            brand_photo_meta_map={},
-            brand_photo_map={},
             currency=currency,
         )
         if not _is_valid_bundle_result(price_info):
@@ -314,6 +318,51 @@ def _build_synthetic_single_sku_row(
         "source": "sku_info",
         "payload": synthetic_payload,
     }
+
+
+def _row_payload(row) -> dict:
+    if isinstance(row, dict):
+        return row.get("payload") if isinstance(row.get("payload"), dict) else row
+    payload = row.payload if isinstance(row.payload, dict) else {}
+    if not payload:
+        row.payload = {}
+        return row.payload
+    return payload
+
+
+def _enrich_merged_rows_for_export(db, merged_rows: list, name_map: dict, link_map: dict) -> None:
+    """Resolve photo/link for every export row (fixes compact cache with empty items)."""
+    all_skus: set[str] = set()
+    for row in merged_rows:
+        payload = _row_payload(row)
+        bundle_sku = payload.get("bundle_sku") or (
+            row.get("bundle_sku") if isinstance(row, dict) else getattr(row, "bundle_sku", "")
+        )
+        all_skus.update(clean_sku_list(bundle_sku))
+
+    brand_photo_meta_map, photo_map = resolve_photo_maps_for_skus(db, all_skus)
+    brand_photo_map = {
+        sku: meta.get("url", "")
+        for sku, meta in brand_photo_meta_map.items()
+        if meta.get("url")
+    }
+
+    for row in merged_rows:
+        payload = _row_payload(row)
+        bundle_sku = payload.get("bundle_sku") or (
+            row.get("bundle_sku") if isinstance(row, dict) else getattr(row, "bundle_sku", "")
+        )
+        skus = clean_sku_list(bundle_sku)
+        if not skus:
+            continue
+        payload["items"] = build_sku_items_for_export(
+            skus,
+            name_map=name_map or {},
+            link_map=link_map or {},
+            brand_photo_meta_map=brand_photo_meta_map,
+            brand_photo_map=brand_photo_map,
+            photo_map=photo_map,
+        )
 
 
 def _summarize_available_stock(stock_map: dict) -> str:
@@ -562,6 +611,8 @@ def export_cached_data(include_pictures: bool = False, currency: str = CURRENCIE
                 str((r.get("bundle_sku") if isinstance(r, dict) else getattr(r, "bundle_sku", "")) or ""),
             ),
         )
+
+        _enrich_merged_rows_for_export(db, merged_rows, name_map or {}, link_map or {})
 
         export_df = _build_export_dataframe(merged_rows)
         if export_df.empty:
