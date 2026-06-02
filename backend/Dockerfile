@@ -5,15 +5,13 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Copy the requirements file
-COPY backend/requirements.txt .
+COPY requirements.txt .
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application (build context = repo root; see cloudbuild.yaml)
-COPY backend/ .
-# Landing catalog JSON lives in frontend repo; API image must include it (split Cloud Run deploy).
-COPY frontend/src/data/landingFeaturedSkus.json ./data/landingFeaturedSkus.json
+# Copy the rest of the application (build context = ./backend)
+COPY . .
 
 # Expose the port the app runs on
 EXPOSE 8080
