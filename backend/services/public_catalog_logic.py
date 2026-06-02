@@ -14,18 +14,30 @@ from services.brand_material_logic import get_brand_main_photo_map
 from services.price_checker_logic import CURRENCIES, parse_idr_price
 from services.product_performance_logic import get_sku_photo_map
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_LANDING_SKUS_JSON = _REPO_ROOT / "frontend" / "src" / "data" / "landingFeaturedSkus.json"
+def _landing_featured_skus_paths() -> list[Path]:
+    """Local dev: repo frontend JSON. Cloud Run (split API image): backend/data copy."""
+    backend_root = Path(__file__).resolve().parents[1]
+    repo_root = backend_root.parent
+    return [
+        backend_root / "data" / "landingFeaturedSkus.json",
+        repo_root / "frontend" / "src" / "data" / "landingFeaturedSkus.json",
+    ]
 
 
 def _load_landing_featured_skus() -> list[str]:
     """Single source of truth: frontend/src/data/landingFeaturedSkus.json"""
-    try:
-        raw = json.loads(_LANDING_SKUS_JSON.read_text(encoding="utf-8"))
-        if isinstance(raw, list):
-            return [str(s).strip().upper() for s in raw if str(s).strip()]
-    except Exception as e:
-        print(f"[WARN] landingFeaturedSkus.json: {e}")
+    for path in _landing_featured_skus_paths():
+        if not path.is_file():
+            continue
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(raw, list):
+                skus = [str(s).strip().upper() for s in raw if str(s).strip()]
+                if skus:
+                    return skus
+        except Exception as e:
+            print(f"[WARN] landingFeaturedSkus.json ({path}): {e}")
+    print("[WARN] landingFeaturedSkus.json not found — landing catalog will be empty")
     return []
 
 

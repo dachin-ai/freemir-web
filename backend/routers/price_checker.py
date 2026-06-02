@@ -25,7 +25,6 @@ from services.price_checker_logic import (
     build_sku_items_for_export,
     export_link_for_item,
     normalize_upper_key_map,
-    payload_items_have_export_links,
     slim_sku_items_for_cache,
     _item_price,
     _item_stock,
@@ -363,8 +362,6 @@ def _enrich_merged_rows_for_export(db, merged_rows: list, name_map: dict, link_m
     all_skus: set[str] = set()
     for row in merged_rows:
         payload = _row_payload(row)
-        if payload_items_have_export_links(payload.get("items")):
-            continue
         bundle_sku = payload.get("bundle_sku") or (
             row.get("bundle_sku") if isinstance(row, dict) else getattr(row, "bundle_sku", "")
         )

@@ -124,9 +124,98 @@ def get_sheet_client():
     return _cached_sh
 
 
+_SHA256_HEX_RE = re.compile(r"^[a-f0-9]{64}$", re.I)
+
+
 def hash_password(password: str) -> str:
     """Simple SHA-256 hash for password storage."""
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+def is_stored_password_hash(value: str) -> bool:
+    return bool(_SHA256_HEX_RE.match(str(value or "").strip()))
+
+
+def normalize_password_for_storage(raw: str) -> str:
+    """
+    Account sheet may store either SHA-256 hex (from signup/reset) or plain text.
+    DB always stores the hash form for new writes.
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    if is_stored_password_hash(text):
+        return text.lower()
+    return hash_password(text)
+
+
+def verify_password(plain: str, stored: str) -> bool:
+    """Accept hash in DB or legacy plain text synced from the spreadsheet."""
+    plain_s = str(plain or "")
+    stored_s = str(stored or "").strip()
+    if not stored_s:
+        return False
+    if hash_password(plain_s) == stored_s:
+        return True
+    if plain_s == stored_s:
+        return True
+    return False
+
+
+def _permissions_from_sheet_row(user: dict) -> Dict:
+    perms = {}
+    for tk in TOOL_KEYS:
+        val = str(user.get(tk, "0")).strip()
+        perms[tk] = 1 if val == "1" else 0
+    return perms
+
+
+def _find_sheet_user(login_id: str) -> Optional[Dict]:
+    """Resolve a row from the Account worksheet by username or email."""
+    ident = (login_id or "").strip()
+    if not ident:
+        return None
+    try:
+        users = get_users()
+    except Exception as e:
+        print(f"[Auth] Cannot read Account sheet for login: {e}")
+        return None
+    ident_lower = ident.lower()
+    for row in users:
+        uname = str(row.get("Username", "")).strip()
+        email = str(row.get("Email", "")).strip()
+        if uname.lower() == ident_lower or (email and email.lower() == ident_lower):
+            return row
+    return None
+
+
+def _upsert_account_user_from_sheet_row(db: Session, user: dict) -> AccountUser:
+    username = str(user.get("Username", "")).strip()
+    if not username:
+        raise ValueError("Account sheet row is missing Username")
+    perms = _permissions_from_sheet_row(user)
+    pwd = normalize_password_for_storage(str(user.get("Password", "")))
+    existing = db.query(AccountUser).filter(AccountUser.username.ilike(username)).first()
+    if existing:
+        existing.email = str(user.get("Email", "")).strip()
+        existing.password = pwd
+        existing.approval = str(user.get("Approval", "")).strip()
+        existing.permissions = perms
+        return existing
+    max_id = db.query(AccountUser.id).order_by(AccountUser.id.desc()).first()
+    next_id = (max_id[0] + 1) if max_id and max_id[0] is not None else 1
+    sheet_name = str(user.get("Name", "")).strip()
+    new_user = AccountUser(
+        id=next_id,
+        email=str(user.get("Email", "")).strip(),
+        username=username,
+        name=sheet_name or username,
+        password=pwd,
+        approval=str(user.get("Approval", "")).strip(),
+        permissions=perms,
+    )
+    db.add(new_user)
+    return new_user
 
 
 def get_users() -> List[Dict]:
@@ -227,37 +316,29 @@ def sync_users_from_sheet() -> Tuple[bool, str]:
                 username = str(user.get("Username", "")).strip()
                 if not username:
                     continue
-                    
-                # Parse permissions
-                perms = {}
-                for tk in TOOL_KEYS:
-                    val = str(user.get(tk, "0")).strip()
-                    perms[tk] = 1 if val == "1" else 0
-                
-                # Check if user exists
                 existing = db.query(AccountUser).filter(
                     AccountUser.username.ilike(username)
                 ).first()
-                
                 if existing:
                     # Update existing user (email, password, approval, permissions from sheet).
                     # Do NOT overwrite `name`: admin-assigned display names are edited in Access Management
                     # and stored in PostgreSQL; sheet sync should not revert them.
                     existing.email = str(user.get("Email", "")).strip()
-                    existing.password = str(user.get("Password", "")).strip()
+                    existing.password = normalize_password_for_storage(
+                        str(user.get("Password", ""))
+                    )
                     existing.approval = str(user.get("Approval", "")).strip()
-                    existing.permissions = perms
+                    existing.permissions = _permissions_from_sheet_row(user)
                 else:
-                    # Insert new user
                     sheet_name = str(user.get("Name", "")).strip()
                     new_user = AccountUser(
                         id=next_id,
                         email=str(user.get("Email", "")).strip(),
                         username=username,
                         name=sheet_name or username,
-                        password=str(user.get("Password", "")).strip(),
+                        password=normalize_password_for_storage(str(user.get("Password", ""))),
                         approval=str(user.get("Approval", "")).strip(),
-                        permissions=perms
+                        permissions=_permissions_from_sheet_row(user),
                     )
                     db.add(new_user)
                     next_id += 1
@@ -349,20 +430,28 @@ def login_user_optimized(username: str, password: str) -> Tuple[bool, str, Optio
     """
     Optimized login dengan single DB query.
     `username` may be the user's registered username or email.
+    Falls back to the Account sheet so passwords typed as in the spreadsheet always work.
     """
     try:
         db = SessionLocal()
         try:
-            user = _find_account_user_for_login(db, username)
+            login_id = (username or "").strip()
+            user = _find_account_user_for_login(db, login_id)
 
-            if not user:
-                return False, "No account found with that username or email.", None
-            
-            # Check password
-            hashed = hash_password(password)
-            if hashed != user.password.strip():
-                return False, "Incorrect password.", None
-            
+            if user and verify_password(password, user.password):
+                pass
+            else:
+                sheet_user = _find_sheet_user(login_id)
+                if not sheet_user or not verify_password(
+                    password, str(sheet_user.get("Password", ""))
+                ):
+                    if not user:
+                        return False, "No account found with that username or email.", None
+                    return False, "Incorrect password.", None
+                user = _upsert_account_user_from_sheet_row(db, sheet_user)
+                db.commit()
+                db.refresh(user)
+
             # Check approval status
             approval = str(user.approval).strip().lower()
             if approval == "waiting":
@@ -458,56 +547,8 @@ def signup_user(email: str, username: str, password: str) -> Tuple[bool, str]:
 
 
 def login_user(username: str, password: str) -> Tuple[bool, str, Optional[str]]:
-    """
-    Validate login.
-    Returns (success, message, jwt_token)
-    `username` may be the user's registered username or email.
-    """
-    try:
-        db = SessionLocal()
-        try:
-            u = _find_account_user_for_login(db, username)
-            if not u:
-                return False, "No account found with that username or email.", None
-            user = {
-                "Email": u.email,
-                "Username": u.username,
-                "Name": u.name or u.username,
-                "Password": u.password,
-                "Approval": u.approval,
-                "permissions": normalize_permissions(u.permissions),
-            }
-        finally:
-            db.close()
-
-        # Check password
-        hashed = hash_password(password)
-        stored_hash = str(user.get("Password", "")).strip()
-        if hashed != stored_hash:
-            return False, "Incorrect password.", None
-
-        # Check approval status
-        approval = str(user.get("Approval", "")).strip().lower()
-        if approval == "waiting":
-            return False, "Your account is pending admin approval.", None
-        if approval != "approve":
-            return False, "Your account has been rejected or is inactive.", None
-
-        # Generate JWT
-        permissions = normalize_permissions(user.get("permissions", {}))
-        payload = {
-            "username": user["Username"],
-            "name": user.get("Name") or user["Username"],
-            "email": user.get("Email", ""),
-            "permissions": permissions,
-            "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=TOKEN_EXPIRE_HOURS),
-            "iat": datetime.datetime.utcnow(),
-        }
-        token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-        return True, "Login successful.", token
-
-    except Exception as e:
-        return False, f"Login error: {str(e)}", None
+    """Legacy alias — same behavior as login_user_optimized."""
+    return login_user_optimized(username, password)
 
 
 def verify_token(token: str) -> Optional[Dict]:
@@ -704,7 +745,7 @@ def change_password(username: str, current_password: str, new_password: str) -> 
                 return False, "User not found."
 
             # Verify current password
-            if hash_password(current_password) != user.password.strip():
+            if not verify_password(current_password, user.password):
                 return False, "Current password is incorrect."
 
             if len(new_password) < 6:

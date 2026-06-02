@@ -710,28 +710,51 @@ def slim_sku_items_for_cache(sku_items: list | None) -> list:
     return out
 
 
+def _export_url_from_gcs_path(gcs: str) -> str:
+    gcs = str(gcs or "").strip()
+    if not gcs:
+        return ""
+    pub = brand_material_public_url(gcs)
+    if pub:
+        return pub
+    return f"gcs:{gcs}"
+
+
+def _is_usable_picture_url(url: str) -> bool:
+    u = str(url or "").strip()
+    if not u:
+        return False
+    return _is_image_url(u) or _is_cdn_picture_url(u)
+
+
 def export_link_for_item(item: dict | None) -> str:
-    """Best URL for Excel SKU Link column — match batch calculate_prices (link first)."""
+    """Best URL for Excel SKU Link column — Material Library Main before SKU_Info / PP."""
     if not isinstance(item, dict):
         return ""
-    # Same priority as calculate_prices → result["SKU n Link"] (batch download SKU).
     link = str(item.get("link") or "").strip()
     image = str(item.get("image") or "").strip()
     gcs = str(item.get("previewGcsPath") or "").strip()
+    gcs_url = _export_url_from_gcs_path(gcs) if gcs else ""
+    brand_id = item.get("brandMaterialId")
+    image_source = item.get("imageSource")
 
-    if link and (_is_image_url(link) or _is_cdn_picture_url(link)):
+    if brand_id or image_source == "brand_material":
+        for candidate in (gcs_url, image, link):
+            if candidate and (_is_usable_picture_url(candidate) or candidate.startswith("gcs:")):
+                return candidate
+        if gcs_url:
+            return gcs_url
+
+    if link and _is_usable_picture_url(link):
         return link
-    if image and (_is_image_url(image) or _is_cdn_picture_url(image)):
+    if image and _is_usable_picture_url(image):
         return image
     if link:
         return link
     if image:
         return image
-    if gcs:
-        pub = brand_material_public_url(gcs)
-        if pub:
-            return pub
-        return f"gcs:{gcs}"
+    if gcs_url:
+        return gcs_url
     return ""
 
 
@@ -754,14 +777,15 @@ def build_sku_export_item(
     brand_material_id = brand_meta.get("materialId")
     brand_preview_url = (brand_meta.get("previewUrl") or "").strip() or None
     preview_gcs = (brand_meta.get("previewGcsPath") or "").strip() or ""
+    brand_gcs_url = _export_url_from_gcs_path(preview_gcs) if preview_gcs else ""
 
     image_url = None
     export_link = sku_link
     image_source = None
-    if brand_material_id:
+    if brand_material_id or brand_gcs_url or brand_image:
         image_source = "brand_material"
-        image_url = brand_preview_url
-        export_link = brand_image or sku_link
+        image_url = brand_preview_url or brand_image or brand_gcs_url or None
+        export_link = brand_image or brand_gcs_url or brand_preview_url or sku_link
     elif _is_image_url(sku_link):
         image_url = sku_link
     else:
@@ -1187,8 +1211,19 @@ def convert_df_to_excel_multisheet(
                 for i, col_name in enumerate(final_cols):
                     if col_name == "SKU":
                         worksheet.set_column(i, i, 35)
-                    elif "Link" in col_name:
-                        worksheet.set_column(i, i, 24)
+                # Hide SKU photo link + name columns (same as full export; unhide in Excel if needed).
+                for sku_col in sku_info_cols:
+                    if sku_col in final_cols:
+                        idx = final_cols.index(sku_col)
+                        worksheet.set_column(idx, idx, 4, None, {"hidden": True})
+                for _hide_name in hidden_detail_cols:
+                    if _hide_name in final_cols:
+                        _hi = final_cols.index(_hide_name)
+                        worksheet.set_column(_hi, _hi, 4, None, {"hidden": True})
+                for _hide_name in EXPORT_HIDDEN_COLUMNS:
+                    if _hide_name in final_cols:
+                        _hi = final_cols.index(_hide_name)
+                        worksheet.set_column(_hi, _hi, 4, None, {"hidden": True})
                 continue
 
             # Only create the sheet + header row; writing full data here then overwriting every
