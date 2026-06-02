@@ -9,6 +9,8 @@ import { LangProvider, useLang } from './context/LangContext';
 import MainLayout from './layout/MainLayout';
 import LoginPage from './pages/LoginPage';
 import LandingPage from './pages/LandingPage';
+import LearnProductsPage from './pages/LearnProductsPage';
+import CompareProductsPage from './pages/CompareProductsPage';
 import PriceChecker from './pages/PriceChecker';
 import Dashboard from './pages/Dashboard';
 import OrderLossReview from './pages/OrderLossReview';
@@ -68,6 +70,8 @@ function ProtectedApp() {
     return (
       <Routes>
         <Route path={PATH_HOME} element={<LandingPage />} />
+        <Route path="/learn-products" element={<LearnProductsPage />} />
+        <Route path="/compare-products" element={<CompareProductsPage />} />
         <Route path={PATH_LOGIN} element={<LoginPage />} />
         <Route
           path={`${PATH_TOOLS}/*`}
@@ -81,6 +85,8 @@ function ProtectedApp() {
   return (
     <Routes>
       <Route path={PATH_HOME} element={<LandingPage />} />
+      <Route path="/learn-products" element={<LearnProductsPage />} />
+      <Route path="/compare-products" element={<CompareProductsPage />} />
       <Route path={PATH_LOGIN} element={<Navigate to={PATH_TOOLS} replace />} />
       {LEGACY_TOOL_REDIRECTS.map((segment) => (
         <Route
