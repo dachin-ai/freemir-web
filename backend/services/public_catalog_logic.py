@@ -12,9 +12,11 @@ import gspread
 from sqlalchemy.orm import Session
 
 from models import FreemirName, FreemirPrice
-from services.brand_material_logic import get_brand_main_photo_map
+from services.brand_material_logic import (
+    get_brand_main_photo_map,
+    get_landing_material_gallery_for_sku,
+)
 from services.price_checker_logic import CURRENCIES, parse_idr_price
-from services.product_performance_logic import get_sku_photo_map
 from services.auth_logic import CREDENTIALS_FILE, SPREADSHEET_URL
 
 def _landing_featured_skus_paths() -> list[Path]:
@@ -62,6 +64,10 @@ _LANG_PREFIX = {
 
 def _norm_status(raw: Any) -> str:
     return re.sub(r"[\s_\-]+", "", str(raw or "").strip().lower())
+
+
+# Hidden from landing catalog, learn page, compare, and top tier.
+_HIDDEN_STATUSES = frozenset({"later", "nonfreemir"})
 
 
 def _is_image_url(url: str | None) -> bool:
@@ -162,9 +168,20 @@ def _get_sku_detail_rows() -> list[dict]:
     return out
 
 
+_ITEMS_CACHE_SECONDS = 120
+_ITEMS_CACHE: dict[str, Any] = {
+    "ts": 0.0,
+    "lang": "",
+    "currency": "",
+    "items": [],
+}
+
+
 def invalidate_landing_catalog_cache() -> None:
     _SKU_DETAIL_CACHE["ts"] = 0.0
     _SKU_DETAIL_CACHE["rows"] = []
+    _ITEMS_CACHE["ts"] = 0.0
+    _ITEMS_CACHE["items"] = []
 
 
 def refresh_landing_catalog_data() -> dict[str, Any]:
@@ -258,29 +275,85 @@ def _resolve_image_url(
     return None
 
 
-def get_landing_products(
-    db: Session,
-    *,
-    currency: str = "IDR",
-    lang: str = "id",
-) -> dict[str, Any]:
-    """Landing catalog from SKU_Detail + SKU_Info price/stock data."""
-    cur = (currency or "IDR").strip().upper()
-    if cur not in CURRENCIES:
-        cur = "IDR"
-    lang_key = (lang or "id").strip().lower()
-    if lang_key not in _LANG_PREFIX:
-        lang_key = "id"
-
-    detail_rows = _get_sku_detail_rows()
-    detail_by_sku = {
-        str(r.get("SKU", "")).strip().upper(): r
-        for r in detail_rows
-        if str(r.get("SKU", "")).strip()
+def _slim_card_item(item: dict) -> dict:
+    """List/grid card — no heavy detail blob."""
+    return {
+        "sku": item["sku"],
+        "name": item["name"],
+        "sale_price": item["sale_price"],
+        "original_price": item["original_price"],
+        "currency": item["currency"],
+        "image_url": item["image_url"],
+        "has_price": item["has_price"],
+        "has_image": item["has_image"],
+        "status": item["status"],
+        "order_index": item["order_index"],
+        "category_l1": item["category_l1"],
+        "category_l2": item["category_l2"],
+        "series": item.get("series") or "",
+        "discount_percent": item["discount_percent"],
     }
-    skus = [s for s in detail_by_sku.keys()]
+
+
+def _build_series_groups(catalog_products: list[dict]) -> list[dict]:
+    """Group catalog items by SKU_Detail column Series (sheet order preserved)."""
+    grouped: dict[str, dict[str, Any]] = {}
+    series_order: list[str] = []
+
+    for item in catalog_products:
+        series_name = str(item.get("series") or "").strip()
+        if not series_name:
+            continue
+        if series_name not in grouped:
+            grouped[series_name] = {
+                "name": series_name,
+                "order_index": int(item.get("order_index") or 0),
+                "products": [],
+            }
+            series_order.append(series_name)
+        grouped[series_name]["products"].append(_slim_card_item(item))
+
+    out: list[dict] = []
+    for name in sorted(series_order, key=lambda n: grouped[n]["order_index"]):
+        products = sorted(grouped[name]["products"], key=lambda p: str(p.get("sku") or ""))
+        out.append({
+            "name": name,
+            "order_index": grouped[name]["order_index"],
+            "count": len(products),
+            "products": products,
+        })
+    return out
+
+
+def _compare_list_item(item: dict) -> dict:
+    """Compare picker + table — includes detail blob, no SKU in UI."""
+    slim = _slim_card_item(item)
+    slim["detail"] = item.get("detail") or {}
+    return slim
+
+
+def _top_tier_item(item: dict) -> dict:
+    slim = _slim_card_item(item)
+    slim["detail"] = {
+        "advantages": (item.get("detail") or {}).get("advantages") or [],
+    }
+    return slim
+
+
+def _build_landing_items(db: Session, *, currency: str, lang_key: str) -> list[dict]:
+    detail_rows = _get_sku_detail_rows()
+    detail_by_sku: dict[str, dict] = {}
+    order_by_sku: dict[str, int] = {}
+    for idx, row in enumerate(detail_rows):
+        sku = str(row.get("SKU", "")).strip().upper()
+        if not sku:
+            continue
+        detail_by_sku[sku] = row
+        order_by_sku[sku] = idx
+
+    skus = list(detail_by_sku.keys())
     if not skus:
-        return {"products": [], "top_tier_products": [], "categories": []}
+        return []
 
     price_rows = {
         (r.sku or "").strip().upper(): r
@@ -293,39 +366,35 @@ def get_landing_products(
 
     sku_set = set(skus)
     brand_map = get_brand_main_photo_map(db, sku_set)
-    pp_map = get_sku_photo_map(db, sku_set)
 
-    out: list[dict] = []
-    catalog_products: list[dict] = []
-    categories_ordered: list[str] = []
-    top_tier: list[dict] = []
-    learn_products: list[dict] = []
-    compare_products: list[dict] = []
+    items: list[dict] = []
     for sku in skus:
         detail = detail_by_sku.get(sku) or {}
         price_row = price_rows.get(sku)
         name_row = name_rows.get(sku)
         raw_prices = price_row.prices if price_row else None
 
-        sale = _tier_price_from_prices(raw_prices, "Daily-Discount", currency=cur)
-        original = _tier_price_from_prices(raw_prices, "Original", currency=cur)
-        stock_summary = _stock_summary_from_prices(raw_prices, currency=cur)
+        sale = _tier_price_from_prices(raw_prices, "Daily-Discount", currency=currency)
+        original = _tier_price_from_prices(raw_prices, "Original", currency=currency)
 
         image_url = _resolve_image_url(
             sku,
             brand_map=brand_map,
             name_link=name_row.link if name_row else None,
-            pp_photo=pp_map.get(sku),
+            pp_photo=None,
         )
 
         category_l1 = _pick_lang_value(detail, "Level_1_Category", lang_key)
         category_l2 = _pick_lang_value(detail, "Level_2_Category", lang_key)
+        series = str(detail.get("Series", "")).strip()
         product_name = (
             _pick_lang_value(detail, "Name", lang_key)
             or (name_row.product_name if name_row and name_row.product_name else sku)
         )
         status = str(detail.get("Status", "")).strip()
         status_norm = _norm_status(status)
+        if status_norm in _HIDDEN_STATUSES:
+            continue
 
         sale_int = int(round(sale)) if sale is not None else None
         original_int = int(round(original)) if original is not None else None
@@ -338,20 +407,20 @@ def get_landing_products(
         if show_strike and original_int:
             discount_percent = int(round(((original_int - sale_int) / original_int) * 100))
 
-        item = {
+        items.append({
             "sku": sku,
             "name": product_name,
             "sale_price": sale_int,
             "original_price": original_int if show_strike else None,
-            "currency": cur,
-            "stock_summary": stock_summary,
+            "currency": currency,
             "image_url": image_url,
             "has_price": sale_int is not None,
             "has_image": bool(image_url),
             "status": status,
-            "order_index": int(detail_rows.index(detail)) if detail in detail_rows else 0,
+            "order_index": order_by_sku.get(sku, 0),
             "category_l1": category_l1,
             "category_l2": category_l2,
+            "series": series,
             "discount_percent": discount_percent,
             "detail": {
                 "color": _pick_lang_value(detail, "Color", lang_key),
@@ -366,24 +435,106 @@ def get_landing_products(
                 "detail_advantages": _pick_lang_list(detail, "Detail_Advantage", lang_key),
                 "notes": _pick_lang_value(detail, "Data_Notes", lang_key),
             },
-        }
-        out.append(item)
-        if status_norm not in {"zerosales", "later"}:
-            catalog_products.append(item)
-            if category_l2 and category_l2 not in categories_ordered:
-                categories_ordered.append(category_l2)
+        })
+    return items
+
+
+def _get_cached_landing_items(db: Session, *, currency: str, lang_key: str) -> list[dict]:
+    now = time.time()
+    if (
+        _ITEMS_CACHE["items"]
+        and _ITEMS_CACHE["lang"] == lang_key
+        and _ITEMS_CACHE["currency"] == currency
+        and (now - float(_ITEMS_CACHE["ts"] or 0)) < _ITEMS_CACHE_SECONDS
+    ):
+        return _ITEMS_CACHE["items"]
+
+    items = _build_landing_items(db, currency=currency, lang_key=lang_key)
+    _ITEMS_CACHE["ts"] = now
+    _ITEMS_CACHE["lang"] = lang_key
+    _ITEMS_CACHE["currency"] = currency
+    _ITEMS_CACHE["items"] = items
+    return items
+
+
+def get_landing_product_detail(
+    db: Session,
+    sku: str,
+    *,
+    currency: str = "IDR",
+    lang: str = "id",
+) -> dict | None:
+    """Full product + material gallery for modal (loaded on demand)."""
+    cur = (currency or "IDR").strip().upper()
+    if cur not in CURRENCIES:
+        cur = "IDR"
+    lang_key = (lang or "id").strip().lower()
+    if lang_key not in _LANG_PREFIX:
+        lang_key = "id"
+
+    sku_norm = str(sku or "").strip().upper()
+    for item in _get_cached_landing_items(db, currency=cur, lang_key=lang_key):
+        if item["sku"] == sku_norm:
+            out = dict(item)
+            out["media_gallery"] = get_landing_material_gallery_for_sku(db, sku_norm)
+            return out
+    return None
+
+
+def get_landing_products(
+    db: Session,
+    *,
+    currency: str = "IDR",
+    lang: str = "id",
+    scope: str = "landing",
+) -> dict[str, Any]:
+    """Scoped landing payloads — avoids duplicate giant arrays per page."""
+    cur = (currency or "IDR").strip().upper()
+    if cur not in CURRENCIES:
+        cur = "IDR"
+    lang_key = (lang or "id").strip().lower()
+    if lang_key not in _LANG_PREFIX:
+        lang_key = "id"
+    scope_key = (scope or "landing").strip().lower()
+
+    items = _get_cached_landing_items(db, currency=cur, lang_key=lang_key)
+    catalog_products: list[dict] = []
+    categories_ordered: list[str] = []
+    top_tier: list[dict] = []
+    for item in items:
+        status_norm = _norm_status(item.get("status"))
+        if status_norm == "zerosales":
+            pass
         else:
-            learn_products.append(item)
-            compare_products.append(item)
+            catalog_products.append(item)
+            cat = item.get("category_l2")
+            if cat and cat not in categories_ordered:
+                categories_ordered.append(cat)
         if status_norm in {"gtmnew", "hot"}:
             top_tier.append(item)
 
+    base = {"currency": cur, "lang": lang_key, "scope": scope_key}
+
+    if scope_key == "learn":
+        browse = [_slim_card_item(i) for i in items]
+        return {**base, "browse_products": browse}
+
+    if scope_key == "compare":
+        eligible = [
+            i for i in items
+            if _norm_status(i.get("status")) not in _HIDDEN_STATUSES
+        ]
+        return {
+            **base,
+            "compare_products": [_compare_list_item(i) for i in eligible],
+        }
+
+    slim_catalog = [_slim_card_item(i) for i in catalog_products]
     return {
-        "products": catalog_products,
-        "all_products": out,
-        "top_tier_products": top_tier,
-        "learn_products": learn_products,
-        "compare_products": compare_products,
+        **base,
+        "products": slim_catalog,
+        "top_tier_products": [_top_tier_item(i) for i in top_tier],
+        "series_groups": _build_series_groups(catalog_products),
         "categories": categories_ordered,
     }
 

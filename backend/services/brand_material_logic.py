@@ -196,6 +196,123 @@ def get_brand_main_photo_url_map(db: Session, skus: set) -> dict[str, str]:
     return {sku: info["url"] for sku, info in meta.items() if info.get("url")}
 
 
+def _landing_media_entry(row: BrandMaterial) -> dict | None:
+    mt = (getattr(row, "media_type", None) or "photo").strip().lower()
+    gcs = row.gcs_object_path
+    preview = getattr(row, "preview_gcs_object_path", None)
+    if mt == "video":
+        url = brand_material_public_url(gcs)
+        if not url:
+            return None
+        poster = brand_material_public_url(preview) if preview else None
+        return {
+            "materialId": row.id,
+            "mediaType": "video",
+            "url": url,
+            "posterUrl": poster,
+        }
+    path = preview or gcs
+    url = brand_material_public_url(path)
+    if not url:
+        return None
+    return {
+        "materialId": row.id,
+        "mediaType": "photo",
+        "url": url,
+        "posterUrl": brand_material_public_url(preview) if preview else url,
+    }
+
+
+def _gallery_from_material_rows(rows: list[BrandMaterial]) -> dict:
+    """Landing modal extras: 1 sub/main video + up to 4 sub photos."""
+    videos = [r for r in rows if (getattr(r, "media_type", None) or "photo") == "video"]
+    video_row = None
+    for r in videos:
+        if r.category == "main":
+            video_row = r
+            break
+    if not video_row and videos:
+        videos.sort(key=lambda r: (r.sub_index if r.sub_index is not None else 0, r.id or ""))
+        video_row = videos[0]
+
+    sub_photos = [
+        r
+        for r in rows
+        if r.category == "sub" and (getattr(r, "media_type", None) or "photo") == "photo"
+    ]
+    sub_photos.sort(key=lambda r: (r.sub_index if r.sub_index is not None else 0, r.id or ""))
+
+    photos: list[dict] = []
+    for row in sub_photos:
+        if len(photos) >= 4:
+            break
+        entry = _landing_media_entry(row)
+        if entry:
+            photos.append(entry)
+
+    video = _landing_media_entry(video_row) if video_row else None
+    return {"video": video, "photos": photos}
+
+
+def get_landing_material_gallery_for_sku(db: Session, sku: str) -> dict:
+    """Single-SKU gallery for landing modal (lazy load)."""
+    sku_upper = (sku or "").strip().upper()
+    if not sku_upper:
+        return {}
+    key = _sku_key(sku_upper)
+    rows = (
+        db.query(BrandMaterial)
+        .filter(BrandMaterial.sku_key == key)
+        .order_by(
+            BrandMaterial.media_type.asc(),
+            case((BrandMaterial.category == "main", 0), else_=1).asc(),
+            BrandMaterial.sub_index.asc().nullsfirst(),
+            BrandMaterial.id.asc(),
+        )
+        .all()
+    )
+    gallery = _gallery_from_material_rows(rows)
+    if gallery.get("video") or gallery.get("photos"):
+        return gallery
+    return {}
+
+
+def get_landing_material_gallery_map(db: Session, skus: set) -> dict[str, dict]:
+    """SKU (uppercase) → { video: {...}|null, photos: [...] } for public landing modal."""
+    if not skus:
+        return {}
+    keys = {_sku_key(s) for s in skus if s}
+    if not keys:
+        return {}
+
+    rows = (
+        db.query(BrandMaterial)
+        .filter(BrandMaterial.sku_key.in_(list(keys)))
+        .order_by(
+            BrandMaterial.media_type.asc(),
+            case((BrandMaterial.category == "main", 0), else_=1).asc(),
+            BrandMaterial.sub_index.asc().nullsfirst(),
+            BrandMaterial.id.asc(),
+        )
+        .all()
+    )
+
+    by_key: dict[str, list[BrandMaterial]] = {}
+    for row in rows:
+        by_key.setdefault(row.sku_key, []).append(row)
+
+    out: dict[str, dict] = {}
+    for sku in skus:
+        sku_upper = (sku or "").strip().upper()
+        if not sku_upper:
+            continue
+        key = _sku_key(sku_upper)
+        gallery = _gallery_from_material_rows(by_key.get(key, []))
+        if gallery.get("video") or gallery.get("photos"):
+            out[sku_upper] = gallery
+    return out
+
+
 def get_storage_client() -> storage.Client:
     global _storage_client
     if _storage_client is not None:

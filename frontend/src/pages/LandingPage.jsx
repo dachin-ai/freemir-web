@@ -2,25 +2,29 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-    ArrowRightOutlined, SunOutlined, MoonOutlined, LoginOutlined, PictureOutlined,
-    MailOutlined, EnvironmentOutlined, ClockCircleOutlined,
+    ArrowRightOutlined, SunOutlined, MoonOutlined, LoginOutlined,
+    MailOutlined, EnvironmentOutlined, ClockCircleOutlined, ShopOutlined,
 } from '@ant-design/icons';
-import { Modal, Pagination, Spin } from 'antd';
+import { Pagination, Spin } from 'antd';
 import { useTheme } from '../context/ThemeContext';
 import LanguageSwitch from '../components/LanguageSwitch';
 import CountryFlag from '../components/CountryFlag';
+import LandingProductDetailModal from '../components/landing/LandingProductDetailModal';
+import { ProductImage, discountBadge, formatIdr } from '../components/landing/landingProductHelpers';
 import api from '../api';
 import SocialIcon, { SOCIAL_LINKS } from '../components/SocialIcon';
 import {
     LANDING_CONTACT_ADDRESS_KEY,
     LANDING_CONTACT_MAPS_URL,
     LANDING_CONTACT_REGIONS,
+    LANDING_OFFICIAL_STORE_URL,
 } from '../data/landingContact';
 import {
     ABOUT_IMAGE_CANDIDATES,
     HERO_IMAGE_CANDIDATES,
     LANDING_STATS,
 } from '../data/landingProducts';
+import { getSeriesDisplayTitle, seriesNameToSlug } from '../data/landingSeriesLabels';
 import './landing.css';
 
 function WhatsAppIcon() {
@@ -29,23 +33,6 @@ function WhatsAppIcon() {
             <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
         </svg>
     );
-}
-
-function formatIdr(price) {
-    if (price === null || price === undefined) return '—';
-    const n = Number(price);
-    if (!Number.isFinite(n)) return '—';
-    return `Rp ${n.toLocaleString('id-ID')}`;
-}
-
-function discountBadge(product) {
-    const pct = Number(product?.discount_percent || 0);
-    if (!pct || pct <= 0) return null;
-    return <span className="landing-discount-badge">-{pct}%</span>;
-}
-
-function normalizeInline(text) {
-    return String(text || '').replace(/\s*\n+\s*/g, ' x ').replace(/\s{2,}/g, ' ').trim();
 }
 
 function prettyAdvantage(text) {
@@ -95,55 +82,46 @@ function FallbackImage({ candidates, className, alt = '' }) {
     );
 }
 
-function ProductImage({ src, alt, placeholderText = '' }) {
-    const [failed, setFailed] = useState(!src);
-    useEffect(() => {
-        setFailed(!src);
-    }, [src]);
-    if (failed || !src) {
-        return (
-            <div className="landing-product-placeholder">
-                <PictureOutlined />
-                {placeholderText && <span className="landing-product-placeholder-text">{placeholderText}</span>}
-            </div>
-        );
-    }
-    return (
-        <img
-            src={src}
-            alt={alt}
-            loading="lazy"
-            onError={() => setFailed(true)}
-        />
-    );
-}
-
 export default function LandingPage() {
     const { t, i18n } = useTranslation();
     const { isDark, toggleTheme } = useTheme();
     const [heroIndex, setHeroIndex] = useState(0);
     const [products, setProducts] = useState([]);
     const [topTierProducts, setTopTierProducts] = useState([]);
+    const [seriesGroups, setSeriesGroups] = useState([]);
     const [categories, setCategories] = useState([]);
     const [activeCategory, setActiveCategory] = useState('');
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [catalogPage, setCatalogPage] = useState(1);
     const [productsLoading, setProductsLoading] = useState(true);
 
-    const scrollTo = (id) => {
-        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const scrollToSection = (id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const nav = document.querySelector('.landing-nav');
+        const offset = (nav?.offsetHeight ?? 72) + 12;
+        const top = el.getBoundingClientRect().top + window.scrollY - offset;
+        window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
     };
+
+    useEffect(() => {
+        const hash = window.location.hash?.replace('#', '').trim();
+        if (!hash || hash === 'top') return undefined;
+        const timer = window.setTimeout(() => scrollToSection(hash), 100);
+        return () => window.clearTimeout(timer);
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
         setProductsLoading(true);
         const lang = (i18n.language || 'id').slice(0, 2).toLowerCase();
-        api.get('/public/landing-products', { params: { currency: 'IDR', lang }, timeout: 60000 })
+        api.get('/public/landing-products', { params: { currency: 'IDR', lang, scope: 'landing' }, timeout: 60000 })
             .then((res) => {
                 if (!cancelled) {
                     const payload = res.data || {};
                     setProducts(payload.products || []);
                     setTopTierProducts(payload.top_tier_products || []);
+                    setSeriesGroups(payload.series_groups || []);
                     const fetchedCategories = payload.categories || [];
                     setCategories(fetchedCategories);
                     setActiveCategory((prev) => (prev && fetchedCategories.includes(prev) ? prev : ''));
@@ -154,6 +132,7 @@ export default function LandingPage() {
                 if (!cancelled) {
                     setProducts([]);
                     setTopTierProducts([]);
+                    setSeriesGroups([]);
                     setCategories([]);
                     setActiveCategory('');
                     setCatalogPage(1);
@@ -174,6 +153,30 @@ export default function LandingPage() {
     const pagedProducts = sortedProducts.slice((catalogPage - 1) * PAGE_SIZE, catalogPage * PAGE_SIZE);
     const topRow = topTierProducts.filter((_, idx) => idx % 2 === 0);
     const bottomRow = topTierProducts.filter((_, idx) => idx % 2 === 1);
+    const renderProductCard = (p) => (
+        <button
+            type="button"
+            key={p.sku}
+            className="landing-product-card landing-product-card-static landing-product-button"
+            onClick={() => setSelectedProduct(p)}
+        >
+            <ProductImage src={p.image_url} alt={p.name} />
+            <div className="meta">
+                <div className="sku">{p.sku}</div>
+                <div className="landing-price">{formatIdr(p.sale_price)}</div>
+                {p.original_price != null && (
+                    <div className="landing-price-was-row">
+                        {!!Number(p.discount_percent || 0) && (
+                            <span className="landing-discount-badge">-{p.discount_percent}%</span>
+                        )}
+                        <div className="landing-price-was">{formatIdr(p.original_price)}</div>
+                    </div>
+                )}
+                <div className="name">{p.name}</div>
+            </div>
+        </button>
+    );
+
     const renderMarqueeRow = (items, className) => {
         if (!items.length) return null;
         const duplicated = [...items, ...items];
@@ -187,7 +190,7 @@ export default function LandingPage() {
                             className="landing-top-tier-card"
                             onClick={() => setSelectedProduct(p)}
                         >
-                            <ProductImage src={p.image_url} alt={p.name} />
+                            <ProductImage src={p.image_url} alt={p.name} eager />
                             <div className="meta">
                                 <div className="sku">{p.sku}</div>
                                 <div className="name">{p.name}</div>
@@ -207,15 +210,22 @@ export default function LandingPage() {
     return (
         <div className="landing-root" data-theme={isDark ? 'dark' : 'light'}>
             <header className="landing-nav">
-                <a href="#top" className="landing-brand" onClick={(e) => { e.preventDefault(); scrollTo('top'); }}>
+                <a href="#top" className="landing-brand" onClick={(e) => { e.preventDefault(); scrollToSection('top'); }}>
                     <img src="/logo.png" alt="freemir" />
                 </a>
 
                 <nav className="landing-nav-links" aria-label="Primary">
-                    <a href="#about" onClick={(e) => { e.preventDefault(); scrollTo('about'); }}>{t('landing.navAbout')}</a>
-                    <a href="#catalog" onClick={(e) => { e.preventDefault(); scrollTo('catalog'); }}>{t('landing.navProducts')}</a>
-                    <a href="#learn" onClick={(e) => { e.preventDefault(); scrollTo('learn'); }}>{t('landing.navLearn')}</a>
-                    <a href="#contact" onClick={(e) => { e.preventDefault(); scrollTo('contact'); }}>{t('landing.navContact')}</a>
+                    <a href="#about" onClick={(e) => { e.preventDefault(); scrollToSection('about'); }}>{t('landing.navAbout')}</a>
+                    <a href="#catalog" onClick={(e) => { e.preventDefault(); scrollToSection('catalog'); }}>{t('landing.navProducts')}</a>
+                    <a href="#learn" onClick={(e) => { e.preventDefault(); scrollToSection('learn'); }}>{t('landing.navLearn')}</a>
+                    <a href="#contact" onClick={(e) => { e.preventDefault(); scrollToSection('contact'); }}>{t('landing.navContact')}</a>
+                    <a
+                        href={LANDING_OFFICIAL_STORE_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        {t('landing.navShop')}
+                    </a>
                 </nav>
 
                 <div className="landing-nav-actions">
@@ -248,8 +258,19 @@ export default function LandingPage() {
                 />
                 <div className="landing-hero-overlay" />
                 <div className="landing-hero-content">
-                    <span className="landing-hero-tag">{t('landing.heroTag')}</span>
                     <h1>{t('landing.heroTitle')}</h1>
+                    <div className="landing-hero-actions">
+                        <a
+                            href={LANDING_OFFICIAL_STORE_URL}
+                            className="landing-btn landing-btn-primary landing-btn-hero"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            <ShopOutlined />
+                            {t('landing.shopNow')}
+                            <ArrowRightOutlined />
+                        </a>
+                    </div>
                 </div>
             </section>
 
@@ -269,7 +290,7 @@ export default function LandingPage() {
                 </div>
             </section>
 
-            <section className="landing-section" id="catalog">
+            <section className="landing-section" id="top-tier">
                 <h2 className="landing-section-title">{t('landing.topTierTitle')}</h2>
                 <p className="landing-section-lead">{t('landing.topTierLead')}</p>
                 {productsLoading ? (
@@ -287,7 +308,31 @@ export default function LandingPage() {
                 )}
             </section>
 
-            <section className="landing-section" id="catalog-list">
+            {!productsLoading && seriesGroups.length > 0 && (
+                <section className="landing-section landing-section-soft" id="series">
+                    <h2 className="landing-section-title">{t('landing.seriesTitle')}</h2>
+                    <p className="landing-section-lead">{t('landing.seriesLead')}</p>
+                    <div className="landing-series-stack">
+                        {seriesGroups.map((group) => (
+                            <article className="landing-series-block" key={seriesNameToSlug(group.name) || group.name}>
+                                <header className="landing-series-block-head">
+                                    <h3 className="landing-series-block-title">
+                                        {getSeriesDisplayTitle(group.name, t)}
+                                    </h3>
+                                    <p className="landing-series-block-count">
+                                        {t('landing.seriesProductCount', { count: group.count })}
+                                    </p>
+                                </header>
+                                <div className="landing-product-row landing-series-product-row">
+                                    {group.products.map((p) => renderProductCard(p))}
+                                </div>
+                            </article>
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            <section className="landing-section" id="catalog">
                 <h2 className="landing-section-title">{t('landing.catalogTitle')}</h2>
                 <p className="landing-section-lead">{t('landing.catalogLeadDb')}</p>
                 {!productsLoading && categories.length > 0 && (
@@ -323,29 +368,7 @@ export default function LandingPage() {
                     </div>
                 ) : (
                     <div className="landing-product-row">
-                        {pagedProducts.map((p) => (
-                            <button
-                                type="button"
-                                key={p.sku}
-                                className="landing-product-card landing-product-card-static landing-product-button"
-                                onClick={() => setSelectedProduct(p)}
-                            >
-                                <ProductImage src={p.image_url} alt={p.name} />
-                                <div className="meta">
-                                    <div className="sku">{p.sku}</div>
-                                    <div className="landing-price">{formatIdr(p.sale_price)}</div>
-                                    {p.original_price != null && (
-                                        <div className="landing-price-was-row">
-                                            {!!Number(p.discount_percent || 0) && (
-                                                <span className="landing-discount-badge">-{p.discount_percent}%</span>
-                                            )}
-                                            <div className="landing-price-was">{formatIdr(p.original_price)}</div>
-                                        </div>
-                                    )}
-                                    <div className="name">{p.name}</div>
-                                </div>
-                            </button>
-                        ))}
+                        {pagedProducts.map((p) => renderProductCard(p))}
                     </div>
                 )}
                 {!productsLoading && sortedProducts.length === 0 && (
@@ -470,10 +493,22 @@ export default function LandingPage() {
             <footer className="landing-footer">
                 <img src="/logo.png" alt="freemir" />
                 <p>{t('landing.footerMission')}</p>
-                <Link to="/login" className="landing-btn landing-btn-primary">
-                    {t('landing.teamAccess')}
-                    <ArrowRightOutlined />
-                </Link>
+                <div className="landing-footer-actions">
+                    <a
+                        href={LANDING_OFFICIAL_STORE_URL}
+                        className="landing-btn landing-btn-primary"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        <ShopOutlined />
+                        {t('landing.shopNow')}
+                        <ArrowRightOutlined />
+                    </a>
+                    <Link to="/login" className="landing-btn landing-btn-outline">
+                        {t('landing.teamAccess')}
+                        <ArrowRightOutlined />
+                    </Link>
+                </div>
                 <div className="landing-social">
                     <p className="landing-social-title">{t('landing.followUsTitle')}</p>
                     <div className="landing-social-row">
@@ -495,77 +530,10 @@ export default function LandingPage() {
                     <small>{t('landing.footerCopyright', { year: new Date().getFullYear() })}</small>
                 </p>
             </footer>
-            <Modal
-                open={!!selectedProduct}
-                title={selectedProduct?.name || ''}
-                onCancel={() => setSelectedProduct(null)}
-                footer={null}
-                width={760}
-                className="landing-product-modal"
-                maskStyle={{ backgroundColor: 'rgba(2, 6, 23, 0.9)' }}
-            >
-                {selectedProduct && (
-                    <div className="landing-product-modal-content">
-                        <div className="landing-product-modal-media">
-                            <ProductImage src={selectedProduct.image_url} alt={selectedProduct.name} />
-                        </div>
-                        <div className="landing-product-modal-info">
-                            <div className="landing-modal-sku">{selectedProduct.sku}</div>
-                            <div className="landing-modal-price-line">
-                                <div className="landing-modal-price">{formatIdr(selectedProduct.sale_price)}</div>
-                                {discountBadge(selectedProduct)}
-                            </div>
-                            <div className="landing-modal-price-original">
-                                <strong>{t('landing.modal.originalPrice')}:</strong>{' '}
-                                {selectedProduct.original_price != null ? formatIdr(selectedProduct.original_price) : '—'}
-                            </div>
-                            <div className="landing-modal-price-original">
-                                <strong>{t('landing.modal.discountPrice')}:</strong> {formatIdr(selectedProduct.sale_price)}
-                            </div>
-                            <div className="landing-modal-stock">
-                                <strong>{t('landing.stockLabel')}:</strong> {selectedProduct.stock_summary || '—'}
-                            </div>
-                            <div className="landing-modal-grid">
-                                <div><strong>{t('landing.modal.category')}:</strong> {selectedProduct.category_l1 || '—'}</div>
-                                <div><strong>{t('landing.modal.subCategory')}:</strong> {selectedProduct.category_l2 || '—'}</div>
-                                <div><strong>{t('landing.modal.color')}:</strong> {selectedProduct.detail?.color || '—'}</div>
-                                <div><strong>{t('landing.modal.mainMaterial')}:</strong> {selectedProduct.detail?.main_material || '—'}</div>
-                                <div><strong>{t('landing.modal.detailMaterial')}:</strong> {selectedProduct.detail?.detail_material || '—'}</div>
-                                <div className="landing-modal-grid-span">
-                                    <strong>{t('landing.modal.dimensions')}:</strong>{' '}
-                                    {normalizeInline(selectedProduct.detail?.product_dimension_cm) || '—'}
-                                </div>
-                                <div><strong>{t('landing.modal.weight')}:</strong> {selectedProduct.detail?.nett_weight_g || '—'}</div>
-                            </div>
-                            <div className="landing-modal-adv-table-wrap">
-                                <div className="landing-modal-adv-title">{t('landing.modal.advTableTitle')}</div>
-                                <table className="landing-modal-adv-table">
-                                    <thead>
-                                        <tr>
-                                            <th>{t('landing.modal.advantages')}</th>
-                                            <th>{t('landing.modal.detailAdvantages')}</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {Array.from({
-                                            length: Math.max(
-                                                (selectedProduct.detail?.advantages || []).length,
-                                                (selectedProduct.detail?.detail_advantages || []).length,
-                                                1,
-                                            ),
-                                        }).map((_, idx) => (
-                                            <tr key={`adv-row-${idx}`}>
-                                                <td>{selectedProduct.detail?.advantages?.[idx] || '-'}</td>
-                                                <td>{selectedProduct.detail?.detail_advantages?.[idx] || '-'}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </Modal>
+            <LandingProductDetailModal
+                product={selectedProduct}
+                onClose={() => setSelectedProduct(null)}
+            />
         </div>
     );
 }

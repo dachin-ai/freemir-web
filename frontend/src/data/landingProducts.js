@@ -20,17 +20,8 @@ export const LANDING_CATEGORIES = [
   { id: 'knife' },
 ];
 
-/** Hero: elegant open kitchens (dapur) — woody tones, natural light, blue accents. */
-export const HERO_IMAGE_CANDIDATES = [
-  'https://images.unsplash.com/photo-1556912172-45b7abe8b7e1?w=1600&q=80&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1600&q=80&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1565538810643-b5bdb714032a?w=1600&q=80&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1556905040-f86a3728cda3?w=1600&q=80&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1600607687920-783a92d987a6?w=1600&q=80&auto=format&fit=crop',
-];
+/** Hero background — freemir kitchen product shot (context/Kitchen_BG). */
+export const HERO_IMAGE_CANDIDATES = ['/Kitchen_BG.png'];
 
-export const ABOUT_IMAGE_CANDIDATES = [
-  'https://images.unsplash.com/photo-1615873965287-d3a06275bcfe?w=900&q=80&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1560185127-5dcc4bf5b854?w=900&q=80&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=900&q=80&auto=format&fit=crop',
-];
+/** About section — lifestyle kitchen with person (context/Sub_Kitchen_BG). */
+export const ABOUT_IMAGE_CANDIDATES = ['/Sub_Kitchen_BG.png'];

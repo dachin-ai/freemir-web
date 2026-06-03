@@ -30,3 +30,5 @@ export const LANDING_CONTACT_REGIONS = [
 export const LANDING_CONTACT_ADDRESS_KEY = 'landing.contactAddress';
 
 export const LANDING_CONTACT_MAPS_URL = 'https://maps.app.goo.gl/7PHpJrQhga9o3BE56';
+
+export const LANDING_OFFICIAL_STORE_URL = 'https://freemirofficial.com/';

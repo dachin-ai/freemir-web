@@ -49,6 +49,51 @@ export function parseSkuFilterInput(raw) {
     return [...found].sort((a, b) => a.localeCompare(b));
 }
 
+/** Delimiters aligned with Price Checker bundle input (+ , - | / \\ and whitespace). */
+const BUNDLE_SKU_SPLIT_RE = /\s*[+\-,|/\\]+\s*|\s+/;
+
+/**
+ * Parse one or many SKUs from paste/type (bundle compare, price checker style).
+ * Preserves order; dedupes while keeping first occurrence.
+ */
+export function parseSkuBundleInput(raw) {
+    const text = (raw || '').trim();
+    if (!text) return [];
+
+    const ordered = [];
+    const seen = new Set();
+
+    const pushSku = (sku) => {
+        const n = normalizeSkuInput(sku);
+        if (!n || seen.has(n)) return;
+        seen.add(n);
+        ordered.push(n);
+    };
+
+    const upper = text.toUpperCase();
+    const segments = upper.split(BUNDLE_SKU_SPLIT_RE).map((s) => s.trim()).filter(Boolean);
+
+    if (segments.length === 0) {
+        parseSkuFilterInput(text).forEach(pushSku);
+        return ordered;
+    }
+
+    for (const segment of segments) {
+        const extracted = parseSkuFilterInput(segment);
+        if (extracted.length > 0) {
+            extracted.forEach(pushSku);
+        } else if (segment.length >= SKU_LENGTH) {
+            pushSku(segment);
+        }
+    }
+
+    if (ordered.length === 0) {
+        parseSkuFilterInput(text).forEach(pushSku);
+    }
+
+    return ordered;
+}
+
 /** Build searchable SKU index from catalog + optional extras. */
 export function buildSkuIndex(catalogItems = [], extraSkus = []) {
     const map = new Map();
