@@ -227,6 +227,35 @@ def _pick_lang_list(row: dict, key_suffix: str, lang: str) -> list[str]:
     return values
 
 
+def _build_search_terms(detail: dict, sku: str, name_row: Any) -> list[str]:
+    """All names/nicknames for client search — independent of UI language."""
+    seen: set[str] = set()
+    out: list[str] = []
+
+    def add(raw: Any) -> None:
+        text = str(raw or "").strip()
+        if not text:
+            return
+        key = text.casefold()
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(text)
+
+    add(sku)
+    for header, val in (detail or {}).items():
+        if not val:
+            continue
+        h = str(header or "").strip().lower().replace(" ", "_")
+        if h == "nickname" or h.endswith("_nickname") or "_nickname" in h:
+            add(val)
+    for prefix in ("ID", "EN", "ZH"):
+        add((detail or {}).get(f"{prefix}_Name"))
+    if name_row is not None and getattr(name_row, "product_name", None):
+        add(name_row.product_name)
+    return out
+
+
 def _tier_price_from_prices(
     prices_raw: Any,
     tier: str,
@@ -297,6 +326,7 @@ def _slim_card_item(item: dict) -> dict:
         "category_l2": item["category_l2"],
         "series": item.get("series") or "",
         "discount_percent": item["discount_percent"],
+        "search_terms": item.get("search_terms") or [],
     }
 
 
@@ -424,6 +454,7 @@ def _build_landing_items(db: Session, *, currency: str, lang_key: str) -> list[d
         items.append({
             "sku": sku,
             "name": product_name,
+            "search_terms": _build_search_terms(detail, sku, name_row),
             "sale_price": sale_int,
             "original_price": original_int,
             "currency": currency,

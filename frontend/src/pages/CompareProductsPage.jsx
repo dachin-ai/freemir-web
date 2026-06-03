@@ -7,6 +7,7 @@ import LandingSubPageShell from '../components/landing/LandingSubPageShell';
 import { useLandingCurrency } from '../hooks/useLandingCurrency';
 import {
     ProductImage,
+    ProductThumb,
     formatProductOriginalPrice,
     formatProductPrice,
     isZeroSalesProduct,
@@ -363,8 +364,17 @@ export default function CompareProductsPage() {
                                             className="landing-compare-suggest-item"
                                             onClick={() => addProduct(p)}
                                         >
-                                            <span className="landing-compare-suggest-sku">{p.sku}</span>
-                                            <span className="landing-compare-suggest-name">{p.name}</span>
+                                            <span className="landing-compare-suggest-media">
+                                                <ProductThumb
+                                                    src={p.image_url}
+                                                    alt=""
+                                                    className="landing-compare-suggest-thumb"
+                                                />
+                                            </span>
+                                            <span className="landing-compare-suggest-meta">
+                                                <span className="landing-compare-suggest-sku">{p.sku}</span>
+                                                <span className="landing-compare-suggest-name">{p.name}</span>
+                                            </span>
                                         </button>
                                     ))}
                                 </div>

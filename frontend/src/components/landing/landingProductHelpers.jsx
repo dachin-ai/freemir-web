@@ -108,19 +108,76 @@ export const ProductImage = memo(function ProductImage({
     );
 });
 
+/** Lightweight thumbnail for search lists (no watermark wrapper). */
+export const ProductThumb = memo(function ProductThumb({ src, alt = '', className = '' }) {
+    const [failed, setFailed] = useState(!src);
+    useEffect(() => {
+        setFailed(!src);
+    }, [src]);
+
+    if (failed || !src) {
+        return (
+            <span className={`landing-product-thumb-fallback ${className}`.trim()} aria-hidden>
+                <PictureOutlined />
+            </span>
+        );
+    }
+
+    return (
+        <img
+            className={`landing-product-thumb ${className}`.trim()}
+            src={src}
+            alt={alt}
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            onContextMenu={(event) => event.preventDefault()}
+            onError={() => setFailed(true)}
+        />
+    );
+});
+
+function productSearchTerms(product) {
+    const terms = Array.isArray(product?.search_terms) ? product.search_terms : [];
+    const sku = String(product?.sku || '').trim();
+    const name = String(product?.name || '').trim();
+    const merged = [...terms];
+    if (name && !merged.some((t) => String(t).toLowerCase() === name.toLowerCase())) {
+        merged.unshift(name);
+    }
+    if (sku && !merged.some((t) => String(t).toUpperCase() === sku.toUpperCase())) {
+        merged.push(sku);
+    }
+    return merged;
+}
+
 export function scoreProductMatch(product, query) {
     const q = query.trim().toLowerCase();
     if (!q) return 0;
     const sku = String(product?.sku || '').toLowerCase();
     const name = String(product?.name || '').toLowerCase();
+    const terms = productSearchTerms(product).map((t) => String(t).toLowerCase());
+
     if (sku === q) return 100;
     if (sku.startsWith(q)) return 90;
+    for (const term of terms) {
+        if (term === q && term !== name && term !== sku) return 88;
+    }
     if (name === q) return 85;
     if (sku.includes(q)) return 70;
+    for (const term of terms) {
+        if (term.startsWith(q)) return 68;
+    }
     if (name.startsWith(q)) return 60;
+    for (const term of terms) {
+        if (term.includes(q)) return 58;
+    }
     if (name.includes(q)) return 50;
     const tokens = q.split(/\s+/).filter(Boolean);
-    if (tokens.length > 1 && tokens.every((t) => name.includes(t) || sku.includes(t))) return 40;
+    if (tokens.length > 1) {
+        const haystacks = [name, sku, ...terms];
+        if (tokens.every((t) => haystacks.some((h) => h.includes(t)))) return 40;
+    }
     return 0;
 }
 

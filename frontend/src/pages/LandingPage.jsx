@@ -1,11 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
     ArrowRightOutlined, SunOutlined, MoonOutlined, LoginOutlined,
     MailOutlined, EnvironmentOutlined, ClockCircleOutlined, ShopOutlined,
+    SearchOutlined,
 } from '@ant-design/icons';
-import { Pagination, Spin } from 'antd';
+import { Input, Pagination, Spin } from 'antd';
 import { useTheme } from '../context/ThemeContext';
 import LanguageSwitch from '../components/LanguageSwitch';
 import CountryFlag from '../components/CountryFlag';
@@ -19,6 +20,7 @@ import {
     formatProductPrice,
     productHasStrikethroughOriginal,
     compareProductCatalogOrder,
+    searchProducts,
 } from '../components/landing/landingProductHelpers';
 import { useLandingCurrency } from '../hooks/useLandingCurrency';
 import { useLandingMediaProtection } from '../hooks/useLandingMediaProtection';
@@ -98,6 +100,7 @@ export default function LandingPage() {
     const [seriesGroups, setSeriesGroups] = useState([]);
     const [categories, setCategories] = useState([]);
     const [activeCategory, setActiveCategory] = useState('');
+    const [catalogQuery, setCatalogQuery] = useState('');
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [catalogPage, setCatalogPage] = useState(1);
     const [seriesPageByKey, setSeriesPageByKey] = useState({});
@@ -173,11 +176,22 @@ export default function LandingPage() {
         setSeriesPageByKey({});
     }, [currency, i18n.language, seriesRowPageSize]);
 
+    useEffect(() => {
+        setCatalogPage(1);
+    }, [activeCategory, catalogQuery]);
+
     const heroImage = HERO_IMAGE_CANDIDATES[Math.min(heroIndex, HERO_IMAGE_CANDIDATES.length - 1)];
-    const filteredProducts = activeCategory
-        ? products.filter((p) => p.category_l2 === activeCategory)
-        : products;
-    const sortedProducts = [...filteredProducts].sort(compareProductCatalogOrder);
+    const categoryFiltered = useMemo(() => (
+        activeCategory ? products.filter((p) => p.category_l2 === activeCategory) : products
+    ), [products, activeCategory]);
+
+    const sortedProducts = useMemo(() => {
+        const q = catalogQuery.trim();
+        if (!q) {
+            return [...categoryFiltered].sort(compareProductCatalogOrder);
+        }
+        return searchProducts(categoryFiltered, q, categoryFiltered.length);
+    }, [categoryFiltered, catalogQuery]);
     const PAGE_SIZE = 18; // 3 rows on desktop default grid
     const pagedProducts = sortedProducts.slice((catalogPage - 1) * PAGE_SIZE, catalogPage * PAGE_SIZE);
     const hasCatalogContent = products.length > 0
@@ -415,6 +429,30 @@ export default function LandingPage() {
             <section className="landing-section" id="catalog">
                 <h2 className="landing-section-title">{t('landing.catalogTitle')}</h2>
                 <p className="landing-section-lead">{t('landing.catalogLeadDb')}</p>
+                {!catalogInitialLoading && products.length > 0 && (
+                    <div className="landing-catalog-search-area">
+                        <div className="landing-catalog-search-field">
+                            <SearchOutlined className="landing-catalog-search-icon" aria-hidden />
+                            <Input
+                                value={catalogQuery}
+                                onChange={(e) => setCatalogQuery(e.target.value)}
+                                placeholder={t('landing.catalogSearchPlaceholder')}
+                                allowClear
+                                bordered={false}
+                                size="large"
+                                className="landing-catalog-search-input"
+                                aria-label={t('landing.catalogSearchPlaceholder')}
+                            />
+                        </div>
+                        {catalogQuery.trim() && (
+                            <p className="landing-catalog-search-meta">
+                                {sortedProducts.length > 0
+                                    ? t('landing.catalogSearchCount', { count: sortedProducts.length })
+                                    : t('landing.learnNoResults')}
+                            </p>
+                        )}
+                    </div>
+                )}
                 {!catalogInitialLoading && categories.length > 0 && (
                     <div className="landing-filter-row">
                         <button
@@ -449,14 +487,14 @@ export default function LandingPage() {
                 ) : (
                     <div className="landing-catalog-viewport">
                         <div
-                            key={`${activeCategory}-${catalogPage}`}
+                            key={`${activeCategory}-${catalogPage}-${catalogQuery.trim()}`}
                             className={`landing-product-row landing-catalog-grid${catalogRefreshClass}`}
                         >
                             {pagedProducts.map((p, index) => renderProductCard(p, index))}
                         </div>
                     </div>
                 )}
-                {!catalogInitialLoading && sortedProducts.length === 0 && (
+                {!catalogInitialLoading && sortedProducts.length === 0 && !catalogQuery.trim() && (
                     <p className="landing-section-lead">{t('landing.catalogEmpty')}</p>
                 )}
                 {!catalogInitialLoading && sortedProducts.length > PAGE_SIZE && (
