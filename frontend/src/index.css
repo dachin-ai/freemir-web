@@ -740,37 +740,21 @@ h4.ant-typography {
   justify-content: center;
 }
 
-/* Login: bahasa kiri, tema kanan */
+/* Login: bahasa kiri, tema kanan — compact pill toggles */
 .fm-login-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  column-gap: 16px;
-  row-gap: 12px;
+  column-gap: 10px;
+  row-gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 22px;
+  margin-bottom: 20px;
 }
 
-.fm-login-toolbar-start {
+.fm-login-toolbar-lang {
   flex: 0 1 auto;
   min-width: 0;
-}
-
-.fm-login-toolbar-end {
-  flex: 0 0 auto;
-  margin-left: auto;
-}
-
-.fm-login-toolbar .ant-segmented {
-  border-radius: 10px;
-}
-
-.fm-login-toolbar .ant-segmented .ant-segmented-item-label {
-  min-height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 /* Login: beri jarak teks input dari icon prefix */
@@ -784,16 +768,7 @@ h4.ant-typography {
 
 @media (max-width: 420px) {
   .fm-login-toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .fm-login-toolbar-end {
-    margin-left: 0;
-  }
-
-  .fm-login-toolbar .ant-segmented {
-    width: 100%;
+    justify-content: center;
   }
 }
 

@@ -31,6 +31,13 @@ else:
 # Synced from SKU_Info but not used in price-check calculations.
 SHEET_EXTRA_PRICE_TIERS = ["Original"]
 
+# Sheet headers for list/original price (stored in JSON as tier key "Original").
+ORIGINAL_TIER = "Original"
+ORIGINAL_COLUMN_ALIASES_BY_CURRENCY: Dict[str, tuple] = {
+    "IDR": ("IDR-Original", "IDR Original", "IDR_Original", "Original"),
+    "MYR": ("MYR-Original", "MYR Original", "MYR_Original"),
+}
+
 PRICE_TYPES = [
     "Warning", "Daily-Discount", "Daily-Livestream", "Daily-Mid-Creator",
     "Daily-Top-Creator", "Daily-FS", "Daily-Shopee-FS", "DD-FS",
@@ -183,7 +190,12 @@ def _item_price(item_data: Dict, tier: str, currency: str) -> Any:
     """
     currencies = item_data.get("_currencies") if isinstance(item_data, dict) else None
     if isinstance(currencies, dict) and currency in currencies:
-        return currencies[currency].get(tier)
+        cur = currencies[currency]
+        if isinstance(cur, dict):
+            for key in tier_lookup_keys(tier, currency):
+                if key in cur:
+                    return cur.get(key)
+        return None
     # Legacy fallback: only valid for the default currency.
     if currency == CURRENCIES[0]:
         return item_data.get(tier)
@@ -195,6 +207,59 @@ def _item_stock(item_data: Dict, stock_key: str) -> Any:
     if isinstance(stock, dict) and stock_key in stock:
         return stock[stock_key]
     return item_data.get(stock_key, 0)
+
+
+def resolve_sku_info_price_column(
+    normalized: Dict[str, str],
+    *,
+    currency: str,
+    tier: str,
+) -> str | None:
+    """Resolve a SKU_Info column name from header aliases (case-insensitive).
+
+    Price tiers use \"<CURRENCY>-<Tier>\" in the sheet (e.g. MYR-Daily-Discount).
+    Original list price: IDR may use legacy \"Original\"; Malaysia uses MYR-Original.
+    """
+    cur = normalize_currency(currency)
+    candidates: List[str] = []
+
+    if tier == ORIGINAL_TIER:
+        candidates.extend(ORIGINAL_COLUMN_ALIASES_BY_CURRENCY.get(cur, (f"{cur}-Original",)))
+    else:
+        candidates.extend([
+            f"{cur}-{tier}",
+            f"{cur} {tier}",
+            f"{cur}_{tier}",
+        ])
+        if cur == CURRENCIES[0]:
+            candidates.append(tier)
+
+    seen: set[str] = set()
+    for alias in candidates:
+        key = alias.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        if key in normalized:
+            return normalized[key]
+    return None
+
+
+def tier_lookup_keys(tier: str, currency: str) -> List[str]:
+    """Keys to read a tier from nested per-currency price JSON (new + legacy)."""
+    cur = normalize_currency(currency)
+    keys = [tier]
+    if tier == ORIGINAL_TIER:
+        keys.extend(ORIGINAL_COLUMN_ALIASES_BY_CURRENCY.get(cur, (f"{cur}-Original",)))
+    else:
+        keys.extend([f"{cur}-{tier}", f"{cur} {tier}", f"{cur}_{tier}"])
+    out: List[str] = []
+    seen: set[str] = set()
+    for k in keys:
+        if k and k not in seen:
+            seen.add(k)
+            out.append(k)
+    return out
 
 
 def _parse_price_cell(raw: Any) -> Any:
@@ -263,10 +328,17 @@ def load_product_database() -> Tuple[Dict, Dict, Dict]:
                 currencies = {c: {} for c in CURRENCIES}
                 stock = {}
                 for k, v in parsed.items():
-                    if k == "Clearance" or k in PRICE_TYPES:
+                    if k == "Clearance" or k in PRICE_TYPES or k in SHEET_EXTRA_PRICE_TIERS:
                         currencies[default_currency][k] = v
                     elif k in STOCK_TYPES_ALL:
                         stock[k] = v
+                    else:
+                        # Legacy flat rows: "MYR-Original" stored at top level.
+                        k_lower = str(k).strip().lower()
+                        for cur in CURRENCIES:
+                            if k_lower == f"{cur.lower()}-original":
+                                currencies[cur][ORIGINAL_TIER] = v
+                                break
 
             # Backward-compat surface: flatten the default currency (IDR) plus all
             # stock keys onto the top level so existing calculate_prices / breakdown
@@ -368,10 +440,9 @@ def sync_google_sheets_to_vps_postgres() -> int:
                 for currency in CURRENCIES:
                     cur_lookup: Dict[str, str] = {}
                     for tier in sheet_price_tiers:
-                        resolved = col(f"{currency}-{tier}")
-                        if resolved is None and currency == CURRENCIES[0]:
-                            # Legacy fallback: unprefixed column counts as default currency.
-                            resolved = col(tier)
+                        resolved = resolve_sku_info_price_column(
+                            normalized, currency=currency, tier=tier,
+                        )
                         if resolved is not None:
                             cur_lookup[tier] = resolved
                     price_col_lookup[currency] = cur_lookup

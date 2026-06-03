@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Form, Input, Button, message, Typography, Segmented } from 'antd';
+import { Form, Input, Button, message, Typography } from 'antd';
 import {
     UserOutlined,
     LockOutlined,
@@ -9,13 +9,12 @@ import {
     ArrowLeftOutlined,
     CheckCircleOutlined,
     ThunderboltOutlined,
-    SunOutlined,
-    MoonOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { useLang } from '../context/LangContext';
+import LanguageSwitch from '../components/LanguageSwitch';
+import ThemeModeSwitch from '../components/ThemeModeSwitch';
 import Bi from '../components/Bi';
 import api, { syncUsers, forgotPassword } from '../api';
 
@@ -24,8 +23,7 @@ const { Text } = Typography;
 const LoginPage = () => {
     const { t } = useTranslation();
     const { login, signup } = useAuth();
-    const { isDark, toggleTheme } = useTheme();
-    const { lang, setLanguage } = useLang();
+    const { isDark, setThemeMode } = useTheme();
     const [loadingLogin, setLoadingLogin] = useState(false);
     const [loadingSignup, setLoadingSignup] = useState(false);
     const [loadingSync, setLoadingSync] = useState(false);
@@ -184,51 +182,12 @@ const LoginPage = () => {
                 }}
             >
                 <div className="fm-login-toolbar">
-                    <div className="fm-login-toolbar-start">
-                        <Segmented
-                            size="large"
-                            value={lang}
-                            onChange={setLanguage}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onPointerDown={(e) => e.stopPropagation()}
-                            options={[
-                                { value: 'zh', label: <span style={{ fontWeight: 600 }}>中文</span> },
-                                { value: 'en', label: <span style={{ fontWeight: 700, letterSpacing: '0.06em' }}>EN</span> },
-                                { value: 'id', label: <span style={{ fontWeight: 700, letterSpacing: '0.04em' }}>ID</span> },
-                            ]}
-                        />
-                    </div>
-                    <div className="fm-login-toolbar-end">
-                        <Segmented
-                            size="large"
-                            value={isDark ? 'dark' : 'light'}
-                            onChange={(v) => {
-                                if ((v === 'dark') !== isDark) toggleTheme();
-                            }}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onPointerDown={(e) => e.stopPropagation()}
-                            options={[
-                                {
-                                    value: 'light',
-                                    label: (
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '2px 0' }}>
-                                            <SunOutlined />
-                                            <span>{t('layout.themeModeLight')}</span>
-                                        </span>
-                                    ),
-                                },
-                                {
-                                    value: 'dark',
-                                    label: (
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '2px 0' }}>
-                                            <MoonOutlined />
-                                            <span>{t('layout.themeModeDark')}</span>
-                                        </span>
-                                    ),
-                                },
-                            ]}
-                        />
-                    </div>
+                    <LanguageSwitch compact className="fm-login-toolbar-lang" />
+                    <ThemeModeSwitch
+                        isDark={isDark}
+                        onChange={setThemeMode}
+                        className="fm-pill-switch--compact"
+                    />
                 </div>
 
                 <div style={{ marginBottom: 20 }}>

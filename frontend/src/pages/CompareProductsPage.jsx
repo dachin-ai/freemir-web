@@ -1,13 +1,16 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Input, Spin } from 'antd';
 import { CloseOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import api from '../api';
 import LandingSubPageShell from '../components/landing/LandingSubPageShell';
+import { useLandingCurrency } from '../hooks/useLandingCurrency';
 import {
     ProductImage,
-    formatIdr,
+    formatProductOriginalPrice,
+    formatProductPrice,
     isZeroSalesProduct,
+    productHasStrikethroughOriginal,
     normalizeInline,
     searchProducts,
 } from '../components/landing/landingProductHelpers';
@@ -41,20 +44,41 @@ function CompareColGroup({ productCount }) {
 export default function CompareProductsPage() {
     const { t, i18n } = useTranslation();
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const hydratedRef = useRef(false);
     const [products, setProducts] = useState([]);
     const [picked, setPicked] = useState([]);
     const [skuInput, setSkuInput] = useState('');
     const [addError, setAddError] = useState('');
+    const [currency, setCurrency] = useLandingCurrency();
 
     useEffect(() => {
         let cancelled = false;
-        setLoading(true);
+        const scrollY = window.scrollY;
+        if (!hydratedRef.current) {
+            setLoading(true);
+        } else {
+            setRefreshing(true);
+        }
+
         const lang = (i18n.language || 'id').slice(0, 2).toLowerCase();
-        api.get('/public/landing-products', { params: { currency: 'IDR', lang, scope: 'compare' }, timeout: 60000 })
-            .then((res) => !cancelled && setProducts(res.data?.compare_products || []))
-            .finally(() => !cancelled && setLoading(false));
+        api.get('/public/landing-products', { params: { currency, lang, scope: 'compare' }, timeout: 60000 })
+            .then((res) => {
+                if (cancelled) return;
+                setProducts(res.data?.compare_products || []);
+                hydratedRef.current = true;
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setLoading(false);
+                    setRefreshing(false);
+                    requestAnimationFrame(() => {
+                        window.scrollTo({ top: scrollY, left: 0 });
+                    });
+                }
+            });
         return () => { cancelled = true; };
-    }, [i18n.language]);
+    }, [i18n.language, currency]);
 
     const mapBySku = useMemo(() => {
         const map = {};
@@ -227,11 +251,17 @@ export default function CompareProductsPage() {
     }, [t]);
 
     const canAddMore = picked.length < MAX_COMPARE;
+    const comingSoon = t('landing.comingSoon');
 
     return (
-        <LandingSubPageShell title={t('landing.compareTitle')} lead={t('landing.compareDesc')}>
-            <div className="landing-compare-panel">
-                {loading ? (
+        <LandingSubPageShell
+            title={t('landing.compareTitle')}
+            lead={t('landing.compareDesc')}
+            currency={currency}
+            onCurrencyChange={setCurrency}
+        >
+            <div className={`landing-compare-panel${refreshing ? ' landing-section-refreshing' : ''}`}>
+                {loading && products.length === 0 ? (
                     <div className="landing-products-loading"><Spin /></div>
                 ) : products.length === 0 ? (
                     <p className="landing-section-lead">{t('landing.catalogEmpty')}</p>
@@ -399,13 +429,14 @@ export default function CompareProductsPage() {
                                                                     </th>
                                                                     {selected.map((p) => {
                                                                         if (row.cell === 'original-price') {
-                                                                            const val = p.original_price;
                                                                             return (
                                                                                 <td
                                                                                     key={`${row.key}-${p.sku}`}
                                                                                     className="landing-compare-price-original"
                                                                                 >
-                                                                                    {val != null ? formatIdr(val) : '—'}
+                                                                                    {productHasStrikethroughOriginal(p)
+                                                                                        ? formatProductOriginalPrice(p, currency)
+                                                                                        : '—'}
                                                                                 </td>
                                                                             );
                                                                         }
@@ -415,7 +446,9 @@ export default function CompareProductsPage() {
                                                                                     key={`${row.key}-${p.sku}`}
                                                                                     className="landing-compare-price-disc"
                                                                                 >
-                                                                                    {formatIdr(p.sale_price)}
+                                                                                    <span className={!p.has_price ? 'landing-compare-coming-soon' : undefined}>
+                                                                                        {formatProductPrice(p, currency, comingSoon)}
+                                                                                    </span>
                                                                                 </td>
                                                                             );
                                                                         }

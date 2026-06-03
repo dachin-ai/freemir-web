@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -9,8 +9,20 @@ import { Pagination, Spin } from 'antd';
 import { useTheme } from '../context/ThemeContext';
 import LanguageSwitch from '../components/LanguageSwitch';
 import CountryFlag from '../components/CountryFlag';
+import LandingCurrencySwitch from '../components/landing/LandingCurrencySwitch';
 import LandingProductDetailModal from '../components/landing/LandingProductDetailModal';
-import { ProductImage, discountBadge, formatIdr } from '../components/landing/landingProductHelpers';
+import LandingSeriesPager from '../components/landing/LandingSeriesPager';
+import {
+    ProductImage,
+    discountBadge,
+    formatProductOriginalPrice,
+    formatProductPrice,
+    productHasStrikethroughOriginal,
+    compareProductCatalogOrder,
+} from '../components/landing/landingProductHelpers';
+import { useLandingCurrency } from '../hooks/useLandingCurrency';
+import { useLandingMediaProtection } from '../hooks/useLandingMediaProtection';
+import { useSeriesRowPageSize } from '../hooks/useSeriesRowPageSize';
 import api from '../api';
 import SocialIcon, { SOCIAL_LINKS } from '../components/SocialIcon';
 import {
@@ -18,6 +30,7 @@ import {
     LANDING_CONTACT_MAPS_URL,
     LANDING_CONTACT_REGIONS,
     LANDING_OFFICIAL_STORE_URL,
+    LANDING_SHOPEE_STORE_URL,
 } from '../data/landingContact';
 import {
     ABOUT_IMAGE_CANDIDATES,
@@ -42,12 +55,6 @@ function prettyAdvantage(text) {
         .split(/\s+/)
         .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
         .join(' ');
-}
-
-function compareSkuAsc(a, b) {
-    const sa = String(a?.sku || '').toUpperCase();
-    const sb = String(b?.sku || '').toUpperCase();
-    return sa.localeCompare(sb, undefined, { numeric: true, sensitivity: 'base' });
 }
 
 function FallbackImage({ candidates, className, alt = '' }) {
@@ -93,7 +100,13 @@ export default function LandingPage() {
     const [activeCategory, setActiveCategory] = useState('');
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [catalogPage, setCatalogPage] = useState(1);
+    const [seriesPageByKey, setSeriesPageByKey] = useState({});
     const [productsLoading, setProductsLoading] = useState(true);
+    const [productsRefreshing, setProductsRefreshing] = useState(false);
+    const catalogHydratedRef = useRef(false);
+    const [currency, setCurrency] = useLandingCurrency();
+    useLandingMediaProtection();
+    const seriesRowPageSize = useSeriesRowPageSize();
 
     const scrollToSection = (id) => {
         const el = document.getElementById(id);
@@ -113,9 +126,15 @@ export default function LandingPage() {
 
     useEffect(() => {
         let cancelled = false;
-        setProductsLoading(true);
+        const scrollY = window.scrollY;
+        if (!catalogHydratedRef.current) {
+            setProductsLoading(true);
+        } else {
+            setProductsRefreshing(true);
+        }
+
         const lang = (i18n.language || 'id').slice(0, 2).toLowerCase();
-        api.get('/public/landing-products', { params: { currency: 'IDR', lang, scope: 'landing' }, timeout: 60000 })
+        api.get('/public/landing-products', { params: { currency, lang, scope: 'landing' }, timeout: 60000 })
             .then((res) => {
                 if (!cancelled) {
                     const payload = res.data || {};
@@ -125,11 +144,11 @@ export default function LandingPage() {
                     const fetchedCategories = payload.categories || [];
                     setCategories(fetchedCategories);
                     setActiveCategory((prev) => (prev && fetchedCategories.includes(prev) ? prev : ''));
-                    setCatalogPage(1);
+                    catalogHydratedRef.current = true;
                 }
             })
             .catch(() => {
-                if (!cancelled) {
+                if (!cancelled && !catalogHydratedRef.current) {
                     setProducts([]);
                     setTopTierProducts([]);
                     setSeriesGroups([]);
@@ -139,37 +158,59 @@ export default function LandingPage() {
                 }
             })
             .finally(() => {
-                if (!cancelled) setProductsLoading(false);
+                if (!cancelled) {
+                    setProductsLoading(false);
+                    setProductsRefreshing(false);
+                    requestAnimationFrame(() => {
+                        window.scrollTo({ top: scrollY, left: 0 });
+                    });
+                }
             });
         return () => { cancelled = true; };
-    }, [i18n.language]);
+    }, [i18n.language, currency]);
+
+    useEffect(() => {
+        setSeriesPageByKey({});
+    }, [currency, i18n.language, seriesRowPageSize]);
 
     const heroImage = HERO_IMAGE_CANDIDATES[Math.min(heroIndex, HERO_IMAGE_CANDIDATES.length - 1)];
     const filteredProducts = activeCategory
         ? products.filter((p) => p.category_l2 === activeCategory)
         : products;
-    const sortedProducts = [...filteredProducts].sort(compareSkuAsc);
+    const sortedProducts = [...filteredProducts].sort(compareProductCatalogOrder);
     const PAGE_SIZE = 18; // 3 rows on desktop default grid
     const pagedProducts = sortedProducts.slice((catalogPage - 1) * PAGE_SIZE, catalogPage * PAGE_SIZE);
+    const hasCatalogContent = products.length > 0
+        || topTierProducts.length > 0
+        || seriesGroups.length > 0;
+    const catalogInitialLoading = productsLoading && !hasCatalogContent;
+    const catalogRefreshClass = productsRefreshing ? ' landing-section-refreshing' : '';
+
     const topRow = topTierProducts.filter((_, idx) => idx % 2 === 0);
     const bottomRow = topTierProducts.filter((_, idx) => idx % 2 === 1);
-    const renderProductCard = (p) => (
+    const comingSoon = t('landing.comingSoon');
+    const renderProductCard = (p, cardIndex = null) => (
         <button
             type="button"
             key={p.sku}
             className="landing-product-card landing-product-card-static landing-product-button"
+            style={cardIndex == null ? undefined : { '--card-index': cardIndex }}
             onClick={() => setSelectedProduct(p)}
         >
             <ProductImage src={p.image_url} alt={p.name} />
             <div className="meta">
                 <div className="sku">{p.sku}</div>
-                <div className="landing-price">{formatIdr(p.sale_price)}</div>
-                {p.original_price != null && (
+                <div className={`landing-price${!p.has_price ? ' is-coming-soon' : ''}`}>
+                    {formatProductPrice(p, currency, comingSoon)}
+                </div>
+                {productHasStrikethroughOriginal(p) && (
                     <div className="landing-price-was-row">
-                        {!!Number(p.discount_percent || 0) && (
+                        {p.has_price && !!Number(p.discount_percent || 0) && (
                             <span className="landing-discount-badge">-{p.discount_percent}%</span>
                         )}
-                        <div className="landing-price-was">{formatIdr(p.original_price)}</div>
+                        <div className="landing-price-was">
+                            {formatProductOriginalPrice(p, currency)}
+                        </div>
                     </div>
                 )}
                 <div className="name">{p.name}</div>
@@ -226,9 +267,20 @@ export default function LandingPage() {
                     >
                         {t('landing.navShop')}
                     </a>
+                    <a
+                        href={LANDING_SHOPEE_STORE_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        {t('landing.navShopee')}
+                    </a>
                 </nav>
 
                 <div className="landing-nav-actions">
+                    {productsRefreshing && (
+                        <Spin size="small" className="landing-nav-refresh-spin" aria-hidden />
+                    )}
+                    <LandingCurrencySwitch currency={currency} onChange={setCurrency} />
                     <LanguageSwitch />
                     <button type="button" className="landing-btn-ghost" onClick={toggleTheme} aria-label="Toggle theme">
                         {isDark ? <SunOutlined /> : <MoonOutlined />}
@@ -270,6 +322,16 @@ export default function LandingPage() {
                             {t('landing.shopNow')}
                             <ArrowRightOutlined />
                         </a>
+                        <a
+                            href={LANDING_SHOPEE_STORE_URL}
+                            className="landing-btn landing-btn-shopee landing-btn-hero"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            <ShopOutlined />
+                            {t('landing.shopOnShopee')}
+                            <ArrowRightOutlined />
+                        </a>
                     </div>
                 </div>
             </section>
@@ -293,41 +355,59 @@ export default function LandingPage() {
             <section className="landing-section" id="top-tier">
                 <h2 className="landing-section-title">{t('landing.topTierTitle')}</h2>
                 <p className="landing-section-lead">{t('landing.topTierLead')}</p>
-                {productsLoading ? (
+                {catalogInitialLoading ? (
                     <div className="landing-products-loading">
                         <Spin />
                     </div>
                 ) : (
-                    <div className="landing-top-tier-wrap">
+                    <div className={`landing-top-tier-wrap${catalogRefreshClass}`}>
                         {renderMarqueeRow(topRow, 'left')}
                         {renderMarqueeRow(bottomRow, 'right')}
                     </div>
                 )}
-                {!productsLoading && topTierProducts.length === 0 && (
+                {!catalogInitialLoading && topTierProducts.length === 0 && (
                     <p className="landing-section-lead">{t('landing.catalogEmpty')}</p>
                 )}
             </section>
 
-            {!productsLoading && seriesGroups.length > 0 && (
-                <section className="landing-section landing-section-soft" id="series">
+            {hasCatalogContent && seriesGroups.length > 0 && (
+                <section className={`landing-section landing-section-soft${catalogRefreshClass}`} id="series">
                     <h2 className="landing-section-title">{t('landing.seriesTitle')}</h2>
                     <p className="landing-section-lead">{t('landing.seriesLead')}</p>
                     <div className="landing-series-stack">
-                        {seriesGroups.map((group) => (
-                            <article className="landing-series-block" key={seriesNameToSlug(group.name) || group.name}>
-                                <header className="landing-series-block-head">
-                                    <h3 className="landing-series-block-title">
-                                        {getSeriesDisplayTitle(group.name, t)}
-                                    </h3>
-                                    <p className="landing-series-block-count">
-                                        {t('landing.seriesProductCount', { count: group.count })}
-                                    </p>
-                                </header>
-                                <div className="landing-product-row landing-series-product-row">
-                                    {group.products.map((p) => renderProductCard(p))}
-                                </div>
-                            </article>
-                        ))}
+                        {seriesGroups.map((group) => {
+                            const seriesKey = seriesNameToSlug(group.name) || group.name;
+                            const totalInSeries = group.products?.length || 0;
+                            const totalPages = Math.max(1, Math.ceil(totalInSeries / seriesRowPageSize));
+                            const currentPage = Math.min(
+                                seriesPageByKey[seriesKey] || 1,
+                                totalPages,
+                            );
+                            return (
+                                <article className="landing-series-block" key={seriesKey}>
+                                    <header className="landing-series-block-head">
+                                        <h3 className="landing-series-block-title">
+                                            {getSeriesDisplayTitle(group.name, t)}
+                                        </h3>
+                                        <p className="landing-series-block-count">
+                                            {t('landing.seriesProductCount', { count: group.count })}
+                                        </p>
+                                    </header>
+                                    <LandingSeriesPager
+                                        products={group.products || []}
+                                        pageSize={seriesRowPageSize}
+                                        currentPage={currentPage}
+                                        onPageChange={(page) => {
+                                            setSeriesPageByKey((prev) => ({
+                                                ...prev,
+                                                [seriesKey]: page,
+                                            }));
+                                        }}
+                                        renderProductCard={renderProductCard}
+                                    />
+                                </article>
+                            );
+                        })}
                     </div>
                 </section>
             )}
@@ -335,7 +415,7 @@ export default function LandingPage() {
             <section className="landing-section" id="catalog">
                 <h2 className="landing-section-title">{t('landing.catalogTitle')}</h2>
                 <p className="landing-section-lead">{t('landing.catalogLeadDb')}</p>
-                {!productsLoading && categories.length > 0 && (
+                {!catalogInitialLoading && categories.length > 0 && (
                     <div className="landing-filter-row">
                         <button
                             type="button"
@@ -362,19 +442,24 @@ export default function LandingPage() {
                         ))}
                     </div>
                 )}
-                {productsLoading ? (
+                {catalogInitialLoading ? (
                     <div className="landing-products-loading">
                         <Spin />
                     </div>
                 ) : (
-                    <div className="landing-product-row">
-                        {pagedProducts.map((p) => renderProductCard(p))}
+                    <div className="landing-catalog-viewport">
+                        <div
+                            key={`${activeCategory}-${catalogPage}`}
+                            className={`landing-product-row landing-catalog-grid${catalogRefreshClass}`}
+                        >
+                            {pagedProducts.map((p, index) => renderProductCard(p, index))}
+                        </div>
                     </div>
                 )}
-                {!productsLoading && sortedProducts.length === 0 && (
+                {!catalogInitialLoading && sortedProducts.length === 0 && (
                     <p className="landing-section-lead">{t('landing.catalogEmpty')}</p>
                 )}
-                {!productsLoading && sortedProducts.length > PAGE_SIZE && (
+                {!catalogInitialLoading && sortedProducts.length > PAGE_SIZE && (
                     <div className="landing-catalog-pagination">
                         <Pagination
                             current={catalogPage}
@@ -504,6 +589,16 @@ export default function LandingPage() {
                         {t('landing.shopNow')}
                         <ArrowRightOutlined />
                     </a>
+                    <a
+                        href={LANDING_SHOPEE_STORE_URL}
+                        className="landing-btn landing-btn-shopee"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        <ShopOutlined />
+                        {t('landing.shopOnShopee')}
+                        <ArrowRightOutlined />
+                    </a>
                     <Link to="/login" className="landing-btn landing-btn-outline">
                         {t('landing.teamAccess')}
                         <ArrowRightOutlined />
@@ -517,6 +612,7 @@ export default function LandingPage() {
                                 key={link.id}
                                 href={link.href}
                                 className="landing-social-btn"
+                                data-social={link.id}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 aria-label={link.label}
@@ -533,6 +629,7 @@ export default function LandingPage() {
             <LandingProductDetailModal
                 product={selectedProduct}
                 onClose={() => setSelectedProduct(null)}
+                currency={currency}
             />
         </div>
     );

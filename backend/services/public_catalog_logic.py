@@ -16,7 +16,7 @@ from services.brand_material_logic import (
     get_brand_main_photo_map,
     get_landing_material_gallery_for_sku,
 )
-from services.price_checker_logic import CURRENCIES, parse_idr_price
+from services.price_checker_logic import CURRENCIES, parse_idr_price, tier_lookup_keys
 from services.auth_logic import CREDENTIALS_FILE, SPREADSHEET_URL
 
 def _landing_featured_skus_paths() -> list[Path]:
@@ -240,9 +240,14 @@ def _tier_price_from_prices(
     is_nested = any(c in parsed for c in CURRENCIES) or "stock" in parsed
 
     def _tier_value(cur_dict: dict, name: str) -> float | None:
-        val = cur_dict.get(name)
-        num = parse_idr_price(val)
-        return num if num >= 1 else None
+        for key in tier_lookup_keys(name, currency):
+            val = cur_dict.get(key)
+            if val is None:
+                continue
+            num = parse_idr_price(val)
+            if num >= 1:
+                return num
+        return None
 
     if is_nested:
         cur_data = parsed.get(currency) or {}
@@ -295,6 +300,15 @@ def _slim_card_item(item: dict) -> dict:
     }
 
 
+def _catalog_product_sort_key(item: dict) -> tuple:
+    """Priced items first, then Coming Soon (no sale price), then SKU."""
+    return (0 if item.get("has_price") else 1, str(item.get("sku") or ""))
+
+
+def _sort_catalog_products(products: list[dict]) -> list[dict]:
+    return sorted(products, key=_catalog_product_sort_key)
+
+
 def _build_series_groups(catalog_products: list[dict]) -> list[dict]:
     """Group catalog items by SKU_Detail column Series (sheet order preserved)."""
     grouped: dict[str, dict[str, Any]] = {}
@@ -315,7 +329,7 @@ def _build_series_groups(catalog_products: list[dict]) -> list[dict]:
 
     out: list[dict] = []
     for name in sorted(series_order, key=lambda n: grouped[n]["order_index"]):
-        products = sorted(grouped[name]["products"], key=lambda p: str(p.get("sku") or ""))
+        products = _sort_catalog_products(grouped[name]["products"])
         out.append({
             "name": name,
             "order_index": grouped[name]["order_index"],
@@ -411,7 +425,7 @@ def _build_landing_items(db: Session, *, currency: str, lang_key: str) -> list[d
             "sku": sku,
             "name": product_name,
             "sale_price": sale_int,
-            "original_price": original_int if show_strike else None,
+            "original_price": original_int,
             "currency": currency,
             "image_url": image_url,
             "has_price": sale_int is not None,
@@ -516,7 +530,8 @@ def get_landing_products(
     base = {"currency": cur, "lang": lang_key, "scope": scope_key}
 
     if scope_key == "learn":
-        browse = [_slim_card_item(i) for i in items]
+        browse_sorted = _sort_catalog_products(items)
+        browse = [_slim_card_item(i) for i in browse_sorted]
         return {**base, "browse_products": browse}
 
     if scope_key == "compare":
@@ -524,17 +539,20 @@ def get_landing_products(
             i for i in items
             if _norm_status(i.get("status")) not in _HIDDEN_STATUSES
         ]
+        eligible_sorted = _sort_catalog_products(eligible)
         return {
             **base,
-            "compare_products": [_compare_list_item(i) for i in eligible],
+            "compare_products": [_compare_list_item(i) for i in eligible_sorted],
         }
 
-    slim_catalog = [_slim_card_item(i) for i in catalog_products]
+    catalog_sorted = _sort_catalog_products(catalog_products)
+    top_tier_sorted = _sort_catalog_products(top_tier)
+    slim_catalog = [_slim_card_item(i) for i in catalog_sorted]
     return {
         **base,
         "products": slim_catalog,
-        "top_tier_products": [_top_tier_item(i) for i in top_tier],
-        "series_groups": _build_series_groups(catalog_products),
+        "top_tier_products": [_top_tier_item(i) for i in top_tier_sorted],
+        "series_groups": _build_series_groups(catalog_sorted),
         "categories": categories_ordered,
     }
 

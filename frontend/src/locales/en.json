@@ -66,8 +66,10 @@
     "navLearn": "Learn",
     "navContact": "Contact",
     "navShop": "Shop",
+    "navShopee": "Shopee",
     "navTeamLogin": "Internal Tools",
-    "shopNow": "Shop now",
+    "shopNow": "freemir Store",
+    "shopOnShopee": "Shopee",
     "buyAtOfficialStore": "Buy at official store",
     "backToHome": "Back to website",
     "heroTag": "freemir",
@@ -101,7 +103,7 @@
     "learnSearchPlaceholder": "Search by SKU or product name…",
     "learnSuggestions": "Suggested products",
     "learnNoResults": "No matching products. Try another SKU or keyword.",
-    "learnBrowseHint": "Expand a category to browse freemir products (SKU_Detail order). Active items first, then Discontinued. Click for full details.",
+    "learnBrowseHint": "Expand a category to browse freemir products (SKU_Detail order). Active items first, then discontinued items. Click for full details.",
     "learnDiscontinuedBadge": "Discontinued",
     "compareLimit": "Pick up to {{max}} products (selected: {{count}})",
     "compareAddTitle": "Add products",
@@ -151,6 +153,7 @@
     "learnProductTitle": "Learn about products",
     "learnProductDesc": "Published product information, care tips, and usage guides in one place.",
     "comingSoon": "Coming soon",
+    "mediaCopyright": "© {{year}} freemir. All rights reserved.",
     "footerMission": "As we continue to grow, freemir is expanding to serve families around the world — bringing better kitchen experiences to every home.",
     "contactUsTitle": "Contact us",
     "contactEmail": "Email",
@@ -184,7 +187,7 @@
     "stats": {
       "years": "Years serving families",
       "markets": "Markets & channels",
-      "skus": "Product lines",
+      "brandRank": "Brand in Indonesia",
       "rating": "Customer satisfaction"
     },
     "categories": {

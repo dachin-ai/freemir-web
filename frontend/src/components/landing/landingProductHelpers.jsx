@@ -1,11 +1,29 @@
-import React, { useEffect, useState } from 'react';
+import React, { memo, useEffect, useState } from 'react';
 import { PictureOutlined } from '@ant-design/icons';
-
+import { formatPrice } from '../../utils/currencyStorage';
+import ProtectedProductMedia, { PROTECT_MEDIA_PROPS } from './ProtectedProductMedia';
+/** @deprecated Prefer formatProductPrice with currency + has_price. */
 export function formatIdr(price) {
     if (price === null || price === undefined) return '—';
     const n = Number(price);
     if (!Number.isFinite(n)) return '—';
     return `Rp ${n.toLocaleString('id-ID')}`;
+}
+
+export function formatProductPrice(product, currency, comingSoonLabel) {
+    if (!product?.has_price) return comingSoonLabel || 'Coming soon';
+    return formatPrice(product.sale_price, currency);
+}
+
+export function formatProductOriginalPrice(product, currency) {
+    if (product?.original_price == null) return '—';
+    return formatPrice(product.original_price, currency);
+}
+
+export function productHasStrikethroughOriginal(product) {
+    if (product?.original_price == null) return false;
+    if (!product?.has_price) return true;
+    return Number(product.original_price) > Number(product.sale_price);
 }
 
 export function discountBadge(product) {
@@ -42,30 +60,53 @@ export function filterLearnBrowseProducts(products) {
     return (products || []).filter(isLearnBrowseProduct);
 }
 
-export function ProductImage({ src, alt, placeholderText = '', eager = false, className = '' }) {
+export const ProductImage = memo(function ProductImage({
+    src,
+    alt,
+    placeholderText = '',
+    eager = false,
+    className = '',
+    protectedMedia = true,
+    prominentWatermark = false,
+    liteWatermark = !prominentWatermark,
+}) {
     const [failed, setFailed] = useState(!src);
     useEffect(() => {
         setFailed(!src);
     }, [src]);
+
+    const wrap = (content) => (
+        <ProtectedProductMedia
+            className={className}
+            prominent={prominentWatermark}
+            enabled={protectedMedia}
+            lite={liteWatermark}
+        >
+            {content}
+        </ProtectedProductMedia>
+    );
+
     if (failed || !src) {
-        return (
-            <div className={`landing-product-placeholder ${className}`.trim()}>
+        return wrap(
+            <div className="landing-product-placeholder">
                 <PictureOutlined />
                 {placeholderText && <span className="landing-product-placeholder-text">{placeholderText}</span>}
-            </div>
+            </div>,
         );
     }
-    return (
+
+    return wrap(
         <img
-            className={className}
+            className="landing-protected-media-img"
             src={src}
             alt={alt}
             loading={eager ? 'eager' : 'lazy'}
             decoding="async"
+            {...PROTECT_MEDIA_PROPS}
             onError={() => setFailed(true)}
-        />
+        />,
     );
-}
+});
 
 export function scoreProductMatch(product, query) {
     const q = query.trim().toLowerCase();
@@ -103,7 +144,11 @@ export function compareSkuAsc(a, b) {
     return sa.localeCompare(sb, undefined, { numeric: true, sensitivity: 'base' });
 }
 
-function compareLearnProductOrder(a, b, activeFirst) {
+/** Priced products first, then Coming Soon; optional active-before-discontinued. */
+export function compareProductCatalogOrder(a, b, { activeFirst = false } = {}) {
+    const aPriced = a?.has_price ? 0 : 1;
+    const bPriced = b?.has_price ? 0 : 1;
+    if (aPriced !== bPriced) return aPriced - bPriced;
     if (activeFirst) {
         const aDisc = isZeroSalesProduct(a) ? 1 : 0;
         const bDisc = isZeroSalesProduct(b) ? 1 : 0;
@@ -112,7 +157,19 @@ function compareLearnProductOrder(a, b, activeFirst) {
     return compareSkuAsc(a, b);
 }
 
-export function groupProductsByCategory(products, { activeFirst = false } = {}) {
+function compareLearnProductOrder(a, b, activeFirst) {
+    return compareProductCatalogOrder(a, b, { activeFirst });
+}
+
+export function sortCategoryOrderByProductCount(categoryOrder, groups) {
+    return [...categoryOrder].sort((a, b) => {
+        const diff = (groups[b]?.length || 0) - (groups[a]?.length || 0);
+        if (diff !== 0) return diff;
+        return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+    });
+}
+
+export function groupProductsByCategory(products, { activeFirst = false, sortCategoriesByCount = true } = {}) {
     const sorted = [...products].sort((a, b) => compareLearnProductOrder(a, b, activeFirst));
     const categoryOrder = [];
     const groups = {};
@@ -124,7 +181,10 @@ export function groupProductsByCategory(products, { activeFirst = false } = {}) 
         }
         groups[key].push(item);
     });
-    return { categoryOrder, groups };
+    const order = sortCategoriesByCount
+        ? sortCategoryOrderByProductCount(categoryOrder, groups)
+        : categoryOrder;
+    return { categoryOrder: order, groups };
 }
 
 export function sortLearnBrowseProducts(products, { activeFirst = false } = {}) {

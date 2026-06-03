@@ -1,14 +1,16 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Collapse, Input, Spin } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import api from '../api';
 import LandingSubPageShell from '../components/landing/LandingSubPageShell';
 import LandingProductDetailModal from '../components/landing/LandingProductDetailModal';
+import { useLandingCurrency } from '../hooks/useLandingCurrency';
 import {
     ProductImage,
     filterLearnBrowseProducts,
     groupProductsByCategory,
+    sortCategoryOrderByProductCount,
     isZeroSalesProduct,
     scoreProductMatch,
     searchProducts,
@@ -64,23 +66,41 @@ function SuggestionRow({ product, onSelect, photoNA, discontinuedLabel }) {
 export default function LearnProductsPage() {
     const { t, i18n } = useTranslation();
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const hydratedRef = useRef(false);
     const [allProducts, setAllProducts] = useState([]);
     const [query, setQuery] = useState('');
     const [expandedKeys, setExpandedKeys] = useState([]);
     const [selectedProduct, setSelectedProduct] = useState(null);
+    const [currency, setCurrency] = useLandingCurrency();
 
     useEffect(() => {
         let cancelled = false;
-        setLoading(true);
+        const scrollY = window.scrollY;
+        if (!hydratedRef.current) {
+            setLoading(true);
+        } else {
+            setRefreshing(true);
+        }
+
         const lang = (i18n.language || 'id').slice(0, 2).toLowerCase();
-        api.get('/public/landing-products', { params: { currency: 'IDR', lang, scope: 'learn' }, timeout: 60000 })
+        api.get('/public/landing-products', { params: { currency, lang, scope: 'learn' }, timeout: 60000 })
             .then((res) => {
                 if (cancelled) return;
                 setAllProducts(res.data?.browse_products || res.data?.all_products || []);
+                hydratedRef.current = true;
             })
-            .finally(() => !cancelled && setLoading(false));
+            .finally(() => {
+                if (!cancelled) {
+                    setLoading(false);
+                    setRefreshing(false);
+                    requestAnimationFrame(() => {
+                        window.scrollTo({ top: scrollY, left: 0 });
+                    });
+                }
+            });
         return () => { cancelled = true; };
-    }, [i18n.language]);
+    }, [i18n.language, currency]);
 
     const browseProducts = useMemo(
         () => filterLearnBrowseProducts(allProducts),
@@ -111,7 +131,10 @@ export default function LearnProductsPage() {
                 nextOrder.push(cat);
             }
         });
-        return { categoryOrder: nextOrder, groups: nextGroups };
+        return {
+            categoryOrder: sortCategoryOrderByProductCount(nextOrder, nextGroups),
+            groups: nextGroups,
+        };
     }, [categoryOrder, groups, query]);
 
     useEffect(() => {
@@ -151,8 +174,13 @@ export default function LearnProductsPage() {
     }));
 
     return (
-        <LandingSubPageShell title={t('landing.learnProductTitle')} lead={t('landing.learnProductDesc')}>
-            <div className="landing-learn-panel">
+        <LandingSubPageShell
+            title={t('landing.learnProductTitle')}
+            lead={t('landing.learnProductDesc')}
+            currency={currency}
+            onCurrencyChange={setCurrency}
+        >
+            <div className={`landing-learn-panel${refreshing ? ' landing-section-refreshing' : ''}`}>
             <div className="landing-learn-search-area">
                 <div className="landing-learn-search-field">
                     <SearchOutlined className="landing-learn-search-icon" aria-hidden />
@@ -189,7 +217,7 @@ export default function LearnProductsPage() {
                 )}
             </div>
 
-            {loading ? (
+            {loading && allProducts.length === 0 ? (
                 <div className="landing-products-loading"><Spin /></div>
             ) : browseProducts.length === 0 ? (
                 <p className="landing-section-lead">{t('landing.catalogEmpty')}</p>
@@ -209,6 +237,7 @@ export default function LearnProductsPage() {
             <LandingProductDetailModal
                 product={selectedProduct}
                 onClose={() => setSelectedProduct(null)}
+                currency={currency}
             />
         </LandingSubPageShell>
     );

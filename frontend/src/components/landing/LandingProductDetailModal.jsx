@@ -3,14 +3,17 @@ import { Modal, Spin } from 'antd';
 import { ArrowRightOutlined, PlayCircleOutlined, ShopOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import api from '../../api';
-import { LANDING_OFFICIAL_STORE_URL } from '../../data/landingContact';
+import { LANDING_OFFICIAL_STORE_URL, LANDING_SHOPEE_STORE_URL } from '../../data/landingContact';
 import {
     ProductImage,
     discountBadge,
-    formatIdr,
+    formatProductOriginalPrice,
+    formatProductPrice,
     isZeroSalesProduct,
+    productHasStrikethroughOriginal,
     normalizeInline,
 } from './landingProductHelpers';
+import ProtectedProductMedia from './ProtectedProductMedia';
 
 function isSameMediaUrl(a, b) {
     const left = String(a || '').trim();
@@ -18,7 +21,7 @@ function isSameMediaUrl(a, b) {
     return Boolean(left && right && left === right);
 }
 
-export default function LandingProductDetailModal({ product, onClose }) {
+export default function LandingProductDetailModal({ product, onClose, currency = 'IDR' }) {
     const { t, i18n } = useTranslation();
     const [detailProduct, setDetailProduct] = useState(null);
     const [detailLoading, setDetailLoading] = useState(false);
@@ -61,7 +64,7 @@ export default function LandingProductDetailModal({ product, onClose }) {
         });
 
         api.get(`/public/landing-products/${encodeURIComponent(sku)}`, {
-            params: { currency: 'IDR', lang },
+            params: { currency, lang },
             timeout: 30000,
         })
             .then((res) => {
@@ -82,7 +85,9 @@ export default function LandingProductDetailModal({ product, onClose }) {
             });
 
         return () => { cancelled = true; };
-    }, [product?.sku, i18n.language]);
+    }, [product?.sku, i18n.language, currency]);
+
+    const comingSoon = t('landing.comingSoon');
 
     return (
         <Modal
@@ -105,20 +110,26 @@ export default function LandingProductDetailModal({ product, onClose }) {
                         )}
                         <div className="landing-modal-main-view">
                             {activeMain.type === 'video' && activeMain.url ? (
-                                <video
-                                    key={activeMain.url}
-                                    className="landing-modal-main-video"
-                                    src={activeMain.url}
-                                    poster={activeMain.posterUrl || undefined}
-                                    controls
-                                    playsInline
-                                />
+                                <ProtectedProductMedia prominent lite={false} className="landing-modal-main-protected">
+                                    <video
+                                        key={activeMain.url}
+                                        className="landing-modal-main-video"
+                                        src={activeMain.url}
+                                        poster={activeMain.posterUrl || undefined}
+                                        controls
+                                        playsInline
+                                        controlsList="nodownload noplaybackrate"
+                                        disablePictureInPicture
+                                        onContextMenu={(event) => event.preventDefault()}
+                                    />
+                                </ProtectedProductMedia>
                             ) : (
                                 <ProductImage
                                     src={activeMain.url || display?.image_url || product.image_url}
                                     alt={display?.name || product.name}
                                     eager
                                     className="landing-modal-main-img"
+                                    prominentWatermark
                                 />
                             )}
                         </div>
@@ -139,7 +150,12 @@ export default function LandingProductDetailModal({ product, onClose }) {
                                             posterUrl: null,
                                         })}
                                     >
-                                        <img src={mainImageUrl} alt="" />
+                                        <ProductImage
+                                            src={mainImageUrl}
+                                            alt=""
+                                            eager
+                                            className="landing-modal-thumb-img"
+                                        />
                                         <span className="landing-modal-thumb-label">{t('landing.modal.mainPhoto')}</span>
                                     </button>
                                 )}
@@ -159,7 +175,12 @@ export default function LandingProductDetailModal({ product, onClose }) {
                                         })}
                                     >
                                         {gallery.video.posterUrl ? (
-                                            <img src={gallery.video.posterUrl} alt="" />
+                                            <ProductImage
+                                                src={gallery.video.posterUrl}
+                                                alt=""
+                                                eager
+                                                className="landing-modal-thumb-img"
+                                            />
                                         ) : (
                                             <span className="landing-modal-thumb-video-fallback" aria-hidden>
                                                 <PlayCircleOutlined />
@@ -182,7 +203,12 @@ export default function LandingProductDetailModal({ product, onClose }) {
                                             posterUrl: null,
                                         })}
                                     >
-                                        <img src={ph.posterUrl || ph.url} alt="" />
+                                        <ProductImage
+                                            src={ph.posterUrl || ph.url}
+                                            alt=""
+                                            eager
+                                            className="landing-modal-thumb-img"
+                                        />
                                     </button>
                                 ))}
                             </div>
@@ -196,15 +222,20 @@ export default function LandingProductDetailModal({ product, onClose }) {
                             </span>
                         )}
                         <div className="landing-modal-price-line">
-                            <div className="landing-modal-price">{formatIdr(display?.sale_price)}</div>
-                            {discountBadge(display || product)}
+                            <div className={`landing-modal-price${!display?.has_price ? ' is-coming-soon' : ''}`}>
+                                {formatProductPrice(display || product, currency, comingSoon)}
+                            </div>
+                            {display?.has_price && discountBadge(display || product)}
                         </div>
+                        {productHasStrikethroughOriginal(display || product) && (
+                            <div className="landing-modal-price-original landing-modal-price-strike">
+                                <strong>{t('landing.modal.originalPrice')}:</strong>{' '}
+                                {formatProductOriginalPrice(display || product, currency)}
+                            </div>
+                        )}
                         <div className="landing-modal-price-original">
-                            <strong>{t('landing.modal.originalPrice')}:</strong>{' '}
-                            {display?.original_price != null ? formatIdr(display.original_price) : '—'}
-                        </div>
-                        <div className="landing-modal-price-original">
-                            <strong>{t('landing.modal.discountPrice')}:</strong> {formatIdr(display?.sale_price)}
+                            <strong>{t('landing.modal.discountPrice')}:</strong>{' '}
+                            {formatProductPrice(display || product, currency, comingSoon)}
                         </div>
                         <div className="landing-modal-grid">
                             <div><strong>{t('landing.modal.category')}:</strong> {display?.category_l1 || '—'}</div>
@@ -254,16 +285,28 @@ export default function LandingProductDetailModal({ product, onClose }) {
                                 </tbody>
                             </table>
                         </div>
-                        <a
-                            href={LANDING_OFFICIAL_STORE_URL}
-                            className="landing-btn landing-btn-primary landing-modal-shop"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                        >
-                            <ShopOutlined />
-                            {t('landing.buyAtOfficialStore')}
-                            <ArrowRightOutlined />
-                        </a>
+                        <div className="landing-modal-shop-actions">
+                            <a
+                                href={LANDING_OFFICIAL_STORE_URL}
+                                className="landing-btn landing-btn-primary landing-modal-shop"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                <ShopOutlined />
+                                {t('landing.buyAtOfficialStore')}
+                                <ArrowRightOutlined />
+                            </a>
+                            <a
+                                href={LANDING_SHOPEE_STORE_URL}
+                                className="landing-btn landing-btn-shopee landing-modal-shop"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                <ShopOutlined />
+                                {t('landing.shopOnShopee')}
+                                <ArrowRightOutlined />
+                            </a>
+                        </div>
                     </div>
                 </div>
             )}
