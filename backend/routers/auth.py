@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from services.auth_logic import signup_user, login_user_optimized, verify_token, get_user_auth_claims_from_db, log_activity, sync_users_from_sheet, reset_password, change_password, normalize_permissions
+from services.auth_logic import signup_user, login_user_optimized, verify_token, get_user_auth_claims_from_db, log_activity, reset_password, change_password, normalize_permissions
 from services.public_catalog_logic import refresh_landing_catalog_data
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
@@ -128,10 +128,7 @@ def log_tool_activity(body: LogActivityRequest, request: Request):
 
 @router.post("/sync-users")
 def sync_users():
-    """Sync users and refresh landing catalog data from spreadsheets."""
-    success, msg = sync_users_from_sheet()
-    if not success:
-        raise HTTPException(status_code=500, detail=msg)
+    """Deprecated: keep endpoint for compatibility, no account/permission sheet sync."""
     cat = refresh_landing_catalog_data()
     sync_error = cat.get("sync_error")
     extra = (
@@ -141,7 +138,7 @@ def sync_users():
     if sync_error:
         extra += " (SKU_Info sync warning)"
     return {
-        "message": f"{msg}{extra}",
+        "message": f"Account/permission sync from spreadsheet is disabled.{extra}",
         "catalog_refresh": cat,
     }
 

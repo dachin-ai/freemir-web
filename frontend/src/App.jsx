@@ -11,6 +11,7 @@ import LoginPage from './pages/LoginPage';
 import LandingPage from './pages/LandingPage';
 import LearnProductsPage from './pages/LearnProductsPage';
 import CompareProductsPage from './pages/CompareProductsPage';
+import ProductCatalogBrochure from './pages/ProductCatalogBrochure';
 import PriceChecker from './pages/PriceChecker';
 import Dashboard from './pages/Dashboard';
 import OrderLossReview from './pages/OrderLossReview';
@@ -22,6 +23,7 @@ import ConversionCleaner from './pages/ConversionCleaner';
 import OrderMatchChecker from './pages/OrderMatchChecker';
 import WarehouseOrder from './pages/WarehouseOrder';
 import SocmedScraping from './pages/SocmedScraping';
+import SocialMediaAnalytics from './pages/SocialMediaAnalytics';
 import AffiliateAnalyzer from './pages/AffiliateAnalyzer';
 import ShopeeAffiliate from './pages/ShopeeAffiliate';
 import TikTokAds from './pages/TikTokAds';
@@ -72,6 +74,7 @@ function ProtectedApp() {
         <Route path={PATH_HOME} element={<LandingPage />} />
         <Route path="/learn-products" element={<LearnProductsPage />} />
         <Route path="/compare-products" element={<CompareProductsPage />} />
+        <Route path="/product-catalog" element={<ProductCatalogBrochure />} />
         <Route path={PATH_LOGIN} element={<LoginPage />} />
         <Route
           path={`${PATH_TOOLS}/*`}
@@ -87,6 +90,7 @@ function ProtectedApp() {
       <Route path={PATH_HOME} element={<LandingPage />} />
       <Route path="/learn-products" element={<LearnProductsPage />} />
       <Route path="/compare-products" element={<CompareProductsPage />} />
+      <Route path="/product-catalog" element={<ProductCatalogBrochure />} />
       <Route path={PATH_LOGIN} element={<Navigate to={PATH_TOOLS} replace />} />
       {LEGACY_TOOL_REDIRECTS.map((segment) => (
         <Route
@@ -118,6 +122,7 @@ function ProtectedApp() {
         <Route path="livestream-display" element={<PermissionGate toolKey="livestream_display"><LivestreamDisplay /></PermissionGate>} />
         <Route path="photo-downloader" element={<PermissionGate toolKey="photo_downloader"><PhotoDownloader /></PermissionGate>} />
         <Route path="sku-review" element={<SkuReviewAnalysis />} />
+        <Route path="social-media-analytics" element={<PermissionGate toolKey="social_media_analytics"><SocialMediaAnalytics /></PermissionGate>} />
         <Route path="brand-material">
           <Route index element={<PermissionGate toolKey="brand_material"><BrandMaterial /></PermissionGate>} />
           <Route path=":sku" element={<PermissionGate toolKey="brand_material"><BrandMaterial /></PermissionGate>} />

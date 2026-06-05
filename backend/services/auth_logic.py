@@ -39,12 +39,12 @@ SMTP_APP_PASSWORD = os.environ.get("SMTP_APP_PASSWORD", "")
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 
-# Tool keys matching Google Sheets column names for per-user access control
+# Tool keys for DB-backed access control (not stored on Account sheet).
 TOOL_KEYS = [
     "price_checker", "order_planner", "order_review",
     "affiliate_performance", "pre_sales", "affiliate_analyzer", "ads_analyzer",
     "admin", "product_performance", "livestream_display", "photo_downloader",
-    "brand_material", "sku_review",
+    "brand_material", "sku_review", "social_media_analytics",
 ]
 
 # TIMEOUT PROTECTION for Google Sheets API
@@ -162,12 +162,8 @@ def verify_password(plain: str, stored: str) -> bool:
     return False
 
 
-def _permissions_from_sheet_row(user: dict) -> Dict:
-    perms = {}
-    for tk in TOOL_KEYS:
-        val = str(user.get(tk, "0")).strip()
-        perms[tk] = 1 if val == "1" else 0
-    return perms
+def _default_tool_permissions() -> Dict:
+    return {k: 0 for k in TOOL_KEYS}
 
 
 def _find_sheet_user(login_id: str) -> Optional[Dict]:
@@ -190,17 +186,16 @@ def _find_sheet_user(login_id: str) -> Optional[Dict]:
 
 
 def _upsert_account_user_from_sheet_row(db: Session, user: dict) -> AccountUser:
+    """Sync Email/Username/Password/Approval from Account sheet — never tool permissions."""
     username = str(user.get("Username", "")).strip()
     if not username:
         raise ValueError("Account sheet row is missing Username")
-    perms = _permissions_from_sheet_row(user)
     pwd = normalize_password_for_storage(str(user.get("Password", "")))
     existing = db.query(AccountUser).filter(AccountUser.username.ilike(username)).first()
     if existing:
         existing.email = str(user.get("Email", "")).strip()
         existing.password = pwd
         existing.approval = str(user.get("Approval", "")).strip()
-        existing.permissions = perms
         return existing
     max_id = db.query(AccountUser.id).order_by(AccountUser.id.desc()).first()
     next_id = (max_id[0] + 1) if max_id and max_id[0] is not None else 1
@@ -212,7 +207,7 @@ def _upsert_account_user_from_sheet_row(db: Session, user: dict) -> AccountUser:
         name=sheet_name or username,
         password=pwd,
         approval=str(user.get("Approval", "")).strip(),
-        permissions=perms,
+        permissions=_default_tool_permissions(),
     )
     db.add(new_user)
     return new_user
@@ -320,15 +315,12 @@ def sync_users_from_sheet() -> Tuple[bool, str]:
                     AccountUser.username.ilike(username)
                 ).first()
                 if existing:
-                    # Update existing user (email, password, approval, permissions from sheet).
-                    # Do NOT overwrite `name`: admin-assigned display names are edited in Access Management
-                    # and stored in PostgreSQL; sheet sync should not revert them.
+                    # Account sheet: Email, Username, Password, Approval only — not tool permissions.
                     existing.email = str(user.get("Email", "")).strip()
                     existing.password = normalize_password_for_storage(
                         str(user.get("Password", ""))
                     )
                     existing.approval = str(user.get("Approval", "")).strip()
-                    existing.permissions = _permissions_from_sheet_row(user)
                 else:
                     sheet_name = str(user.get("Name", "")).strip()
                     new_user = AccountUser(
@@ -338,7 +330,7 @@ def sync_users_from_sheet() -> Tuple[bool, str]:
                         name=sheet_name or username,
                         password=normalize_password_for_storage(str(user.get("Password", ""))),
                         approval=str(user.get("Approval", "")).strip(),
-                        permissions=_permissions_from_sheet_row(user),
+                        permissions=_default_tool_permissions(),
                     )
                     db.add(new_user)
                     next_id += 1

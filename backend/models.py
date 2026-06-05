@@ -239,3 +239,115 @@ class SharedQuickLinks(Base):
     payload = Column(JSON, nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
+
+class SocmedAnalyticsVideo(Base):
+    """Tracked social post/reel for Social Media Analytics (freemir suite)."""
+
+    __tablename__ = "socmed_analytics_videos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    created_by = Column(String(120), default="", index=True)
+    platform = Column(String(20), nullable=False, index=True)  # tiktok | instagram
+    url = Column(String(512), nullable=False)
+    url_key = Column(String(512), default="", index=True)
+    canonical_url = Column(String(512), default="")
+    post_id = Column(String(80), default="", index=True)
+    author_username = Column(String(120), default="")
+    author_display_name = Column(String(200), default="")
+    caption = Column(String(2000), default="")
+    thumbnail_url = Column(String(1024), default="")
+    posted_at = Column(String(40), default="")
+    views = Column(Integer, nullable=True)
+    likes = Column(Integer, nullable=True)
+    comments = Column(Integer, nullable=True)
+    shares = Column(Integer, nullable=True)
+    saves = Column(Integer, nullable=True)
+    video_download_url = Column(String(1024), default="")
+    duration_sec = Column(Integer, nullable=True)
+    last_fetched_at = Column(DateTime, nullable=True)
+    fetch_status = Column(String(20), default="pending")  # pending | ok | error
+    fetch_error = Column(String(500), default="")
+    note = Column(String(500), default="")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class SocmedAnalyticsSnapshot(Base):
+    """Point-in-time metrics for a tracked video (performance over time)."""
+
+    __tablename__ = "socmed_analytics_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    video_id = Column(Integer, nullable=False, index=True)
+    fetched_at = Column(DateTime, nullable=False, index=True)
+    views = Column(Integer, nullable=True)
+    likes = Column(Integer, nullable=True)
+    comments = Column(Integer, nullable=True)
+    shares = Column(Integer, nullable=True)
+    saves = Column(Integer, nullable=True)
+    engagement_rate = Column(String(20), default="")
+
+
+class SocmedAnalyticsProfile(Base):
+    """Tracked creator profile (TikTok / Instagram)."""
+
+    __tablename__ = "socmed_analytics_profiles"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    created_by = Column(String(120), default="", index=True)
+    platform = Column(String(20), nullable=False, index=True)
+    username = Column(String(120), nullable=False, index=True)
+    profile_key = Column(String(160), default="", index=True)
+    profile_url = Column(String(512), default="")
+    display_name = Column(String(200), default="")
+    biography = Column(String(2000), default="")
+    avatar_url = Column(String(1024), default="")
+    followers = Column(Integer, nullable=True)
+    following = Column(Integer, nullable=True)
+    posts_count = Column(Integer, nullable=True)
+    total_likes = Column(Integer, nullable=True)
+    is_verified = Column(String(10), default="")
+    recent_posts_json = Column(JSON, nullable=True)
+    recent_avg_views = Column(Integer, nullable=True)
+    recent_avg_likes = Column(Integer, nullable=True)
+    recent_avg_comments = Column(Integer, nullable=True)
+    recent_avg_engagement_rate = Column(String(20), default="")
+    last_fetched_at = Column(DateTime, nullable=True)
+    fetch_status = Column(String(20), default="pending")
+    fetch_error = Column(String(500), default="")
+    note = Column(String(500), default="")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class SocmedApifyToken(Base):
+    """Encrypted Apify API token saved per account owner (Social Media Analytics)."""
+
+    __tablename__ = "socmed_apify_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner = Column(String(120), nullable=False, index=True)
+    label = Column(String(120), default="")
+    token_enc = Column(Text, nullable=False)
+    token_hint = Column(String(32), default="")
+    is_default = Column(String(1), default="0")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class SocmedAnalyticsProfileSnapshot(Base):
+    """Point-in-time profile metrics."""
+
+    __tablename__ = "socmed_analytics_profile_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    profile_id = Column(Integer, nullable=False, index=True)
+    fetched_at = Column(DateTime, nullable=False, index=True)
+    followers = Column(Integer, nullable=True)
+    following = Column(Integer, nullable=True)
+    posts_count = Column(Integer, nullable=True)
+    total_likes = Column(Integer, nullable=True)
+    recent_avg_views = Column(Integer, nullable=True)
+    recent_avg_likes = Column(Integer, nullable=True)
+    recent_avg_engagement_rate = Column(String(20), default="")
+

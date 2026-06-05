@@ -668,6 +668,47 @@ def list_material_coverage(
     }
 
 
+def reorder_sub_materials(
+    db: Session,
+    *,
+    sku: str,
+    media_type: str,
+    ordered_ids: list[str],
+) -> dict:
+    """Persist drag-and-drop order for Sub items of one SKU + media type."""
+    sku_norm = normalize_sku(sku).upper()
+    if not sku_norm:
+        raise ValueError("SKU_REQUIRED")
+
+    mt = normalize_media_type(media_type)
+    if mt not in ("photo", "video"):
+        raise ValueError("INVALID_MEDIA_TYPE")
+
+    if not ordered_ids:
+        raise ValueError("REORDER_EMPTY")
+
+    key = _sku_key(sku_norm)
+    rows = (
+        db.query(BrandMaterial)
+        .filter(
+            BrandMaterial.sku_key == key,
+            BrandMaterial.category == "sub",
+            BrandMaterial.media_type == mt,
+        )
+        .all()
+    )
+    existing_ids = {r.id for r in rows}
+    if len(ordered_ids) != len(existing_ids) or set(ordered_ids) != existing_ids:
+        raise ValueError("REORDER_MISMATCH")
+
+    id_to_row = {r.id: r for r in rows}
+    for idx, mid in enumerate(ordered_ids, start=1):
+        id_to_row[mid].sub_index = idx
+    db.commit()
+
+    return {"ok": True, "sku": sku_norm, "mediaType": mt}
+
+
 def _renumber_subs(db: Session, sku: str, media_type: str) -> None:
     key = _sku_key(sku)
     mt = normalize_media_type(media_type)

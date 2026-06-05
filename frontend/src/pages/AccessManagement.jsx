@@ -21,9 +21,10 @@ import UserActivity from './UserActivity';
 const { Text } = Typography;
 
 const ALL_TOOL_KEYS = [
-    'admin', 'price_checker', 'order_planner', 'product_performance', 'photo_downloader',
+    'admin', 'price_checker', 'order_planner', 'product_performance',
     'brand_material', 'sku_review', 'order_review', 'affiliate_performance',
     'livestream_display', 'pre_sales', 'affiliate_analyzer', 'ads_analyzer',
+    'social_media_analytics',
 ];
 
 const PERM_TOOLS = [
@@ -31,9 +32,9 @@ const PERM_TOOLS = [
     { key: 'price_checker',         group: 'freemir' },
     { key: 'order_planner',         group: 'freemir' },
     { key: 'product_performance',   group: 'freemir' },
-    { key: 'photo_downloader',      group: 'freemir' },
     { key: 'brand_material',        group: 'freemir' },
     { key: 'sku_review',            group: 'freemir' },
+    { key: 'social_media_analytics', group: 'freemir' },
     { key: 'order_review',          group: 'shopee'  },
     { key: 'affiliate_performance', group: 'shopee'  },
     { key: 'livestream_display',    group: 'shopee'  },
@@ -60,7 +61,7 @@ function StatusTag({ status }) {
     return <Tag icon={<CloseCircleOutlined />} color="error">{t('accessMgmt.statusRejected')}</Tag>;
 }
 
-/** Status akun spreadsheet (Approval): Approve / Waiting / Reject */
+/** Status akun: Approve / Waiting / Reject */
 function AccountApprovalTag({ approval }) {
     const { t } = useTranslation();
     const a = String(approval || '').trim().toLowerCase();

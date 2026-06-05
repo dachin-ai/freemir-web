@@ -9,23 +9,28 @@ import {
 
 const { Text } = Typography;
 
-const thumbPlaceholderStyle = {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
-    background: 'var(--bg-subtle, rgba(0,0,0,0.04))',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-};
-
-const thumbMediaStyle = {
-    width: 48,
-    height: 48,
-    objectFit: 'cover',
-    borderRadius: 8,
-    display: 'block',
-};
+function thumbStyles(size = 48, fill = false) {
+    const radius = fill ? 0 : (size >= 64 ? 10 : 8);
+    const dim = fill
+        ? { width: '100%', height: '100%' }
+        : { width: size, height: size };
+    return {
+        placeholder: {
+            ...dim,
+            borderRadius: radius,
+            background: 'var(--bg-subtle, rgba(0,0,0,0.04))',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        media: {
+            ...dim,
+            objectFit: 'cover',
+            borderRadius: radius,
+            display: 'block',
+        },
+    };
+}
 
 function ThumbClickWrap({ onClick, children, label }) {
     if (!onClick) return children;
@@ -51,11 +56,12 @@ function ThumbClickWrap({ onClick, children, label }) {
     );
 }
 
-function VideoInlineThumb({ gcsObjectPath, alt, onClick }) {
+function VideoInlineThumb({ gcsObjectPath, alt, onClick, size = 48, fill = false }) {
+    const { placeholder, media } = thumbStyles(size, fill);
     const url = brandMaterialPublicMediaUrl(gcsObjectPath);
     if (!url) {
         return (
-            <div style={thumbPlaceholderStyle}>
+            <div style={placeholder}>
                 <Text type="secondary" style={{ fontSize: 10 }}>—</Text>
             </div>
         );
@@ -68,7 +74,7 @@ function VideoInlineThumb({ gcsObjectPath, alt, onClick }) {
             playsInline
             preload="metadata"
             aria-label={alt}
-            style={thumbMediaStyle}
+            style={media}
         />
     );
     return (
@@ -81,7 +87,8 @@ function VideoInlineThumb({ gcsObjectPath, alt, onClick }) {
 /**
  * Compact table thumbnail — API preview (JPEG poster) with video fallbacks.
  */
-export default function MaterialThumb({ item, fallbackUrl, onPreview }) {
+export default function MaterialThumb({ item, fallbackUrl, onPreview, size = 48, fill = false }) {
+    const { placeholder, media } = thumbStyles(size, fill);
     const isVideo = item.mediaType === 'video' || isVideoMime(item.mimeType);
     const [src, setSrc] = useState(!isVideo ? (fallbackUrl || null) : null);
     const [useVideoTag, setUseVideoTag] = useState(false);
@@ -161,13 +168,15 @@ export default function MaterialThumb({ item, fallbackUrl, onPreview }) {
                 gcsObjectPath={item.gcsObjectPath}
                 alt={item.sku}
                 onClick={handleClick}
+                size={size}
+                fill={fill}
             />
         );
     }
 
     if (!src) {
         return (
-            <div style={thumbPlaceholderStyle}>
+            <div style={placeholder}>
                 <Text type="secondary" style={{ fontSize: 10 }}>—</Text>
             </div>
         );
@@ -177,17 +186,22 @@ export default function MaterialThumb({ item, fallbackUrl, onPreview }) {
         <Image
             src={src}
             alt={item.sku}
-            width={48}
-            height={48}
-            style={thumbMediaStyle}
+            width={fill ? undefined : size}
+            height={fill ? undefined : size}
+            style={media}
             preview={false}
             fallback="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
         />
     );
 
-    return (
+    const content = (
         <ThumbClickWrap onClick={handleClick} label={item.sku}>
             {thumb}
         </ThumbClickWrap>
     );
+
+    if (fill) {
+        return <div style={{ width: '100%', height: '100%' }}>{content}</div>;
+    }
+    return content;
 }

@@ -34,4 +34,5 @@ export const LEGACY_TOOL_REDIRECTS = [
     'photo-downloader',
     'sku-review',
     'brand-material',
+    'social-media-analytics',
 ];

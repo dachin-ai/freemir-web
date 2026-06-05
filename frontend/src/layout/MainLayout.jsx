@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Layout, Menu, Typography, Button, message, Modal, Form, Input, Dropdown, Divider, Segmented } from 'antd';
-import { LogoutOutlined, HomeOutlined, LockOutlined, AppstoreOutlined, ShoppingOutlined, PlaySquareOutlined, VideoCameraOutlined, SunOutlined, MoonOutlined, KeyOutlined, UnlockOutlined, TeamOutlined, BarChartOutlined, GlobalOutlined, DownOutlined, LinkOutlined, FileImageOutlined } from '@ant-design/icons';
+import { Layout, Menu, Typography, Button, message, Modal, Form, Input, Dropdown } from 'antd';
+import { LogoutOutlined, HomeOutlined, LockOutlined, AppstoreOutlined, ShoppingOutlined, PlaySquareOutlined, VideoCameraOutlined, KeyOutlined, UnlockOutlined, TeamOutlined, BarChartOutlined, DownOutlined, LinkOutlined, FileImageOutlined, LineChartOutlined } from '@ant-design/icons';
+import LanguageSwitch from '../components/LanguageSwitch';
+import ThemeModeSwitch from '../components/ThemeModeSwitch';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { useLang } from '../context/LangContext';
 import Bi from '../components/Bi';
 import { changePassword } from '../api';
 import { PATH_TOOLS, toolsPath } from '../routes/paths';
@@ -28,7 +29,6 @@ const MainLayout = () => {
   const location = useLocation();
   const { user, logout, hasAccess } = useAuth();
   const { isDark, setThemeMode } = useTheme();
-  const { lang, setLanguage } = useLang();
   const { t } = useTranslation();
 
   /* Dark: indigo. Light: musim panas (langit & air, biru segar). */
@@ -87,9 +87,9 @@ const MainLayout = () => {
         { key: toolsPath('price-checker'), label: lockedLabel(<Bi i18nKey="layout.priceChecker" />, 'price_checker'), style: !hasAccess('price_checker') ? { opacity: 0.6 } : {} },
         { key: toolsPath('warehouse-order'), label: lockedLabel(<Bi i18nKey="layout.orderPlanner" />, 'order_planner'), style: !hasAccess('order_planner') ? { opacity: 0.6 } : {} },
         { key: toolsPath('product-performance'), label: lockedLabel(<Bi i18nKey="layout.productPerformance" />, 'product_performance'), style: !hasAccess('product_performance') ? { opacity: 0.6 } : {} },
-        { key: toolsPath('photo-downloader'), label: lockedLabel(<Bi i18nKey="layout.photoDownloader" />, 'photo_downloader'), style: !hasAccess('photo_downloader') ? { opacity: 0.6 } : {} },
         { key: toolsPath('brand-material'), label: lockedLabel(<Bi i18nKey="layout.brandMaterial" />, 'brand_material'), style: !hasAccess('brand_material') ? { opacity: 0.6 } : {} },
         { key: toolsPath('sku-review'), label: <Bi i18nKey="layout.skuReviewAnalysis" /> },
+        { key: toolsPath('social-media-analytics'), label: lockedLabel(<Bi i18nKey="layout.socialMediaAnalytics" />, 'social_media_analytics'), style: !hasAccess('social_media_analytics') ? { opacity: 0.6 } : {} },
       ]
     },
     {
@@ -128,8 +128,8 @@ const MainLayout = () => {
     [toolsPath('access-management')]: 'admin',
     [toolsPath('product-performance')]: 'product_performance',
     [toolsPath('livestream-display')]: 'livestream_display',
-    [toolsPath('photo-downloader')]: 'photo_downloader',
     [toolsPath('brand-material')]: 'brand_material',
+    [toolsPath('social-media-analytics')]: 'social_media_analytics',
   };
 
   const handleMenuClick = ({ key }) => {
@@ -185,10 +185,11 @@ const MainLayout = () => {
   );
 
   return (
-    <Layout style={{ minHeight: '100vh', background: 'var(--bg-app)' }}>
+    <Layout style={{ minHeight: '100vh', height: '100vh', overflow: 'hidden', background: 'var(--bg-app)' }}>
 
       {/* ── DARK SIDEBAR ── */}
       <Sider
+        className="fm-app-sider"
         collapsible
         collapsed={collapsed}
         onCollapse={setCollapsed}
@@ -244,10 +245,12 @@ const MainLayout = () => {
       </Sider>
 
       {/* ── MAIN AREA ── */}
-      <Layout style={{ background: 'var(--bg-app)' }}>
+      <Layout style={{ background: 'var(--bg-app)', flex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
 
         {/* Top Bar — dark gradient */}
-        <div style={{
+        <div
+          className="fm-app-topbar"
+          style={{
           height: 64,
           background: 'var(--bg-card)',
           borderBottom: '1px solid var(--border)',
@@ -276,201 +279,64 @@ const MainLayout = () => {
                     onClick={stopPanelEvent}
                     onMouseDown={stopPanelEvent}
                     onPointerDown={stopPanelEvent}
-                    style={{
-                      marginTop: 10,
-                      width: 336,
-                      maxWidth: 'calc(100vw - 24px)',
-                      padding: 0,
-                      borderRadius: 14,
-                      background: 'var(--bg-card)',
-                      border: '1px solid var(--border)',
-                      boxShadow: isDark ? '0 16px 48px rgba(0,0,0,0.5)' : '0 16px 40px rgba(15, 23, 42, 0.12)',
-                      overflow: 'hidden',
-                    }}
                   >
-                    <div
-                      style={{
-                        padding: '18px 20px 16px',
-                        borderBottom: '1px solid var(--border)',
-                        background: isDark ? 'rgba(15,23,42,0.55)' : 'rgba(248,250,252,0.95)',
-                      }}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
-                        {t('layout.settingsTitle')}
-                      </Text>
-                      <Text strong style={{ fontSize: 16, display: 'block', lineHeight: 1.35, color: 'var(--text-main)' }}>
+                    <div className="fm-settings-panel__head">
+                      <Text strong className="fm-settings-panel__name">
                         {user.name || user.username}
                       </Text>
-                      <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 6, lineHeight: 1.45 }}>
-                        {t('layout.settingsSubtitle')}
-                      </Text>
+                      {user.name && user.username && user.name !== user.username ? (
+                        <Text type="secondary" className="fm-settings-panel__meta">
+                          {user.username}
+                        </Text>
+                      ) : null}
                     </div>
 
-                    <div style={{ padding: '6px 0 10px' }}>
-                      <div style={{ padding: '16px 20px 18px' }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 4 }}>
-                          <span
-                            style={{
-                              width: 40,
-                              height: 40,
-                              borderRadius: 10,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              background: 'linear-gradient(145deg, #22d3ee 0%, #06b6d4 48%, #0e7490 100%)',
-                              color: '#fff',
-                              flexShrink: 0,
-                              marginTop: 1,
-                              boxShadow: isDark ? '0 2px 10px rgba(6,182,212,0.45)' : '0 2px 10px rgba(6,182,212,0.35)',
-                            }}
-                          >
-                            <GlobalOutlined style={{ fontSize: 22, filter: 'drop-shadow(0 1px 0 rgba(0,0,0,0.2))' }} />
-                          </span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <Text strong style={{ fontSize: 14, display: 'block', lineHeight: 1.4 }}>{t('layout.settingsLanguage')}</Text>
-                            <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.55, display: 'block', marginTop: 6 }}>
-                              {t('layout.tabLanguageHint')}
-                            </Text>
-                          </div>
-                        </div>
-                        <div style={{ marginTop: 14 }}>
-                          <Segmented
-                            block
-                            size="large"
-                            value={lang}
-                            onChange={setLanguage}
-                            onMouseDown={stopPanelEvent}
-                            onPointerDown={stopPanelEvent}
-                            onClick={stopPanelEvent}
-                            options={[
-                              { value: 'zh', label: <span style={{ fontWeight: 600 }}>中文</span> },
-                              { value: 'en', label: <span style={{ fontWeight: 700, letterSpacing: '0.06em' }}>EN</span> },
-                              { value: 'id', label: <span style={{ fontWeight: 700, letterSpacing: '0.04em' }}>ID</span> },
-                            ]}
-                          />
-                        </div>
-                      </div>
-
-                      <Divider style={{ margin: '0 20px' }} />
-
-                      <div style={{ padding: '16px 20px 18px' }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
-                          <span
-                            style={{
-                              width: 40,
-                              height: 40,
-                              borderRadius: 10,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              background: 'linear-gradient(145deg, #fcd34d 0%, #f59e0b 45%, #ea580c 100%)',
-                              color: '#fff',
-                              flexShrink: 0,
-                              marginTop: 1,
-                              boxShadow: isDark ? '0 2px 10px rgba(245,158,11,0.45)' : '0 2px 10px rgba(234,88,12,0.3)',
-                            }}
-                          >
-                            {isDark ? (
-                              <MoonOutlined style={{ fontSize: 22, filter: 'drop-shadow(0 1px 0 rgba(0,0,0,0.2))' }} />
-                            ) : (
-                              <SunOutlined style={{ fontSize: 22, filter: 'drop-shadow(0 1px 0 rgba(0,0,0,0.15))' }} />
-                            )}
-                          </span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <Text strong style={{ fontSize: 14, display: 'block', lineHeight: 1.4 }}>{t('layout.settingsTheme')}</Text>
-                            <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.55, display: 'block', marginTop: 6 }}>
-                              {t('layout.tabAppearanceHint')}
-                            </Text>
-                          </div>
-                        </div>
-                        <Segmented
-                          block
-                          size="large"
-                          value={isDark ? 'dark' : 'light'}
-                          onChange={(v) => setThemeMode(v === 'dark')}
+                    <div className="fm-settings-panel__body">
+                      <div className="fm-settings-panel__row">
+                        <span className="fm-settings-panel__label">{t('layout.settingsLanguage')}</span>
+                        <div
+                          className="fm-settings-panel__control"
                           onMouseDown={stopPanelEvent}
                           onPointerDown={stopPanelEvent}
                           onClick={stopPanelEvent}
-                          options={[
-                            {
-                              value: 'light',
-                              label: (
-                                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '2px 0' }}>
-                                  <SunOutlined />
-                                  <span>{t('layout.themeModeLight')}</span>
-                                </span>
-                              ),
-                            },
-                            {
-                              value: 'dark',
-                              label: (
-                                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '2px 0' }}>
-                                  <MoonOutlined />
-                                  <span>{t('layout.themeModeDark')}</span>
-                                </span>
-                              ),
-                            },
-                          ]}
-                        />
-                      </div>
-
-                      <Divider style={{ margin: '0 20px' }} />
-
-                      <div style={{ padding: '14px 20px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
-                          <span
-                            style={{
-                              width: 40,
-                              height: 40,
-                              borderRadius: 10,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              background: 'var(--fm-gradient)',
-                              color: '#fff',
-                              flexShrink: 0,
-                              marginTop: 1,
-                              boxShadow: isDark ? '0 2px 10px rgba(14,165,233,0.45)' : '0 2px 10px rgba(2,132,199,0.35)',
-                            }}
-                          >
-                            <KeyOutlined style={{ fontSize: 22, filter: 'drop-shadow(0 1px 0 rgba(0,0,0,0.2))' }} />
-                          </span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <Text strong style={{ fontSize: 14, display: 'block', lineHeight: 1.4 }}>{t('layout.settingsSecurity')}</Text>
-                            <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.55, display: 'block', marginTop: 6 }}>
-                              {t('layout.settingsSecurityHint')}
-                            </Text>
-                          </div>
+                        >
+                          <LanguageSwitch compact />
                         </div>
-                        <Button
-                          type="default"
-                          block
-                          size="large"
-                          icon={<KeyOutlined style={{ fontSize: 18 }} />}
-                          onClick={() => { setSettingsOpen(false); setChangePwdOpen(true); }}
-                          style={{ height: 44, borderRadius: 10, fontWeight: 600, borderColor: isDark ? 'rgba(56,189,248,0.45)' : 'rgba(2,132,199,0.35)', color: ta.keyIcon }}
-                        >
-                          {t('layout.changePassword')}
-                        </Button>
                       </div>
-
-                      <Divider style={{ margin: '0 20px' }} />
-
-                      <div style={{ padding: '12px 20px 18px' }}>
-                        <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 10, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                          {t('layout.settingsSession')}
-                        </Text>
-                        <Button
-                          danger
-                          block
-                          size="large"
-                          icon={<LogoutOutlined />}
-                          onClick={() => { setSettingsOpen(false); logout(); }}
-                          style={{ height: 44, borderRadius: 10, fontWeight: 600 }}
+                      <div className="fm-settings-panel__row">
+                        <span className="fm-settings-panel__label">{t('layout.settingsTheme')}</span>
+                        <div
+                          className="fm-settings-panel__control"
+                          onMouseDown={stopPanelEvent}
+                          onPointerDown={stopPanelEvent}
+                          onClick={stopPanelEvent}
                         >
-                          {t('layout.logout')}
-                        </Button>
+                          <ThemeModeSwitch isDark={isDark} onChange={setThemeMode} compact />
+                        </div>
                       </div>
+                    </div>
+
+                    <div className="fm-settings-panel__footer">
+                      <Button
+                        type="default"
+                        size="small"
+                        block
+                        icon={<KeyOutlined />}
+                        onClick={() => { setSettingsOpen(false); setChangePwdOpen(true); }}
+                        className="fm-settings-panel__btn"
+                      >
+                        {t('layout.changePassword')}
+                      </Button>
+                      <Button
+                        danger
+                        size="small"
+                        block
+                        icon={<LogoutOutlined />}
+                        onClick={() => { setSettingsOpen(false); logout(); }}
+                        className="fm-settings-panel__btn"
+                      >
+                        {t('layout.logout')}
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -483,9 +349,9 @@ const MainLayout = () => {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 12,
-                    padding: '8px 16px 8px 10px',
-                    borderRadius: 12,
+                    gap: 8,
+                    padding: '6px 12px 6px 8px',
+                    borderRadius: 10,
                     border: `1px solid ${isDark ? 'rgba(56,189,248,0.32)' : 'rgba(2,132,199,0.22)'}`,
                     background: isDark
                       ? 'linear-gradient(135deg, rgba(14,165,233,0.18) 0%, rgba(30,41,59,0.85) 100%)'
@@ -495,16 +361,16 @@ const MainLayout = () => {
                       ? 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 10px rgba(14,165,233,0.22)'
                       : '0 2px 10px rgba(2,132,199,0.12)',
                     transition: 'transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease',
-                    maxWidth: 340,
+                    maxWidth: 220,
                   }}
                 >
-                  {renderWajanIcon(34)}
+                  {renderWajanIcon(28)}
                   <span
                     style={{
                       flex: 1,
                       minWidth: 0,
                       textAlign: 'left',
-                      fontSize: 15,
+                      fontSize: 13,
                       fontWeight: 600,
                       color: 'var(--text-main)',
                       whiteSpace: 'nowrap',
@@ -524,7 +390,7 @@ const MainLayout = () => {
         </div>
 
         {/* Page Content */}
-        <Content style={{ padding: '32px', overflowY: 'auto' }}>
+        <Content className="fm-app-content" style={{ padding: '32px', overflowY: 'auto', flex: 1, minHeight: 0 }}>
           <Outlet />
         </Content>
       </Layout>

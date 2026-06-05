@@ -2601,7 +2601,7 @@ html.landing-privacy-shield::after {
 
 .landing-tools-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 20px;
 }
 

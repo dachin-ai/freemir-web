@@ -1,33 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button, Card, Space } from 'antd';
 import {
-    Button, Card, Checkbox, Empty, Flex, Segmented, Space, Table, Tag, Tooltip, Typography,
-} from 'antd';
-import {
-    ArrowLeftOutlined, CloudUploadOutlined, DownloadOutlined, EditOutlined,
+    ArrowLeftOutlined, CloudUploadOutlined, CloseOutlined, SearchOutlined,
 } from '@ant-design/icons';
-import dayjs from 'dayjs';
-import utc from 'dayjs/plugin/utc';
-import timezone from 'dayjs/plugin/timezone';
 import { useTranslation } from 'react-i18next';
+import api from '../api';
 import PageHeader from '../components/PageHeader';
-import MaterialThumb from '../components/brandMaterial/MaterialThumb';
+import MaterialCatalogGrid from '../components/brandMaterial/MaterialCatalogGrid';
 import MaterialPreviewModal from '../components/brandMaterial/MaterialPreviewModal';
+import MaterialTypeSwitch from '../components/brandMaterial/MaterialTypeSwitch';
 import { listBrandMaterialBySku } from '../utils/brandMaterialStore';
-import { isVideoMime } from '../utils/brandMaterialMedia';
+import './brand-material-catalog.css';
 
-dayjs.extend(utc);
-dayjs.extend(timezone);
-
-const { Text } = Typography;
-
-function itemIsVideo(item) {
-    return item.mediaType === 'video' || isVideoMime(item.mimeType);
-}
-
-function formatUploadedAt(iso) {
-    if (!iso) return '—';
-    const d = dayjs(iso).tz('Asia/Jakarta');
-    return d.isValid() ? `${d.format('DD MMM YYYY, HH:mm')} WIB` : '—';
+function catalogLangKey(i18nLanguage) {
+    const key = (i18nLanguage || 'id').slice(0, 2).toLowerCase();
+    return ['id', 'en', 'zh'].includes(key) ? key : 'id';
 }
 
 export default function BrandMaterialSkuDetail({
@@ -37,17 +24,21 @@ export default function BrandMaterialSkuDetail({
     onBack,
     onUpload,
     skuInfoImageUrl,
+    productNameFallback = '',
     selectedIds,
     onSelect,
+    onSelectMany,
     onDownload,
     onEdit,
     reloadToken,
     toolbarExtras,
 }) {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const [items, setItems] = useState([]);
+    const [noteQuery, setNoteQuery] = useState('');
     const [loading, setLoading] = useState(true);
     const [previewItem, setPreviewItem] = useState(null);
+    const [productSubtitle, setProductSubtitle] = useState(productNameFallback || '');
     const loadGenRef = useRef(0);
 
     const loadSku = useCallback(async () => {
@@ -68,138 +59,42 @@ export default function BrandMaterialSkuDetail({
         loadSku();
     }, [loadSku, reloadToken]);
 
-    const allSelected = items.length > 0 && items.every((i) => selectedIds.has(i.id));
-    const someSelected = items.some((i) => selectedIds.has(i.id));
+    useEffect(() => {
+        let cancelled = false;
+        const lang = catalogLangKey(i18n.language);
 
-    const toggleSelectAll = (checked) => {
-        items.forEach((item) => onSelect(item.id, checked, item));
-    };
+        api.get(`/public/landing-products/${encodeURIComponent(sku)}`, {
+            params: { currency: 'IDR', lang },
+            timeout: 30000,
+        })
+            .then((res) => {
+                if (cancelled) return;
+                const name = String(res.data?.name || '').trim();
+                setProductSubtitle(name || productNameFallback || '');
+            })
+            .catch(() => {
+                if (!cancelled) setProductSubtitle(productNameFallback || '');
+            });
+
+        return () => { cancelled = true; };
+    }, [sku, i18n.language, productNameFallback]);
 
     const thumbFallback = skuInfoImageUrl || null;
 
+    const filteredItems = useMemo(() => {
+        const q = noteQuery.trim().toLowerCase();
+        if (!q) return items;
+        return items.filter((item) => (item.note || '').toLowerCase().includes(q));
+    }, [items, noteQuery]);
+
     const openPreview = useCallback((row) => setPreviewItem(row), []);
     const closePreview = useCallback(() => setPreviewItem(null), []);
-
-    const columns = useMemo(() => [
-        {
-            title: (
-                <Checkbox
-                    checked={allSelected}
-                    indeterminate={someSelected && !allSelected}
-                    onChange={(e) => toggleSelectAll(e.target.checked)}
-                />
-            ),
-            width: 48,
-            render: (_, row) => (
-                <Checkbox
-                    checked={selectedIds.has(row.id)}
-                    onChange={(e) => onSelect(row.id, e.target.checked, row)}
-                />
-            ),
-        },
-        {
-            title: t('brandMaterial.tableColThumb'),
-            width: 72,
-            render: (_, row) => (
-                <MaterialThumb
-                    item={row}
-                    fallbackUrl={
-                        row.category === 'main' && !itemIsVideo(row)
-                            ? thumbFallback
-                            : null
-                    }
-                    onPreview={openPreview}
-                />
-            ),
-        },
-        {
-            title: t('brandMaterial.fieldSku'),
-            dataIndex: 'sku',
-            width: 132,
-            render: (val) => <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>{val}</Text>,
-        },
-        {
-            title: t('brandMaterial.fieldNote'),
-            dataIndex: 'note',
-            width: 180,
-            ellipsis: true,
-            render: (val) => (
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                    {(val || '').trim() || '—'}
-                </Text>
-            ),
-        },
-        {
-            title: t('brandMaterial.filterType'),
-            width: 88,
-            render: (_, row) => (
-                <Tag color={itemIsVideo(row) ? 'purple' : 'cyan'} style={{ margin: 0 }}>
-                    {itemIsVideo(row) ? t('brandMaterial.typeVideo') : t('brandMaterial.typePhoto')}
-                </Tag>
-            ),
-        },
-        {
-            title: t('brandMaterial.fieldCategory'),
-            dataIndex: 'category',
-            width: 88,
-            render: (cat) => (
-                <Tag color={cat === 'main' ? 'green' : 'blue'} style={{ margin: 0 }}>
-                    {cat === 'main' ? t('brandMaterial.catMain') : t('brandMaterial.catSub')}
-                </Tag>
-            ),
-        },
-        {
-            title: t('brandMaterial.metaUploadedAt'),
-            dataIndex: 'uploadedAt',
-            width: 180,
-            render: (val) => (
-                <Text type="secondary" style={{ fontSize: 12 }}>{formatUploadedAt(val)}</Text>
-            ),
-        },
-        {
-            title: t('brandMaterial.metaUploadedBy'),
-            dataIndex: 'uploadedBy',
-            width: 120,
-            ellipsis: true,
-            render: (val) => val || '—',
-        },
-        {
-            title: t('brandMaterial.tableColActions'),
-            width: 88,
-            fixed: 'right',
-            render: (_, row) => (
-                <Space size={4}>
-                    <Tooltip title={t('brandMaterial.download')}>
-                        <Button
-                            type="text"
-                            size="small"
-                            icon={<DownloadOutlined />}
-                            onClick={() => onDownload(row)}
-                            aria-label={t('brandMaterial.download')}
-                        />
-                    </Tooltip>
-                    <Tooltip title={t('brandMaterial.edit')}>
-                        <Button
-                            type="text"
-                            size="small"
-                            icon={<EditOutlined />}
-                            onClick={() => onEdit(row)}
-                            aria-label={t('brandMaterial.edit')}
-                        />
-                    </Tooltip>
-                </Space>
-            ),
-        },
-    ], [
-        t, allSelected, someSelected, selectedIds, thumbFallback,
-        onSelect, onDownload, onEdit, items, openPreview,
-    ]);
 
     return (
         <div>
             <PageHeader
                 title={sku}
-                subtitle={t('brandMaterial.skuDetailSubtitle')}
+                subtitle={productSubtitle || undefined}
                 accent="#0ea5e9"
                 actions={(
                     <Space wrap>
@@ -216,47 +111,71 @@ export default function BrandMaterialSkuDetail({
             />
 
             <Card
-                style={{
-                    marginBottom: 20,
-                    borderRadius: 12,
-                    border: '1px solid var(--border)',
-                    background: 'var(--bg-card)',
-                }}
-                styles={{ body: { padding: '16px 18px' } }}
+                className="bm-sku-toolbar-card"
+                styles={{ body: { padding: '14px 16px' } }}
             >
-                <Flex wrap gap={12} align="center" justify="space-between">
-                    <Flex vertical gap={6}>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                            {t('brandMaterial.filterType')}
-                        </Text>
-                        <Segmented
+                <div className="bm-sku-toolbar">
+                    <div className="bm-sku-filter-group">
+                        <span className="bm-sku-filter-label">{t('brandMaterial.filterType')}</span>
+                        <MaterialTypeSwitch
                             value={typeFilter}
                             onChange={onTypeFilterChange}
-                            options={[
-                                { value: 'all', label: t('brandMaterial.filterAll') },
-                                { value: 'photo', label: t('brandMaterial.typePhoto') },
-                                { value: 'video', label: t('brandMaterial.typeVideo') },
-                            ]}
+                            t={t}
                         />
-                    </Flex>
-                    {toolbarExtras}
-                </Flex>
+                    </div>
+                    <div className="bm-sku-filter-group bm-sku-filter-group--search">
+                        <label className="bm-sku-note-search" htmlFor="bm-note-search">
+                            <span className="bm-sku-filter-label">{t('brandMaterial.filterNote')}</span>
+                            <div className="bm-sku-note-search-field">
+                                <SearchOutlined className="bm-sku-note-search-icon" aria-hidden />
+                                <input
+                                    id="bm-note-search"
+                                    type="search"
+                                    className="bm-sku-note-search-input"
+                                    value={noteQuery}
+                                    onChange={(e) => setNoteQuery(e.target.value)}
+                                    placeholder={t('brandMaterial.filterNotePh')}
+                                    autoComplete="off"
+                                />
+                                {noteQuery ? (
+                                    <button
+                                        type="button"
+                                        className="bm-sku-note-search-clear"
+                                        onClick={() => setNoteQuery('')}
+                                        aria-label={t('brandMaterial.filterNoteClear')}
+                                    >
+                                        <CloseOutlined />
+                                    </button>
+                                ) : null}
+                            </div>
+                        </label>
+                    </div>
+                    {toolbarExtras ? (
+                        <div className="bm-sku-toolbar-actions">
+                            {toolbarExtras}
+                        </div>
+                    ) : null}
+                </div>
             </Card>
 
             <Card
                 style={{ borderRadius: 12, border: '1px solid var(--border)' }}
-                styles={{ body: { padding: 0 } }}
+                styles={{ body: { padding: '16px 18px' } }}
             >
-                <Table
-                    className="material-coverage-table"
-                    rowKey="id"
+                <MaterialCatalogGrid
+                    sku={sku}
+                    items={filteredItems}
                     loading={loading}
-                    columns={columns}
-                    dataSource={items}
-                    sticky
-                    pagination={false}
-                    locale={{ emptyText: <Empty description={t('brandMaterial.skuDetailEmpty')} /> }}
-                    scroll={{ x: 1200, y: 'calc(100vh - 320px)' }}
+                    typeFilter={typeFilter}
+                    thumbFallback={thumbFallback}
+                    selectedIds={selectedIds}
+                    onSelect={onSelect}
+                    onSelectMany={onSelectMany}
+                    onPreview={openPreview}
+                    onDownload={onDownload}
+                    onEdit={onEdit}
+                    onItemsChange={setItems}
+                    noteQuery={noteQuery}
                 />
             </Card>
 

@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from sqlalchemy import text
-from routers import price_checker, order_loss, failed_delivery, presales, erp_oos, sku_plan, conversion_cleaner, order_match, auth, warehouse_order, socmed, affiliate, tiktok_ads, access, product_performance, livestream_display, photo_downloader, quick_links, brand_material, sku_review, public_site
+from routers import price_checker, order_loss, failed_delivery, presales, erp_oos, sku_plan, conversion_cleaner, order_match, auth, warehouse_order, socmed, affiliate, tiktok_ads, access, product_performance, livestream_display, photo_downloader, quick_links, brand_material, sku_review, public_site, social_media_analytics
 from database import engine, Base, SessionLocal, USING_SQLITE_DEV
 import models  # noqa: F401 - ensure all models are registered before create_all
 import os
@@ -256,6 +256,65 @@ def _run_migrations():
         END
         $$;
         """,
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'socmed_analytics_videos'
+            ) THEN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'socmed_analytics_videos' AND column_name = 'url_key'
+                ) THEN
+                    ALTER TABLE socmed_analytics_videos ADD COLUMN url_key VARCHAR(512) DEFAULT '';
+                END IF;
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'socmed_analytics_videos' AND column_name = 'video_download_url'
+                ) THEN
+                    ALTER TABLE socmed_analytics_videos ADD COLUMN video_download_url VARCHAR(1024) DEFAULT '';
+                END IF;
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'socmed_analytics_videos' AND column_name = 'duration_sec'
+                ) THEN
+                    ALTER TABLE socmed_analytics_videos ADD COLUMN duration_sec INTEGER;
+                END IF;
+                UPDATE socmed_analytics_videos
+                SET url_key = LOWER(RTRIM(url))
+                WHERE (url_key IS NULL OR url_key = '')
+                  AND url IS NOT NULL;
+            END IF;
+        END
+        $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'socmed_analytics_snapshots'
+            ) THEN
+                CREATE TABLE socmed_analytics_snapshots (
+                    id SERIAL PRIMARY KEY,
+                    video_id INTEGER NOT NULL,
+                    fetched_at TIMESTAMP NOT NULL,
+                    views INTEGER,
+                    likes INTEGER,
+                    comments INTEGER,
+                    shares INTEGER,
+                    saves INTEGER,
+                    engagement_rate VARCHAR(20) DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS ix_socmed_analytics_snapshots_video_id
+                    ON socmed_analytics_snapshots (video_id);
+                CREATE INDEX IF NOT EXISTS ix_socmed_analytics_snapshots_fetched_at
+                    ON socmed_analytics_snapshots (fetched_at);
+            END IF;
+        END
+        $$;
+        """,
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -308,6 +367,58 @@ def _migrate_brand_material_note_column():
     print("[Startup] [OK] brand_materials.note column added.")
 
 
+def _migrate_socmed_analytics_tables():
+    from sqlalchemy import inspect
+
+    insp = inspect(engine)
+    if "socmed_analytics_videos" in insp.get_table_names():
+        cols = {c["name"] for c in insp.get_columns("socmed_analytics_videos")}
+        if "url_key" not in cols:
+            with engine.begin() as conn:
+                conn.execute(text(
+                    "ALTER TABLE socmed_analytics_videos ADD COLUMN url_key VARCHAR(512) DEFAULT ''"
+                ))
+            print("[Startup] [OK] socmed_analytics_videos.url_key column added.")
+    # create_all handles new snapshot table; ensure url_key backfill on sqlite
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "UPDATE socmed_analytics_videos SET url_key = LOWER(RTRIM(url)) "
+                "WHERE (url_key IS NULL OR url_key = '') AND url IS NOT NULL"
+            ))
+    except Exception:
+        pass
+
+
+def _migrate_socmed_analytics_video_download_column():
+    from sqlalchemy import inspect
+
+    insp = inspect(engine)
+    if "socmed_analytics_videos" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("socmed_analytics_videos")}
+    if "video_download_url" in cols:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE socmed_analytics_videos ADD COLUMN video_download_url VARCHAR(1024) DEFAULT ''"))
+    print("[Startup] [OK] socmed_analytics_videos.video_download_url column added.")
+
+
+def _migrate_socmed_analytics_note_columns():
+    from sqlalchemy import inspect
+
+    insp = inspect(engine)
+    for table in ("socmed_analytics_videos", "socmed_analytics_profiles"):
+        if table not in insp.get_table_names():
+            continue
+        cols = {c["name"] for c in insp.get_columns(table)}
+        if "note" in cols:
+            continue
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN note VARCHAR(500) DEFAULT ''"))
+        print(f"[Startup] [OK] {table}.note column added.")
+
+
 def _seed_sqlite_dev_user():
     """Tanpa Neon: satu user admin lokal agar login di http://localhost:5173 berhasil."""
     if not USING_SQLITE_DEV:
@@ -349,6 +460,9 @@ async def lifespan(app: FastAPI):
         _migrate_brand_material_media_type_column()
         _migrate_brand_material_preview_column()
         _migrate_brand_material_note_column()
+        _migrate_socmed_analytics_video_download_column()
+        _migrate_socmed_analytics_note_columns()
+        _migrate_socmed_analytics_tables()
         _seed_sqlite_dev_user()
     except Exception as e:
         print(f"[Startup] [WARN] Database not yet available: {e}")
@@ -404,6 +518,7 @@ app.include_router(photo_downloader.router)
 app.include_router(quick_links.router)
 app.include_router(brand_material.router)
 app.include_router(sku_review.router)
+app.include_router(social_media_analytics.router)
 
 # Include AI Chat router only if GEMINI_API_KEY is set
 if ai_chat_available:

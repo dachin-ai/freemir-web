@@ -5,7 +5,6 @@ import {
     UserOutlined,
     LockOutlined,
     MailOutlined,
-    SyncOutlined,
     ArrowLeftOutlined,
     CheckCircleOutlined,
     ThunderboltOutlined,
@@ -16,7 +15,7 @@ import { useTheme } from '../context/ThemeContext';
 import LanguageSwitch from '../components/LanguageSwitch';
 import ThemeModeSwitch from '../components/ThemeModeSwitch';
 import Bi from '../components/Bi';
-import api, { syncUsers, forgotPassword } from '../api';
+import api, { forgotPassword } from '../api';
 
 const { Text } = Typography;
 
@@ -26,7 +25,6 @@ const LoginPage = () => {
     const { isDark, setThemeMode } = useTheme();
     const [loadingLogin, setLoadingLogin] = useState(false);
     const [loadingSignup, setLoadingSignup] = useState(false);
-    const [loadingSync, setLoadingSync] = useState(false);
     const [loadingReset, setLoadingReset] = useState(false);
     const [activeTab, setActiveTab] = useState('login');
     const [signupDone, setSignupDone] = useState(false);
@@ -67,17 +65,6 @@ const LoginPage = () => {
         api.get('/health', { timeout: 60000 }).catch(() => {});
     }, []);
 
-    const onSyncUsers = async () => {
-        setLoadingSync(true);
-        try {
-            const res = await syncUsers();
-            message.success(res.data?.message || t('login.usersSynced'));
-        } catch (err) {
-            message.error(err.response?.data?.detail || t('login.syncFailed'));
-        } finally {
-            setLoadingSync(false);
-        }
-    };
 
     const onLogin = async (values) => {
         setLoadingLogin(true);
@@ -474,26 +461,6 @@ const LoginPage = () => {
                     </div>
                 )}
 
-                <div style={{ marginTop: 32, paddingTop: 24, borderTop: `1px solid ${borderSubtle}`, textAlign: 'center' }}>
-                    <Button
-                        icon={<SyncOutlined spin={loadingSync} />}
-                        loading={loadingSync}
-                        onClick={onSyncUsers}
-                        size="small"
-                        style={{
-                            background: tc('rgba(14,165,233,0.08)', 'rgba(2,132,199,0.06)'),
-                            border: tc('1px solid rgba(56,189,248,0.2)', '1px solid rgba(2,132,199,0.18)'),
-                            color: mutedC,
-                            borderRadius: 8,
-                            fontSize: 11,
-                            height: 30,
-                            paddingInline: 12,
-                        }}
-                    >
-                        {t('login.refreshUsers')}
-                    </Button>
-                    <div style={{ color: mutedC, fontSize: 10, marginTop: 6 }}>{t('login.adminSyncHint')}</div>
-                </div>
             </div>
         </div>
     );

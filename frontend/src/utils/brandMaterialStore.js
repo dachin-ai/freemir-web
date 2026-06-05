@@ -215,6 +215,19 @@ export async function updateBrandMaterial(id, { sku, category, mediaType, note }
     }
 }
 
+export async function reorderBrandMaterialSubs(sku, mediaType, orderedIds) {
+    try {
+        const { data } = await api.post('/brand-material/reorder', {
+            sku: normalizeSku(sku).toUpperCase(),
+            mediaType,
+            orderedIds,
+        });
+        return data;
+    } catch (err) {
+        throw new Error(apiErrorCode(err));
+    }
+}
+
 export async function deleteBrandMaterial(id) {
     try {
         await api.delete(`/brand-material/${id}`);
@@ -235,11 +248,14 @@ export async function deleteBrandMaterialsBulk(ids) {
     }
 }
 
-export function displayLabel(item, t) {
+export function displayLabel(item, t, { compact = false } = {}) {
     if (item.category === 'sub' && item.subIndex != null) {
+        if (compact) {
+            return `${t('brandMaterial.catSubShort')}${item.subIndex}`;
+        }
         return `${t('brandMaterial.catSub')} (${item.subIndex})`;
     }
-    return t('brandMaterial.catMain');
+    return compact ? t('brandMaterial.catMainShort') : t('brandMaterial.catMain');
 }
 
 export { isMediaMime, isVideoMime, isImageMime } from './brandMaterialMedia';

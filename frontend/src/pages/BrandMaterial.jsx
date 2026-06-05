@@ -126,6 +126,7 @@ export default function BrandMaterial() {
     const location = useLocation();
     const activeSku = skuParam ? normalizeSkuInput(skuParam) : null;
     const skuInfoImageUrl = location.state?.skuInfoImageUrl || '';
+    const productNameFallback = location.state?.productName || '';
     const { logActivity } = useAuth();
     const [typeFilter, setTypeFilter] = useState('all');
     const [reloadToken, setReloadToken] = useState(0);
@@ -168,7 +169,10 @@ export default function BrandMaterial() {
 
     const openSkuFolder = useCallback((row) => {
         navigate(toolsPath(`brand-material/${encodeURIComponent(row.sku)}`), {
-            state: { skuInfoImageUrl: row.skuInfoImageUrl || '' },
+            state: {
+                skuInfoImageUrl: row.skuInfoImageUrl || '',
+                productName: row.productName || '',
+            },
         });
     }, [navigate]);
 
@@ -209,6 +213,34 @@ export default function BrandMaterial() {
             return next;
         });
     };
+
+    const selectMany = useCallback((itemList, checked, { replace = false, scopeItems = [] } = {}) => {
+        const scopeIds = new Set(scopeItems.map((item) => item.id));
+        setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (replace) {
+                scopeIds.forEach((id) => next.delete(id));
+            }
+            if (checked) {
+                itemList.forEach((item) => next.add(item.id));
+            } else {
+                itemList.forEach((item) => next.delete(item.id));
+            }
+            return next;
+        });
+        setSelectedMeta((prev) => {
+            const next = new Map(prev);
+            if (replace) {
+                scopeIds.forEach((id) => next.delete(id));
+            }
+            if (checked) {
+                itemList.forEach((item) => next.set(item.id, item));
+            } else {
+                itemList.forEach((item) => next.delete(item.id));
+            }
+            return next;
+        });
+    }, []);
 
     const clearSelection = () => {
         setSelectedIds(new Set());
@@ -576,20 +608,24 @@ export default function BrandMaterial() {
     const bulkToolbarExtras = (
         <Flex wrap gap={8} align="center">
             <Button
+                className="bm-toolbar-btn-download"
+                color="green"
+                variant="outlined"
                 icon={<FileZipOutlined />}
                 loading={bulkDownloading}
                 disabled={selectedItems.length === 0}
                 onClick={() => handleDownloadList(selectedItems, 'selected')}
             >
-                {t('brandMaterial.downloadMaterial')}
+                {t('brandMaterial.download')}
             </Button>
             <Button
                 danger
+                variant="outlined"
                 icon={<DeleteOutlined />}
                 disabled={selectedItems.length === 0}
                 onClick={openBulkDeleteModal}
             >
-                {t('brandMaterial.deleteMaterial')}
+                {t('brandMaterial.delete')}
             </Button>
             {selectedItems.length > 0 && (
                 <Button type="link" size="small" onClick={clearSelection}>
@@ -609,8 +645,10 @@ export default function BrandMaterial() {
                     onBack={backToSkuList}
                     onUpload={openUploadModal}
                     skuInfoImageUrl={skuInfoImageUrl}
+                    productNameFallback={productNameFallback}
                     selectedIds={selectedIds}
                     onSelect={toggleSelect}
+                    onSelectMany={selectMany}
                     onDownload={handleDownload}
                     onEdit={openEdit}
                     reloadToken={reloadToken}

@@ -256,6 +256,48 @@ body::after {
    ============================================ */
 .ant-layout { background: transparent !important; }
 
+/* Main app — scroll hanya di area konten (bukan window) */
+.fm-app-content.ant-layout-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+}
+
+/* Sidebar fold trigger — match Freemir theme (dark + light) */
+.fm-app-sider .ant-layout-sider-trigger {
+  height: 40px !important;
+  line-height: 40px !important;
+  background: var(--bg-card) !important;
+  border-top: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+  transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.fm-app-sider .ant-layout-sider-trigger:hover {
+  color: var(--fm-blue) !important;
+  background: rgba(14, 165, 233, 0.14) !important;
+}
+
+.fm-app-sider .ant-layout-sider-trigger:active {
+  color: var(--fm-blue-dark) !important;
+}
+
+:root[data-theme='light'] .fm-app-sider .ant-layout-sider-trigger {
+  background: var(--bg-card) !important;
+  color: var(--text-muted) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+:root[data-theme='light'] .fm-app-sider .ant-layout-sider-trigger:hover {
+  color: var(--fm-blue-dark) !important;
+  background: rgba(186, 230, 253, 0.75) !important;
+}
+
+:root[data-theme='dark'] .fm-app-sider .ant-layout-sider-trigger:hover {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
 /* ============================================
    TYPOGRAPHY
    ============================================ */
@@ -727,17 +769,87 @@ h4.ant-typography {
   flex-shrink: 0;
 }
 
-/* Header settings dropdown: segmented (theme + language) */
-.fm-settings-panel .ant-segmented {
-  border-radius: 10px;
-  touch-action: manipulation;
+/* Header settings dropdown — compact account panel */
+.fm-settings-panel {
+  margin-top: 8px;
+  width: 252px;
+  max-width: calc(100vw - 24px);
+  padding: 0;
+  border-radius: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+  overflow: hidden;
 }
 
-.fm-settings-panel .ant-segmented .ant-segmented-item-label {
-  min-height: 40px;
+:root[data-theme='dark'] .fm-settings-panel {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.fm-settings-panel__head {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.fm-settings-panel__name {
+  display: block;
+  font-size: 13px !important;
+  line-height: 1.35;
+  color: var(--text-main);
+}
+
+.fm-settings-panel__meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px !important;
+  line-height: 1.3;
+}
+
+.fm-settings-panel__body {
+  padding: 8px 0;
+}
+
+.fm-settings-panel__row {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 12px;
+}
+
+.fm-settings-panel__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.fm-settings-panel__control {
+  flex-shrink: 0;
+}
+
+.fm-settings-panel__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.fm-settings-panel__btn {
+  height: 30px !important;
+  border-radius: 8px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+}
+
+.fm-settings-panel .fm-pill-switch {
+  --fm-pill-border: var(--border);
+  --fm-pill-bg: var(--bg-panel);
+  --fm-pill-muted: var(--text-muted);
+  --fm-pill-active: var(--fm-blue, #0ea5e9);
 }
 
 /* Login: bahasa kiri, tema kanan — compact pill toggles */

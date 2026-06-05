@@ -12,10 +12,6 @@ from services.auth_logic import (
     hash_password,
     TOOL_KEYS,
     normalize_account_approval_label,
-    admin_append_account_sheet_row,
-    admin_update_account_sheet_approval,
-    admin_delete_account_sheet_row,
-    invalidate_user_sheet_cache,
 )
 from typing import Optional, List
 from datetime import datetime
@@ -227,17 +223,8 @@ def update_user_account_approval(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    old = (user.approval or "").strip()
     user.approval = label
     db.commit()
-
-    ok, msg = admin_update_account_sheet_approval(user.username, label)
-    if not ok:
-        user.approval = old
-        db.commit()
-        raise HTTPException(status_code=502, detail=f"Google Sheet update failed: {msg}")
-
-    invalidate_user_sheet_cache()
     return {"message": "Approval updated", "approval": label}
 
 
@@ -252,17 +239,8 @@ def delete_user_account(username: str, request: Request, db: Session = Depends(g
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    ok, msg = admin_delete_account_sheet_row(user.username)
-    if not ok:
-        low = str(msg).lower()
-        if "not found" in low or "username not found" in low:
-            pass
-        else:
-            raise HTTPException(status_code=502, detail=f"Google Sheet delete failed: {msg}")
-
     db.delete(user)
     db.commit()
-    invalidate_user_sheet_cache()
     return {"message": "User deleted"}
 
 
@@ -302,14 +280,6 @@ def create_user_account(body: AdminCreateUserBody, request: Request, db: Session
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-
-    ok, msg = admin_append_account_sheet_row(email, uname, hashed, approval_label, name_clean)
-    if not ok:
-        db.delete(new_user)
-        db.commit()
-        raise HTTPException(status_code=502, detail=f"User was not saved to Google Sheet: {msg}")
-
-    invalidate_user_sheet_cache()
     return {
         "message": "User created",
         "username": new_user.username,

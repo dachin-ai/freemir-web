@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
-    Button, Input, InputNumber, Collapse, Dropdown,
+    Button, Input, InputNumber, Collapse, Dropdown, Select,
     Row, Col, Typography, Table, Upload,
     message, Spin, Divider
 } from 'antd';
@@ -9,7 +10,8 @@ import {
     CheckCircleFilled, CloseCircleFilled, FileExcelOutlined,
     DatabaseOutlined, DownloadOutlined, UploadOutlined,
     FileTextOutlined, BarChartOutlined, AppstoreOutlined, RiseOutlined,
-    UnorderedListOutlined, BarcodeOutlined, ThunderboltOutlined, RightOutlined, LinkOutlined, DownOutlined
+    UnorderedListOutlined, BarcodeOutlined, ThunderboltOutlined, RightOutlined, LinkOutlined, DownOutlined,
+    VerticalAlignTopOutlined, CopyOutlined,
 } from '@ant-design/icons';
 import api from '../api';
 import { useTranslation } from 'react-i18next';
@@ -31,6 +33,48 @@ const { Dragger } = Upload;
 const Label = ({ children }) => (
     <div className="pc-label">{children}</div>
 );
+
+const DIRECT_COLLAPSE_KEYS = new Set(['breakdown', 'evaluation', 'stock-evaluation']);
+const DEFAULT_PRICE_PREFERENCE = 'Warning';
+const PRICE_TIER_OPTIONS = [
+    'Warning', 'Daily-Discount', 'Daily-Livestream', 'Daily-Mid-Creator',
+    'Daily-Top-Creator', 'Daily-FS', 'Daily-Shopee-FS', 'DD-FS',
+    'DD-Shoptab', 'DD-Livestream', 'DD-Mid-Creator', 'DD-Top-Creator',
+    'PD-Shoptab', 'PD-Livestream', 'PD-Mid-Creator', 'PD-Top-Creator',
+];
+const SECTION_HIGHLIGHT_MS = 2000;
+
+function formatEvalSystemPrice(value, currency) {
+    if (value === 'Invalid' || value === '' || value === null || value === undefined || Number.isNaN(Number(value))) {
+        return value ?? '–';
+    }
+    return formatPrice(value, currency);
+}
+const TOP_BTN_SHOW_OFFSET = 48;
+const TOP_BTN_HIDE_OFFSET = 12;
+
+function getAppScrollContainer(el) {
+    const content = el?.closest('.fm-app-content')
+        || el?.closest('.ant-layout-content')
+        || document.querySelector('.fm-app-content');
+    if (content && content.scrollHeight > content.clientHeight + 2) {
+        return content;
+    }
+    return document.documentElement;
+}
+
+function readScrollTop(container) {
+    if (!container || container === document.documentElement || container === document.body) {
+        return window.scrollY || document.documentElement.scrollTop || 0;
+    }
+    return container.scrollTop;
+}
+
+const DIRECT_SECTION_NAV = [
+    { id: 'stock-evaluation', labelKey: 'priceChecker.navStockTier', icon: <BarChartOutlined />, copyKey: 'stock' },
+    { id: 'evaluation', labelKey: 'priceChecker.navPriceTier', icon: <RiseOutlined />, copyKey: 'evaluation' },
+    { id: 'breakdown', labelKey: 'priceChecker.navComposition', icon: <UnorderedListOutlined />, copyKey: 'breakdown' },
+];
 
 const SectionHeading = ({ icon, children, color }) => {
     const { isDark } = useTheme();
@@ -115,13 +159,139 @@ function DirectSkuPhoto({ item, previewSrc, noImageLabel }) {
 const PriceChecker = () => {
     const { t } = useTranslation();
     const { isDark } = useTheme();
-    const [inputMode, setInputMode] = useState('Batch');
+    const [inputMode, setInputMode] = useState('Direct');
     const [method, setMethod] = useState('Listing');
     const [loadingDb, setLoadingDb] = useState(false);
     const [calcLoading, setCalcLoading] = useState(false);
     const [currency, setCurrency] = useState(() => readCurrency());
     const currencyMeta = CURRENCY_META[currency] || CURRENCY_META.IDR;
     const { logActivity } = useAuth();
+
+    // Direct Input
+    const [skuInput, setSkuInput] = useState('');
+    const [targetPrice, setTargetPrice] = useState(null);
+    const [targetStock, setTargetStock] = useState(null);
+    const [directResult, setDirectResult] = useState(null);
+    const [directPreviewBySku, setDirectPreviewBySku] = useState({});
+    const [activeCollapseKeys, setActiveCollapseKeys] = useState([]);
+    const [highlightSection, setHighlightSection] = useState(null);
+    const [pricePreference, setPricePreference] = useState(DEFAULT_PRICE_PREFERENCE);
+    const [directInputTitleVisible, setDirectInputTitleVisible] = useState(true);
+    const [backBtnLeft, setBackBtnLeft] = useState(28);
+    const highlightTimerRef = useRef(null);
+    const directInputCardRef = useRef(null);
+
+    const resetDirectSectionNav = () => {
+        if (highlightTimerRef.current) {
+            clearTimeout(highlightTimerRef.current);
+            highlightTimerRef.current = null;
+        }
+        setActiveCollapseKeys([]);
+        setHighlightSection(null);
+    };
+
+    const jumpToDirectSection = (sectionId) => {
+        if (!directResult) return;
+
+        if (DIRECT_COLLAPSE_KEYS.has(sectionId)) {
+            setActiveCollapseKeys((prev) => {
+                const keys = Array.isArray(prev) ? prev : (prev ? [prev] : []);
+                return [...new Set([...keys, sectionId])];
+            });
+        }
+
+        if (highlightTimerRef.current) {
+            clearTimeout(highlightTimerRef.current);
+        }
+        setHighlightSection(sectionId);
+
+        const scrollDelay = DIRECT_COLLAPSE_KEYS.has(sectionId) ? 320 : 80;
+        window.setTimeout(() => {
+            const el = document.querySelector(`[data-pc-section="${sectionId}"]`);
+            if (!el) return;
+            const scrollTarget = DIRECT_COLLAPSE_KEYS.has(sectionId)
+                ? (el.closest('.ant-collapse-item') ?? el)
+                : el;
+            scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, scrollDelay);
+
+        highlightTimerRef.current = window.setTimeout(() => {
+            setHighlightSection(null);
+            highlightTimerRef.current = null;
+        }, SECTION_HIGHLIGHT_MS);
+    };
+
+    useEffect(() => () => {
+        if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    }, []);
+
+    useEffect(() => {
+        const cardEl = directInputCardRef.current;
+        if (!cardEl || inputMode !== 'Direct' || !directResult) {
+            setDirectInputTitleVisible(true);
+            return undefined;
+        }
+
+        const scrollContainer = getAppScrollContainer(cardEl);
+        const contentEl = cardEl.closest('.fm-app-content')
+            || cardEl.closest('.ant-layout-content')
+            || document.querySelector('.fm-app-content');
+        let rafId = null;
+
+        const updateTopBtn = () => {
+            const containerRect = scrollContainer === document.documentElement
+                ? { top: 0, left: 0 }
+                : scrollContainer.getBoundingClientRect();
+            const cardRect = cardEl.getBoundingClientRect();
+            const scrollTop = readScrollTop(scrollContainer);
+            const cardStart = scrollTop + (cardRect.top - containerRect.top);
+
+            if (contentEl) {
+                setBackBtnLeft(Math.max(16, contentEl.getBoundingClientRect().left + 20));
+            }
+
+            setDirectInputTitleVisible((prev) => {
+                if (scrollTop <= Math.max(0, cardStart - TOP_BTN_HIDE_OFFSET)) return true;
+                if (scrollTop >= cardStart + TOP_BTN_SHOW_OFFSET) return false;
+                return prev;
+            });
+        };
+
+        const onScroll = () => {
+            if (rafId) cancelAnimationFrame(rafId);
+            rafId = requestAnimationFrame(updateTopBtn);
+        };
+
+        updateTopBtn();
+        if (scrollContainer !== document.documentElement) {
+            scrollContainer.addEventListener('scroll', onScroll, { passive: true });
+        }
+        window.addEventListener('scroll', onScroll, { passive: true });
+        window.addEventListener('resize', onScroll);
+
+        return () => {
+            if (rafId) cancelAnimationFrame(rafId);
+            if (scrollContainer !== document.documentElement) {
+                scrollContainer.removeEventListener('scroll', onScroll);
+            }
+            window.removeEventListener('scroll', onScroll);
+            window.removeEventListener('resize', onScroll);
+        };
+    }, [inputMode, directResult]);
+
+    const scrollToPageTop = () => {
+        const cardEl = directInputCardRef.current;
+        const scrollContainer = cardEl
+            ? getAppScrollContainer(cardEl)
+            : (document.querySelector('.fm-app-content') || document.documentElement);
+
+        if (scrollContainer !== document.documentElement) {
+            scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+        }
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
 
     const handleCurrencyChange = (next) => {
         if (!SUPPORTED_CURRENCIES.includes(next) || next === currency) return;
@@ -131,14 +301,8 @@ const PriceChecker = () => {
         setDirectResult(null);
         setDirectPreviewBySku({});
         setBatchOverview(null);
+        resetDirectSectionNav();
     };
-
-    // Direct Input
-    const [skuInput, setSkuInput] = useState('');
-    const [targetPrice, setTargetPrice] = useState(null);
-    const [targetStock, setTargetStock] = useState(null);
-    const [directResult, setDirectResult] = useState(null);
-    const [directPreviewBySku, setDirectPreviewBySku] = useState({});
 
     // Batch
     const [fileList, setFileList] = useState([]);
@@ -276,7 +440,10 @@ const PriceChecker = () => {
 
     const doCalculateDirect = async () => {
         if (!skuInput) { message.warning(t('priceChecker.msgEnterSku')); return; }
-        setCalcLoading(true); setDirectResult(null); setDirectPreviewBySku({});
+        setCalcLoading(true);
+        setDirectResult(null);
+        setDirectPreviewBySku({});
+        resetDirectSectionNav();
         try {
             const res = await api.post('/price-checker/calculate-direct', {
                 sku_string: skuInput,
@@ -422,6 +589,34 @@ const PriceChecker = () => {
         [directResult],
     );
 
+    const pricePreferenceOptions = useMemo(
+        () => PRICE_TIER_OPTIONS.map((tier) => ({ value: tier, label: tier })),
+        [],
+    );
+
+    const preferredSummaryPrice = useMemo(() => {
+        const tier = pricePreference || DEFAULT_PRICE_PREFERENCE;
+        const label = `${tier} (${currency})`;
+        if (!directResult) {
+            return { label, display: '–', copyValue: '' };
+        }
+        const fromEval = directResult.evaluation?.find((row) => row?.Tier === tier)?.SystemPrice;
+        const fromSummary = tier === DEFAULT_PRICE_PREFERENCE ? directResult.summary?.warning_price : null;
+        const raw = fromEval ?? fromSummary;
+        return {
+            label,
+            display: formatEvalSystemPrice(raw, currency),
+            copyValue: raw === null || raw === undefined ? '' : String(raw),
+        };
+    }, [directResult, pricePreference, currency]);
+
+    const copySummaryValue = (value) => {
+        const v = value === null || value === undefined ? '' : String(value);
+        navigator.clipboard.writeText(v)
+            .then(() => message.success(t('priceChecker.copyOk', { val: v }), 1))
+            .catch(() => message.error(t('priceChecker.copyFail')));
+    };
+
     const directItemPreviewBySku = useMemo(() => {
         const map = {};
         (directResult?.items || []).forEach((it) => {
@@ -465,7 +660,7 @@ const PriceChecker = () => {
         },
         { title: 'Price Tier',    dataIndex: 'Tier',        key: 'Tier',  width: 160, onCell: r => copyableCellProps(r.Tier) },
         { title: `System Price (${currency})`, dataIndex: 'SystemPrice', key: 'sys',   width: 150, onCell: r => copyableCellProps(r.SystemPrice),
-            render: v => (v === 'Invalid' || v === '' || v === null || v === undefined || isNaN(Number(v))) ? (v ?? '–') : formatPrice(v, currency) },
+            render: v => formatEvalSystemPrice(v, currency) },
         { title: `Target Price (${currency})`, dataIndex: 'TargetPrice', key: 'tgt',   width: 150, onCell: r => copyableCellProps(r.TargetPrice),
             render: v => (v === 'Invalid' || v === '' || v === null || v === undefined || isNaN(Number(v))) ? (v ?? '–') : formatPrice(v, currency) },
         { title: 'Gap (Margin)', dataIndex: 'Gap',         key: 'gap',   width: 150, onCell: r => copyableCellProps(r.Gap),
@@ -574,7 +769,16 @@ const PriceChecker = () => {
                     fontWeight: 600,
                 }),
             },
-            { title: 'Product Name',      dataIndex: 'Product Name',         key: 'pn',   width: 240, onCell: r => copyableCellProps(r['Product Name']) },
+            {
+                title: 'Product Name',
+                dataIndex: 'Product Name',
+                key: 'pn',
+                width: 240,
+                onCell: r => copyableCellProps(r['Product Name']),
+                render: (v) => (
+                    <span className="pc-sku-name" title={v || undefined}>{v ?? '–'}</span>
+                ),
+            },
             { title: `Base Price (${currency})`, dataIndex: 'Base Price (Warning)', key: 'bp', width: 150, onCell: r => copyableCellProps(r['Base Price (Warning)']),
                 render: v => (v === 'Invalid' || v === '' || v === null || v === undefined || isNaN(Number(v))) ? (v ?? '–') : formatPrice(v, currency) },
             { title: 'Logic Applied',     dataIndex: 'Logic Applied',        key: 'la',   width: 180, onCell: r => copyableCellProps(r['Logic Applied']) },
@@ -673,6 +877,21 @@ const PriceChecker = () => {
           }))
         : [];
 
+    const copyDirectSection = (copyKey) => {
+        if (!directResult) return;
+        if (copyKey === 'breakdown') {
+            copyTable(directResult.breakdown, breakdownColumns);
+            return;
+        }
+        if (copyKey === 'evaluation') {
+            copyTable(directResult.evaluation, evalColumns);
+            return;
+        }
+        if (copyKey === 'stock') {
+            copyTable(directResult.stock_evaluation || [], stockEvalColumns);
+        }
+    };
+
     const foldLabelStyle = {
         display: 'flex',
         alignItems: 'center',
@@ -698,64 +917,6 @@ const PriceChecker = () => {
                 actions={
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <div
-                                style={{
-                                    position: 'relative',
-                                    display: 'grid',
-                                    gridTemplateColumns: '1fr 1fr',
-                                    gap: 8,
-                                    padding: 6,
-                                    borderRadius: 10,
-                                    border: '1px solid var(--border)',
-                                    background: isDark ? 'rgba(15,23,42,0.75)' : 'rgba(148,163,184,0.2)',
-                                    overflow: 'hidden',
-                                    minWidth: 170,
-                                }}
-                            >
-                                <span
-                                    style={{
-                                        position: 'absolute',
-                                        top: 6,
-                                        left: 6,
-                                        width: 'calc(50% - 10px)',
-                                        height: 'calc(100% - 12px)',
-                                        borderRadius: 8,
-                                        background: 'var(--fm-gradient)',
-                                        boxShadow: 'var(--fm-shadow-sm)',
-                                        transform: currency === 'IDR' ? 'translateX(0)' : 'translateX(calc(100% + 8px))',
-                                        transition: 'transform 220ms ease',
-                                        pointerEvents: 'none',
-                                    }}
-                                />
-                                {SUPPORTED_CURRENCIES.map((code) => {
-                                    const meta = CURRENCY_META[code];
-                                    const isActive = currency === code;
-                                    return (
-                                        <Button
-                                            key={code}
-                                            type="text"
-                                            onClick={() => handleCurrencyChange(code)}
-                                            style={{
-                                                height: 30,
-                                                borderRadius: 8,
-                                                fontWeight: 700,
-                                                fontSize: 13,
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                gap: 8,
-                                                position: 'relative',
-                                                zIndex: 1,
-                                                color: isActive ? '#ffffff' : (isDark ? '#cbd5e1' : '#0f172a'),
-                                                background: 'transparent',
-                                            }}
-                                        >
-                                            <FlagIcon code={meta.countryCode} width={20} />
-                                            {code}
-                                        </Button>
-                                    );
-                                })}
-                            </div>
                             <Upload
                                 accept=".xlsx,.xls"
                                 showUploadList={false}
@@ -811,8 +972,9 @@ const PriceChecker = () => {
                 }
             />
 
-            {/* MODE SWITCH + EXPORT */}
-            <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            {/* MODE SWITCH + CURRENCY + EXPORT */}
+            <div className="pc-toolbar-row">
+                <div className="pc-toolbar-primary">
                 <div
                     className="pc-mode-switch"
                     style={{
@@ -838,35 +1000,11 @@ const PriceChecker = () => {
                             borderRadius: 9,
                             background: 'var(--fm-gradient)',
                             boxShadow: '0 8px 18px rgba(14,165,233,0.35)',
-                            transform: inputMode === 'Batch' ? 'translateX(0)' : 'translateX(calc(100% + 8px))',
+                                    transform: inputMode === 'Direct' ? 'translateX(0)' : 'translateX(calc(100% + 8px))',
                             transition: 'transform 220ms ease',
                             pointerEvents: 'none',
                         }}
                     />
-                    <Button
-                        type="text"
-                        className={`pc-mode-pill${inputMode === 'Batch' ? ' pc-mode-pill--active' : ''}`}
-                        onClick={() => {
-                            setInputMode('Batch');
-                            setFileList([]);
-                            setDirectResult(null);
-                            setBatchOverview(null);
-                        }}
-                        style={{
-                            height: 38,
-                            borderRadius: 9,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: 8,
-                            position: 'relative',
-                            zIndex: 1,
-                            background: 'transparent',
-                        }}
-                    >
-                        <UnorderedListOutlined />
-                        <Bi i18nKey="priceChecker.batchInput" />
-                    </Button>
                     <Button
                         type="text"
                         className={`pc-mode-pill${inputMode === 'Direct' ? ' pc-mode-pill--active' : ''}`}
@@ -875,6 +1013,7 @@ const PriceChecker = () => {
                             setFileList([]);
                             setDirectResult(null);
                             setBatchOverview(null);
+                            resetDirectSectionNav();
                         }}
                         style={{
                             height: 38,
@@ -891,8 +1030,57 @@ const PriceChecker = () => {
                         <ThunderboltOutlined />
                         <Bi i18nKey="priceChecker.directInput" />
                     </Button>
+                    <Button
+                        type="text"
+                        className={`pc-mode-pill${inputMode === 'Batch' ? ' pc-mode-pill--active' : ''}`}
+                        onClick={() => {
+                            setInputMode('Batch');
+                            setFileList([]);
+                            setDirectResult(null);
+                            setBatchOverview(null);
+                            resetDirectSectionNav();
+                        }}
+                        style={{
+                            height: 38,
+                            borderRadius: 9,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 8,
+                            position: 'relative',
+                            zIndex: 1,
+                            background: 'transparent',
+                        }}
+                    >
+                        <UnorderedListOutlined />
+                        <Bi i18nKey="priceChecker.batchInput" />
+                    </Button>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
+                <div className="pc-currency-switch">
+                    <span
+                        className="pc-currency-switch-thumb"
+                        style={{
+                            transform: currency === 'IDR' ? 'translateX(0)' : 'translateX(calc(100% + 8px))',
+                        }}
+                    />
+                    {SUPPORTED_CURRENCIES.map((code) => {
+                        const meta = CURRENCY_META[code];
+                        const isActive = currency === code;
+                        return (
+                            <Button
+                                key={code}
+                                type="text"
+                                className={`pc-currency-pill${isActive ? ' pc-currency-pill--active' : ''}`}
+                                onClick={() => handleCurrencyChange(code)}
+                            >
+                                <FlagIcon code={meta.countryCode} width={20} />
+                                {code}
+                            </Button>
+                        );
+                    })}
+                </div>
+                </div>
+                <div className="pc-toolbar-secondary">
                 <Dropdown
                     menu={{
                         items: [
@@ -1203,7 +1391,10 @@ const PriceChecker = () => {
 
             {/* ─── DIRECT INPUT ─── */}
             {inputMode === 'Direct' && (
-                <div style={{
+                <div
+                ref={directInputCardRef}
+                className="pc-direct-input-card"
+                style={{
                     background: isDark
                         ? 'linear-gradient(145deg, rgba(30,41,59,0.95) 0%, rgba(15,23,42,0.98) 100%)'
                         : 'linear-gradient(145deg, #ffffff 0%, #f8fafc 100%)',
@@ -1214,11 +1405,6 @@ const PriceChecker = () => {
                         ? '0 10px 30px rgba(2, 6, 23, 0.45)'
                         : '0 10px 30px rgba(15, 23, 42, 0.08)',
                 }}>
-                    <div style={{ marginBottom: 16 }}>
-                        <Text className="pc-label">
-                            <Bi i18nKey="priceChecker.directInput" />
-                        </Text>
-                    </div>
                     <div style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
@@ -1229,7 +1415,7 @@ const PriceChecker = () => {
                             <Label><Bi i18nKey="priceChecker.bundleSku" /></Label>
                             <Input
                                 size="large"
-                                placeholder="e.g. SKU_A + SKU_B or SKU_A SKU_B"
+                                placeholder={t('priceChecker.bundleSkuPh')}
                                 value={skuInput}
                                 onChange={e => setSkuInput(e.target.value)}
                                 onPressEnter={doCalculateDirect}
@@ -1243,7 +1429,7 @@ const PriceChecker = () => {
                                 size="large"
                                 style={{ width: '100%', borderRadius: 10, border: '1px solid var(--border)' }}
                                 controls={false}
-                                placeholder={`Enter target price (${currencyMeta.short})`}
+                                placeholder={t('priceChecker.targetPricePh', { symbol: currencyMeta.short })}
                                 min={0}
                                 step={currency === 'MYR' ? 1 : 1000}
                                 value={targetPrice}
@@ -1260,7 +1446,7 @@ const PriceChecker = () => {
                                 size="large"
                                 style={{ width: '100%', borderRadius: 10, border: '1px solid var(--border)' }}
                                 controls={false}
-                                placeholder="Enter target stock"
+                                placeholder={t('priceChecker.targetStockPh')}
                                 min={0}
                                 step={1}
                                 value={targetStock}
@@ -1270,21 +1456,66 @@ const PriceChecker = () => {
                         </div>
                     </div>
 
-                    <Button
-                        className="pc-live-cta"
-                        size="large"
-                        icon={<ThunderboltOutlined />}
-                        loading={calcLoading}
-                        onClick={doCalculateDirect}
-                        style={{
-                            marginTop: 18, height: 42, borderRadius: 9, fontWeight: 700, fontSize: 13,
-                            color: '#fff', border: '1px solid rgba(2,132,199,0.42)', paddingInline: 26,
-                            background: 'var(--fm-gradient)',
-                            boxShadow: '0 3px 8px rgba(14,165,233,0.2)',
-                        }}
-                    >
-                        <Bi i18nKey="priceChecker.calculate" />
-                    </Button>
+                    <div className="pc-calc-row">
+                        <div className="pc-calc-row__actions">
+                            <Button
+                                className="pc-live-cta"
+                                size="large"
+                                icon={<ThunderboltOutlined />}
+                                loading={calcLoading}
+                                onClick={doCalculateDirect}
+                                style={{
+                                    height: 42, borderRadius: 9, fontWeight: 700, fontSize: 13,
+                                    color: '#fff', border: '1px solid rgba(2,132,199,0.42)', paddingInline: 26,
+                                    background: 'var(--fm-gradient)',
+                                    boxShadow: '0 3px 8px rgba(14,165,233,0.2)',
+                                }}
+                            >
+                                <Bi i18nKey="priceChecker.calculate" />
+                            </Button>
+                            {directResult && !calcLoading ? (
+                                <div className="pc-section-nav" role="navigation" aria-label={t('priceChecker.sectionNav')}>
+                                    {DIRECT_SECTION_NAV.map(({ id, labelKey, icon, copyKey }) => (
+                                        <div key={id} className="pc-section-nav-item">
+                                            <Button
+                                                type="text"
+                                                size="small"
+                                                className="pc-section-nav-btn"
+                                                icon={icon}
+                                                onClick={() => jumpToDirectSection(id)}
+                                                title={t(labelKey)}
+                                            >
+                                                {t(labelKey)}
+                                            </Button>
+                                            <Button
+                                                type="text"
+                                                size="small"
+                                                className="pc-section-nav-copy"
+                                                icon={<CopyOutlined />}
+                                                onClick={() => copyDirectSection(copyKey)}
+                                                title={t('priceChecker.copyTable')}
+                                                aria-label={`${t('priceChecker.copyTable')} — ${t(labelKey)}`}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : null}
+                        </div>
+                        <div className="pc-price-preference-inline">
+                            <span className="pc-price-preference__label">
+                                {t('priceChecker.preference')}
+                            </span>
+                            <Select
+                                className="pc-price-preference-select"
+                                value={pricePreference}
+                                onChange={setPricePreference}
+                                options={pricePreferenceOptions}
+                                popupMatchSelectWidth={false}
+                                listHeight={280}
+                                suffixIcon={<DownOutlined style={{ fontSize: 11, color: 'var(--text-muted)' }} />}
+                            />
+                        </div>
+                    </div>
 
                     {calcLoading && (
                         <div style={{ textAlign: 'center', padding: '40px 0' }}>
@@ -1298,6 +1529,10 @@ const PriceChecker = () => {
                             <Divider style={{ borderColor: 'var(--border)' }} />
 
                             {/* Summary */}
+                            <div
+                                data-pc-section="summary"
+                                className={`pc-section-anchor${highlightSection === 'summary' ? ' pc-section-highlight' : ''}`}
+                            >
                             <SectionHeading icon={<BarChartOutlined />}>Summary</SectionHeading>
                             <Row gutter={[12, 12]} style={{ marginBottom: 24 }}>
                                 {(() => {
@@ -1305,38 +1540,64 @@ const PriceChecker = () => {
                                     const giftValue = giftRate > 0
                                         ? `${Math.round(giftRate * 100)}%`
                                         : (directResult.summary.gift || '-');
-                                    const warningFromSummary = directResult.summary.warning_price;
-                                    const warningFromEvaluation = directResult.evaluation?.find((row) => row?.Tier === 'Warning')?.SystemPrice;
-                                    const warningRaw = warningFromSummary ?? warningFromEvaluation;
-                                    const warningNumeric = Number(warningRaw);
-                                    const warningValue = Number.isFinite(warningNumeric)
-                                        ? formatPrice(warningNumeric, currency)
-                                        : (warningRaw && warningRaw !== 'Invalid' ? String(warningRaw) : '-');
                                     const availableRaw = directResult.summary.available_stock || 'No Stock';
                                     const availableMatch = String(availableRaw).match(/^(\d+)\s*\(([^)]+)\)/);
                                     const availableValue = availableMatch
                                         ? `${Number(availableMatch[1]).toLocaleString()} • ${availableMatch[2]}`
                                         : availableRaw;
                                     return [
-                                        { label: `Warning Price (${currency})`, value: warningValue, color: '#0ea5e9', compact: false, md: 7 },
+                                        {
+                                            label: preferredSummaryPrice.label,
+                                            value: preferredSummaryPrice.display,
+                                            copyValue: preferredSummaryPrice.copyValue,
+                                            copyable: true,
+                                            color: '#0ea5e9',
+                                            compact: false,
+                                            md: 7,
+                                        },
                                         { label: 'Available Stock', value: availableValue, color: '#06b6d4', compact: false, md: 7 },
                                         { label: 'Bundle Discount', value: `${Number(directResult.summary.bundle_discount) * 100}%`, color: 'var(--indigo)', compact: true, md: 3 },
                                         { label: 'Clearance Status', value: directResult.summary.clearance, color: '#f59e0b', compact: true, md: 3 },
                                         { label: 'Gift Status', value: giftValue, color: '#10b981', compact: true, md: 4 },
                                     ];
-                                })().map(({ label, value, color, compact, md }) => (
+                                })().map(({ label, value, color, compact, md, copyable, copyValue }) => (
                                     <Col key={label} xs={24} sm={12} md={md}>
-                                        <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 10, padding: compact ? '12px 10px' : '14px 12px', textAlign: 'center', height: '100%' }}>
+                                        <div
+                                            className={copyable ? 'pc-summary-tile pc-summary-tile--copyable' : 'pc-summary-tile'}
+                                            style={{
+                                                background: 'var(--bg-panel)',
+                                                border: '1px solid var(--border)',
+                                                borderRadius: 10,
+                                                padding: compact ? '12px 10px' : '14px 12px',
+                                                textAlign: 'center',
+                                                height: '100%',
+                                            }}
+                                            onClick={copyable ? () => copySummaryValue(copyValue) : undefined}
+                                            onKeyDown={copyable ? (e) => {
+                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                    e.preventDefault();
+                                                    copySummaryValue(copyValue);
+                                                }
+                                            } : undefined}
+                                            role={copyable ? 'button' : undefined}
+                                            tabIndex={copyable ? 0 : undefined}
+                                            title={copyable ? t('priceChecker.clickToCopy') : undefined}
+                                        >
                                             <div className="pc-stat-value" style={{ fontSize: compact ? 20 : 24, color }}>{value}</div>
                                             <div className="pc-metric-label">{label}</div>
                                         </div>
                                     </Col>
                                 ))}
                             </Row>
+                            </div>
 
                             {/* SKU Preview */}
                             {directResult.items?.length > 0 && (
-                                <div style={{ marginBottom: 28 }}>
+                                <div
+                                    data-pc-section="preview"
+                                    className={`pc-section-anchor${highlightSection === 'preview' ? ' pc-section-highlight' : ''}`}
+                                    style={{ marginBottom: 28 }}
+                                >
                                     <SectionHeading icon={<AppstoreOutlined />}>Preview</SectionHeading>
                                     <div
                                         style={{
@@ -1387,7 +1648,7 @@ const PriceChecker = () => {
                                                 <div style={{ padding: '8px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 6 }}>
                                                     <div>
                                                         <Text strong className="pc-sku-code" style={{ display: 'block', marginBottom: 2, wordBreak: 'break-all' }}>{item.sku}</Text>
-                                                        <Text className="pc-sku-name" style={{ display: 'block' }}>{item.name || '-'}</Text>
+                                                        <Text className="pc-sku-name" title={item.name || undefined}>{item.name || '-'}</Text>
                                                     </div>
                                                     {item.link ? (
                                                         <a
@@ -1419,6 +1680,8 @@ const PriceChecker = () => {
 
                             <div style={{ marginTop: 20 }}>
                                 <Collapse
+                                    activeKey={activeCollapseKeys}
+                                    onChange={setActiveCollapseKeys}
                                     style={{
                                         background: 'transparent',
                                         border: 'none',
@@ -1437,8 +1700,9 @@ const PriceChecker = () => {
                                     items={[
                                         {
                                             key: 'breakdown',
+                                            className: highlightSection === 'breakdown' ? 'pc-section-highlight' : undefined,
                                             label: (
-                                                <div className="pc-fold-label" style={foldLabelStyle}>
+                                                <div data-pc-section="breakdown" className="pc-fold-label pc-section-anchor" style={foldLabelStyle}>
                                                     <AppstoreOutlined style={{ color: 'var(--indigo)' }} />
                                                     Composition
                                                 </div>
@@ -1479,8 +1743,9 @@ const PriceChecker = () => {
                                         },
                                         {
                                             key: 'evaluation',
+                                            className: highlightSection === 'evaluation' ? 'pc-section-highlight' : undefined,
                                             label: (
-                                                <div className="pc-fold-label" style={foldLabelStyle}>
+                                                <div data-pc-section="evaluation" className="pc-fold-label pc-section-anchor" style={foldLabelStyle}>
                                                     <RiseOutlined style={{ color: 'var(--indigo)' }} />
                                                     Price Tier
                                                 </div>
@@ -1521,8 +1786,9 @@ const PriceChecker = () => {
                                         },
                                         {
                                             key: 'stock-evaluation',
+                                            className: highlightSection === 'stock-evaluation' ? 'pc-section-highlight' : undefined,
                                             label: (
-                                                <div className="pc-fold-label" style={foldLabelStyle}>
+                                                <div data-pc-section="stock-evaluation" className="pc-fold-label pc-section-anchor" style={foldLabelStyle}>
                                                     <BarChartOutlined style={{ color: 'var(--indigo)' }} />
                                                     Stock Tier
                                                 </div>
@@ -1568,6 +1834,26 @@ const PriceChecker = () => {
                     )}
                 </div>
             )}
+
+            {inputMode === 'Direct' && directResult
+                ? createPortal(
+                    <Button
+                        type="primary"
+                        size="small"
+                        className={`pc-back-to-input fm-btn-primary${directInputTitleVisible ? ' is-hidden' : ''}`}
+                        style={{ left: backBtnLeft }}
+                        icon={<VerticalAlignTopOutlined />}
+                        onClick={scrollToPageTop}
+                        title={t('priceChecker.backToDirectInput')}
+                        aria-label={t('priceChecker.backToDirectInput')}
+                        tabIndex={directInputTitleVisible ? -1 : 0}
+                        aria-hidden={directInputTitleVisible}
+                    >
+                        {t('priceChecker.backToDirectInputShort')}
+                    </Button>,
+                    document.body,
+                )
+                : null}
         </div>
     );
 };

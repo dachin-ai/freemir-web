@@ -18,6 +18,7 @@ from services.brand_material_logic import (
     list_material_folders,
     list_materials,
     list_materials_by_sku,
+    reorder_sub_materials,
     storage_file_name,
     update_material,
     upload_material,
@@ -47,6 +48,12 @@ class UpdateBody(BaseModel):
 
 class BulkDeleteBody(BaseModel):
     ids: list[str] = Field(..., min_length=1, max_length=200)
+
+
+class ReorderBody(BaseModel):
+    sku: str = Field(min_length=1, max_length=32)
+    mediaType: str = Field(pattern=r"^(photo|video)$")
+    orderedIds: list[str] = Field(..., min_length=1, max_length=200)
 
 
 def _uploader_display_name(user: dict) -> str:
@@ -192,6 +199,25 @@ async def upload(
         raise HTTPException(status_code=400, detail=code) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e) or "UPLOAD_FAILED") from e
+
+
+@router.post("/reorder", dependencies=[Depends(require_tool_access("brand_material"))])
+def reorder_subs(body: ReorderBody, db: Session = Depends(get_db)):
+    sku_norm = _validate_sku(body.sku)
+    try:
+        return reorder_sub_materials(
+            db,
+            sku=sku_norm,
+            media_type=body.mediaType,
+            ordered_ids=body.orderedIds,
+        )
+    except ValueError as e:
+        code = str(e)
+        if code in ("SKU_REQUIRED", "INVALID_MEDIA_TYPE", "REORDER_EMPTY", "REORDER_MISMATCH"):
+            raise HTTPException(status_code=400, detail=code) from e
+        raise HTTPException(status_code=400, detail=code) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/bulk-delete", dependencies=[Depends(require_tool_access("brand_material"))])

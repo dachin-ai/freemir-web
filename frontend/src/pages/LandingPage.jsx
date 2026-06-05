@@ -540,6 +540,13 @@ export default function LandingPage() {
                             {t('landing.compareTitle')}
                         </Link>
                     </div>
+                    <div className="landing-tool-card">
+                        <h3>{t('landing.brochureTitle')}</h3>
+                        <p>{t('landing.brochureDesc')}</p>
+                        <Link to="/product-catalog" className="landing-btn landing-btn-outline">
+                            {t('landing.brochureTitle')}
+                        </Link>
+                    </div>
                 </div>
             </section>
 

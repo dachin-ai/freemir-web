@@ -3,12 +3,12 @@ import { MoonOutlined, SunOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import './LanguageSwitch.css';
 
-export default function ThemeModeSwitch({ isDark, onChange, className = '' }) {
+export default function ThemeModeSwitch({ isDark, onChange, className = '', compact = false }) {
     const { t } = useTranslation();
 
     return (
         <div
-            className={`fm-theme-switch fm-pill-switch${className ? ` ${className}` : ''}`}
+            className={`fm-theme-switch fm-pill-switch${compact ? ' fm-pill-switch--compact' : ''}${className ? ` ${className}` : ''}`}
             role="group"
             aria-label={t('layout.themeModeLight')}
         >
