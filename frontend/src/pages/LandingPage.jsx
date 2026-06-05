@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-    ArrowRightOutlined, SunOutlined, MoonOutlined, LoginOutlined,
+    ArrowRightOutlined, SunOutlined, MoonOutlined,
     MailOutlined, EnvironmentOutlined, ClockCircleOutlined, ShopOutlined,
     SearchOutlined,
 } from '@ant-design/icons';
@@ -10,6 +10,7 @@ import { Input, Pagination, Spin } from 'antd';
 import { useTheme } from '../context/ThemeContext';
 import LanguageSwitch from '../components/LanguageSwitch';
 import CountryFlag from '../components/CountryFlag';
+import LandingAuthNav from '../components/landing/LandingAuthNav';
 import LandingCurrencySwitch from '../components/landing/LandingCurrencySwitch';
 import LandingProductDetailModal from '../components/landing/LandingProductDetailModal';
 import LandingSeriesPager from '../components/landing/LandingSeriesPager';
@@ -299,10 +300,7 @@ export default function LandingPage() {
                     <button type="button" className="landing-btn-ghost" onClick={toggleTheme} aria-label="Toggle theme">
                         {isDark ? <SunOutlined /> : <MoonOutlined />}
                     </button>
-                    <Link to="/login" className="landing-btn landing-btn-team">
-                        <LoginOutlined />
-                        <span className="landing-btn-team-label">{t('landing.navTeamLogin')}</span>
-                    </Link>
+                    <LandingAuthNav />
                 </div>
             </header>
 
@@ -644,10 +642,7 @@ export default function LandingPage() {
                         {t('landing.shopOnShopee')}
                         <ArrowRightOutlined />
                     </a>
-                    <Link to="/login" className="landing-btn landing-btn-outline">
-                        {t('landing.teamAccess')}
-                        <ArrowRightOutlined />
-                    </Link>
+                    <LandingAuthNav variant="outline" />
                 </div>
                 <div className="landing-social">
                     <p className="landing-social-title">{t('landing.followUsTitle')}</p>

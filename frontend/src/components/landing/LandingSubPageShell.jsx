@@ -4,6 +4,7 @@ import { ArrowLeftOutlined, MoonOutlined, SunOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../context/ThemeContext';
 import LanguageSwitch from '../LanguageSwitch';
+import LandingAuthNav from './LandingAuthNav';
 import LandingCurrencySwitch from './LandingCurrencySwitch';
 import { useLandingMediaProtection } from '../../hooks/useLandingMediaProtection';
 
@@ -27,6 +28,7 @@ export default function LandingSubPageShell({ title, lead, children, currency, o
                     <button type="button" className="landing-btn-ghost" onClick={toggleTheme} aria-label="Toggle theme">
                         {isDark ? <SunOutlined /> : <MoonOutlined />}
                     </button>
+                    <LandingAuthNav />
                 </div>
             </header>
             <main className="landing-sub-main">

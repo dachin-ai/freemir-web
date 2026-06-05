@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Layout, Menu, Typography, Button, message, Modal, Form, Input, Dropdown } from 'antd';
-import { LogoutOutlined, HomeOutlined, LockOutlined, AppstoreOutlined, ShoppingOutlined, PlaySquareOutlined, VideoCameraOutlined, KeyOutlined, UnlockOutlined, TeamOutlined, BarChartOutlined, DownOutlined, LinkOutlined, FileImageOutlined, LineChartOutlined } from '@ant-design/icons';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { Layout, Menu, Typography, Button, message, Modal, Form, Input } from 'antd';
+import { LogoutOutlined, HomeOutlined, LockOutlined, AppstoreOutlined, ShoppingOutlined, PlaySquareOutlined, VideoCameraOutlined, KeyOutlined, UnlockOutlined, TeamOutlined, BarChartOutlined, DownOutlined, LinkOutlined, FileImageOutlined, LineChartOutlined, GlobalOutlined, SunOutlined, MoonOutlined } from '@ant-design/icons';
 import LanguageSwitch from '../components/LanguageSwitch';
 import ThemeModeSwitch from '../components/ThemeModeSwitch';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
@@ -9,7 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import Bi from '../components/Bi';
 import { changePassword } from '../api';
-import { PATH_TOOLS, toolsPath } from '../routes/paths';
+import { PATH_HOME, PATH_TOOLS, toolsPath } from '../routes/paths';
 
 /** Prevent DingTalk / AliDocs iframe from swallowing clicks inside the settings panel. */
 const stopPanelEvent = (e) => {
@@ -30,6 +31,175 @@ const MainLayout = () => {
   const { user, logout, hasAccess } = useAuth();
   const { isDark, setThemeMode } = useTheme();
   const { t } = useTranslation();
+  const settingsRef = useRef(null);
+  const settingsTriggerRef = useRef(null);
+  const [settingsPanelPos, setSettingsPanelPos] = useState(null);
+
+  const syncSettingsPanelPos = useCallback(() => {
+    const trigger = settingsTriggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    setSettingsPanelPos({
+      top: rect.bottom + 8,
+      right: Math.max(12, window.innerWidth - rect.right),
+    });
+  }, []);
+
+  useEffect(() => {
+    setSettingsOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!settingsOpen) {
+      setSettingsPanelPos(null);
+      return undefined;
+    }
+    syncSettingsPanelPos();
+    window.addEventListener('resize', syncSettingsPanelPos);
+    window.addEventListener('scroll', syncSettingsPanelPos, true);
+    return () => {
+      window.removeEventListener('resize', syncSettingsPanelPos);
+      window.removeEventListener('scroll', syncSettingsPanelPos, true);
+    };
+  }, [settingsOpen, syncSettingsPanelPos]);
+
+  useEffect(() => {
+    if (!settingsOpen) return undefined;
+
+    const handleOutside = (event) => {
+      const target = event.target;
+      if (
+        settingsRef.current?.contains(target) ||
+        settingsTriggerRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setSettingsOpen(false);
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setSettingsOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [settingsOpen]);
+
+  const goToWebsite = useCallback(() => {
+    setSettingsOpen(false);
+    navigate(PATH_HOME);
+  }, [navigate]);
+
+  const settingsPanel = settingsOpen && settingsPanelPos && user
+    ? createPortal(
+      <div
+        ref={settingsRef}
+        className="fm-settings-panel fm-settings-panel--portal"
+        style={{
+          position: 'fixed',
+          top: settingsPanelPos.top,
+          right: settingsPanelPos.right,
+          zIndex: 11000,
+        }}
+        onClick={stopPanelEvent}
+        onMouseDown={stopPanelEvent}
+        onPointerDown={stopPanelEvent}
+      >
+        <div className="fm-settings-panel__head">
+          <span className="fm-settings-panel__eyebrow">{t('layout.settingsTitle')}</span>
+          <div className="fm-settings-panel__identity">
+            <Text strong className="fm-settings-panel__name">
+              {user.name || user.username}
+            </Text>
+            {user.name && user.username && user.name !== user.username ? (
+              <Text type="secondary" className="fm-settings-panel__meta">
+                {user.username}
+              </Text>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="fm-settings-panel__body">
+          <section className="fm-settings-panel__section">
+            <div className="fm-settings-panel__section-head">
+              <span className="fm-settings-panel__icon fm-settings-panel__icon--lang" aria-hidden>
+                <GlobalOutlined />
+              </span>
+              <div className="fm-settings-panel__section-copy">
+                <span className="fm-settings-panel__section-title">{t('layout.settingsLanguage')}</span>
+                <span className="fm-settings-panel__section-hint">{t('layout.tabLanguageHint')}</span>
+              </div>
+            </div>
+            <div
+              className="fm-settings-panel__control"
+              onMouseDown={stopPanelEvent}
+              onPointerDown={stopPanelEvent}
+              onClick={stopPanelEvent}
+            >
+              <LanguageSwitch compact />
+            </div>
+          </section>
+
+          <section className="fm-settings-panel__section">
+            <div className="fm-settings-panel__section-head">
+              <span className="fm-settings-panel__icon fm-settings-panel__icon--theme" aria-hidden>
+                {isDark ? <MoonOutlined /> : <SunOutlined />}
+              </span>
+              <div className="fm-settings-panel__section-copy">
+                <span className="fm-settings-panel__section-title">{t('layout.settingsTheme')}</span>
+                <span className="fm-settings-panel__section-hint">{t('layout.tabAppearanceHint')}</span>
+              </div>
+            </div>
+            <div
+              className="fm-settings-panel__control"
+              onMouseDown={stopPanelEvent}
+              onPointerDown={stopPanelEvent}
+              onClick={stopPanelEvent}
+            >
+              <ThemeModeSwitch isDark={isDark} onChange={setThemeMode} compact />
+            </div>
+          </section>
+        </div>
+
+        <div className="fm-settings-panel__footer">
+          <button
+            type="button"
+            className="fm-settings-panel__link-btn fm-settings-panel__link-btn--website"
+            onMouseDown={(e) => { stopPanelEvent(e); goToWebsite(); }}
+            onClick={(e) => { e.preventDefault(); stopPanelEvent(e); }}
+          >
+            <GlobalOutlined />
+            <span>{t('layout.visitWebsite')}</span>
+          </button>
+          <Button
+            type="default"
+            block
+            icon={<KeyOutlined />}
+            onMouseDown={(e) => { stopPanelEvent(e); setSettingsOpen(false); setChangePwdOpen(true); }}
+            onClick={() => { setSettingsOpen(false); setChangePwdOpen(true); }}
+            className="fm-settings-panel__btn fm-settings-panel__btn--password"
+          >
+            {t('layout.changePassword')}
+          </Button>
+          <Button
+            danger
+            block
+            icon={<LogoutOutlined />}
+            onMouseDown={(e) => { stopPanelEvent(e); setSettingsOpen(false); logout(); }}
+            onClick={() => { setSettingsOpen(false); logout(); }}
+            className="fm-settings-panel__btn fm-settings-panel__btn--logout"
+          >
+            {t('layout.logout')}
+          </Button>
+        </div>
+      </div>,
+      document.body,
+    )
+    : null;
 
   /* Dark: indigo. Light: musim panas (langit & air, biru segar). */
   const ta = isDark
@@ -265,87 +435,14 @@ const MainLayout = () => {
           </Text>
           <div className="fm-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {user ? (
-              <>
-              <Dropdown
-                open={settingsOpen}
-                onOpenChange={setSettingsOpen}
-                trigger={['click']}
-                placement="bottomRight"
-                getPopupContainer={(trigger) => trigger.parentElement || document.body}
-                styles={{ root: { zIndex: 11000 } }}
-                popupRender={() => (
-                  <div
-                    className="fm-settings-panel"
-                    onClick={stopPanelEvent}
-                    onMouseDown={stopPanelEvent}
-                    onPointerDown={stopPanelEvent}
-                  >
-                    <div className="fm-settings-panel__head">
-                      <Text strong className="fm-settings-panel__name">
-                        {user.name || user.username}
-                      </Text>
-                      {user.name && user.username && user.name !== user.username ? (
-                        <Text type="secondary" className="fm-settings-panel__meta">
-                          {user.username}
-                        </Text>
-                      ) : null}
-                    </div>
-
-                    <div className="fm-settings-panel__body">
-                      <div className="fm-settings-panel__row">
-                        <span className="fm-settings-panel__label">{t('layout.settingsLanguage')}</span>
-                        <div
-                          className="fm-settings-panel__control"
-                          onMouseDown={stopPanelEvent}
-                          onPointerDown={stopPanelEvent}
-                          onClick={stopPanelEvent}
-                        >
-                          <LanguageSwitch compact />
-                        </div>
-                      </div>
-                      <div className="fm-settings-panel__row">
-                        <span className="fm-settings-panel__label">{t('layout.settingsTheme')}</span>
-                        <div
-                          className="fm-settings-panel__control"
-                          onMouseDown={stopPanelEvent}
-                          onPointerDown={stopPanelEvent}
-                          onClick={stopPanelEvent}
-                        >
-                          <ThemeModeSwitch isDark={isDark} onChange={setThemeMode} compact />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="fm-settings-panel__footer">
-                      <Button
-                        type="default"
-                        size="small"
-                        block
-                        icon={<KeyOutlined />}
-                        onClick={() => { setSettingsOpen(false); setChangePwdOpen(true); }}
-                        className="fm-settings-panel__btn"
-                      >
-                        {t('layout.changePassword')}
-                      </Button>
-                      <Button
-                        danger
-                        size="small"
-                        block
-                        icon={<LogoutOutlined />}
-                        onClick={() => { setSettingsOpen(false); logout(); }}
-                        className="fm-settings-panel__btn"
-                      >
-                        {t('layout.logout')}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              >
+              <div className="fm-header-profile-wrap">
                 <button
+                  ref={settingsTriggerRef}
                   type="button"
                   className="fm-header-profile-trigger"
                   aria-expanded={settingsOpen}
                   aria-haspopup="dialog"
+                  onClick={() => setSettingsOpen((open) => !open)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -383,8 +480,7 @@ const MainLayout = () => {
                   </span>
                   <DownOutlined style={{ fontSize: 12, color: 'var(--text-muted)', flexShrink: 0, opacity: 0.85 }} />
                 </button>
-              </Dropdown>
-              </>
+              </div>
             ) : null}
           </div>
         </div>
@@ -422,6 +518,8 @@ const MainLayout = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      {settingsPanel}
     </Layout>
   );
 };

@@ -39,18 +39,9 @@ export function AuthProvider({ children }) {
     // On mount: restore cached user quickly and verify token in background.
     useEffect(() => {
         const token = localStorage.getItem(TOKEN_KEY);
-        const loginDate = localStorage.getItem(LOGIN_DATE_KEY);
         const cachedUserRaw = localStorage.getItem(USER_KEY);
-        const today = getTodayStr();
 
         if (!token) {
-            setLoading(false);
-            return;
-        }
-
-        // If token is from a previous day, clear it
-        if (loginDate !== today) {
-            logout();
             setLoading(false);
             return;
         }
@@ -79,6 +70,7 @@ export function AuthProvider({ children }) {
                     permissions: normalizePermissions(res.data.permissions),
                 };
                 localStorage.setItem(USER_KEY, JSON.stringify(verifiedUser));
+                localStorage.setItem(LOGIN_DATE_KEY, getTodayStr());
                 setUser(verifiedUser);
             })
             .catch(() => {
