@@ -16,6 +16,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toolsPath } from '../routes/paths';
 import BrandMaterialSkuDetail from './BrandMaterialSkuDetail';
 import BrandMaterialSkuList from './BrandMaterialSkuList';
+import './brand-material-catalog.css';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -1090,12 +1091,14 @@ export default function BrandMaterial() {
             </Modal>
 
             <Modal
+                className="bm-upload-modal"
                 title={t('brandMaterial.uploadTitle')}
                 open={uploadOpen}
                 onCancel={closeUploadModal}
                 footer={null}
                 destroyOnClose
-                width={920}
+                width={1120}
+                styles={{ content: { maxWidth: 'calc(100vw - 32px)' } }}
             >
                 <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 12 }}>
                     {t('brandMaterial.uploadBucketHint')}
@@ -1156,7 +1159,6 @@ export default function BrandMaterial() {
                         rowKey="id"
                         dataSource={uploadRows}
                         columns={uploadTableColumns}
-                        scroll={{ x: 980 }}
                         style={{ marginBottom: 16 }}
                     />
                 ) : (

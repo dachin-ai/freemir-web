@@ -1,5 +1,18 @@
 /* Product Gallery — SKU folder catalog grid (inspired by product brochure compact cards) */
 
+/* ── Upload modal (batch media) ── */
+.bm-upload-modal .ant-modal-body {
+  overflow-x: auto;
+}
+
+.bm-upload-modal .ant-table-wrapper {
+  overflow: visible;
+}
+
+.bm-upload-modal .ant-upload-hint {
+  max-width: 560px !important;
+}
+
 /* ── SKU list catalog search ── */
 .bm-catalog-search-area {
   max-width: 520px;
