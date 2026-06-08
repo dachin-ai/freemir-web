@@ -168,7 +168,7 @@ def _get_sku_detail_rows() -> list[dict]:
     return out
 
 
-_ITEMS_CACHE_SECONDS = 120
+_ITEMS_CACHE_SECONDS = 300
 _ITEMS_CACHE: dict[str, Any] = {
     "ts": 0.0,
     "lang": "",
@@ -300,14 +300,25 @@ def _resolve_image_url(
 ) -> str | None:
     key = (sku or "").strip().upper()
     brand = brand_map.get(key) or {}
+    if brand.get("materialId"):
+        # Material Library main photo — signed preview JPEG first (private bucket), then public GCS.
+        for candidate in (
+            brand.get("previewUrl"),
+            brand.get("catalogUrl"),
+            brand.get("url"),
+        ):
+            text = str(candidate or "").strip()
+            if text:
+                return text
+        return None
+
     for candidate in (
-        brand.get("url"),
-        brand.get("previewUrl"),
         name_link if _is_image_url(name_link) else None,
         pp_photo if _is_image_url(pp_photo) else None,
     ):
-        if candidate and str(candidate).strip():
-            return str(candidate).strip()
+        text = str(candidate or "").strip()
+        if text:
+            return text
     return None
 
 

@@ -177,10 +177,17 @@ def download_gcs_object_bytes(gcs_object_path: str | None) -> bytes | None:
         return None
 
 
-def get_brand_main_photo_map(db: Session, skus: set) -> dict[str, dict]:
+def get_brand_main_photo_map(
+    db: Session,
+    skus: set,
+    *,
+    sign_urls: bool = True,
+    sign_minutes: int = 720,
+) -> dict[str, dict]:
     """
-    SKU (uppercase) → { materialId, url } for Material Library main photo.
-    url is public GCS (Excel); UI should use materialId + authenticated preview API.
+    SKU (uppercase) → { materialId, url, catalogUrl, previewUrl } for Material Library main photo.
+    catalogUrl is the small preview JPEG on GCS (preferred for public catalog cards).
+    previewUrl is a signed read URL (private bucket); skipped when sign_urls=False.
     """
     if not skus:
         return {}
@@ -205,21 +212,41 @@ def get_brand_main_photo_map(db: Session, skus: set) -> dict[str, dict]:
     )
 
     out: dict[str, dict] = {}
+    sign_jobs: list[tuple[str, str]] = []
+    seen: set[str] = set()
     for row in rows:
         sku_upper = (row.sku or "").strip().upper()
-        if not sku_upper:
+        if not sku_upper or sku_upper in seen:
             continue
+        seen.add(sku_upper)
         preview_path = row.preview_gcs_object_path
         gcs_path = row.gcs_object_path
-        path = preview_path or gcs_path
-        url = brand_material_public_url(path)
-        signed = brand_material_signed_read_url(preview_path) if preview_path else None
+        catalog_url = brand_material_public_url(preview_path) if preview_path else ""
+        full_url = brand_material_public_url(preview_path or gcs_path)
         out[sku_upper] = {
             "materialId": row.id,
-            "url": url or "",
-            "previewUrl": signed or "",
+            "url": full_url or "",
+            "catalogUrl": catalog_url or "",
+            "previewUrl": "",
             "previewGcsPath": preview_path or "",
         }
+        if sign_urls and preview_path:
+            sign_jobs.append((sku_upper, preview_path))
+
+    if sign_jobs:
+        from concurrent.futures import ThreadPoolExecutor
+
+        max_workers = min(8, len(sign_jobs))
+
+        def _sign(path: str) -> str | None:
+            return brand_material_signed_read_url(path, minutes=sign_minutes)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            signed_urls = list(pool.map(_sign, [path for _, path in sign_jobs]))
+        for (sku_upper, _), signed in zip(sign_jobs, signed_urls):
+            if signed:
+                out[sku_upper]["previewUrl"] = signed
+
     return out
 
 
