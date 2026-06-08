@@ -22,6 +22,7 @@ from services.brand_material_logic import (
     list_materials,
     list_materials_by_sku,
     reorder_sub_materials,
+    search_materials_detail,
     storage_file_name,
     update_material,
     upload_material,
@@ -120,6 +121,24 @@ def list_folders(
             page_size=page_size,
             sku_filter=sku,
             media_type=media_type,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/search-detail", dependencies=[Depends(require_tool_access("brand_material"))])
+def search_detail(
+    q: str = "",
+    page: int = 1,
+    page_size: int = 24,
+    db: Session = Depends(get_db),
+):
+    try:
+        return search_materials_detail(
+            db,
+            query=q,
+            page=page,
+            page_size=page_size,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e

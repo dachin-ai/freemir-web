@@ -53,6 +53,25 @@ function apiErrorCode(err) {
     return msg || 'REQUEST_FAILED';
 }
 
+export async function searchBrandMaterialDetail({
+    q = '',
+    page = 1,
+    pageSize = 24,
+} = {}) {
+    const { data } = await api.get('/brand-material/search-detail', {
+        params: { q, page, page_size: pageSize },
+    });
+    return {
+        items: (data.items || []).map((row) => ({
+            ...mapItem(row),
+            productName: row.productName ?? row.product_name ?? '',
+        })),
+        total: data.total ?? 0,
+        page: data.page ?? page,
+        pageSize: data.pageSize ?? pageSize,
+    };
+}
+
 export async function listBrandMaterialCoverage({
     page = 1,
     pageSize = 50,

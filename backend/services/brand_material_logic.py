@@ -703,6 +703,111 @@ def list_materials(
     }
 
 
+DETAIL_SEARCH_MAX_PAGE_SIZE = 24  # 3 rows × 8 cols on desktop
+
+
+def search_materials_detail(
+    db: Session,
+    *,
+    query: str,
+    page: int = 1,
+    page_size: int = DETAIL_SEARCH_MAX_PAGE_SIZE,
+) -> dict:
+    """Cross-SKU material search — note, SKU, or product name (incl. catalog nicknames)."""
+    raw = (query or "").strip()
+    if len(raw) < 2:
+        return {
+            "items": [],
+            "total": 0,
+            "page": max(1, int(page or 1)),
+            "pageSize": min(max(1, int(page_size or DETAIL_SEARCH_MAX_PAGE_SIZE)), DETAIL_SEARCH_MAX_PAGE_SIZE),
+        }
+
+    page = max(1, int(page or 1))
+    page_size = min(
+        max(1, int(page_size or DETAIL_SEARCH_MAX_PAGE_SIZE)),
+        DETAIL_SEARCH_MAX_PAGE_SIZE,
+    )
+
+    _, _, search_index = _get_coverage_meta(db)
+    sku_tokens = _parse_freemir_sku_tokens(raw)
+    like = f"%{raw}%"
+
+    q = db.query(BrandMaterial)
+
+    if len(sku_tokens) > 1:
+        keys = [_sku_key(t) for t in sku_tokens]
+        q = q.filter(BrandMaterial.sku_key.in_(keys))
+    elif len(sku_tokens) == 1:
+        q = q.filter(BrandMaterial.sku.ilike(f"%{sku_tokens[0]}%"))
+    else:
+        name_matching_keys: set[str] = set()
+        extra_skus = _skus_from_detail_search(raw, search_index)
+        for row in db.query(FreemirName).filter(
+            or_(
+                FreemirName.sku.ilike(like),
+                FreemirName.product_name.ilike(like),
+                FreemirName.mark.ilike(like),
+            )
+        ).all():
+            key = _sku_key(row.sku)
+            if key:
+                name_matching_keys.add(key)
+        if extra_skus:
+            for row in db.query(FreemirName).filter(
+                func.upper(FreemirName.sku).in_(extra_skus)
+            ).all():
+                key = _sku_key(row.sku)
+                if key:
+                    name_matching_keys.add(key)
+
+        clauses = [
+            BrandMaterial.note.ilike(like),
+            BrandMaterial.sku.ilike(like),
+        ]
+        if name_matching_keys:
+            clauses.append(BrandMaterial.sku_key.in_(list(name_matching_keys)))
+        q = q.filter(or_(*clauses))
+
+    total = q.count()
+    order_cat = case((BrandMaterial.category == "main", 0), else_=1)
+    rows = (
+        q.order_by(
+            BrandMaterial.sku_key.asc(),
+            BrandMaterial.media_type.asc(),
+            order_cat.asc(),
+            BrandMaterial.sub_index.asc().nullsfirst(),
+            BrandMaterial.id.asc(),
+        )
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    sku_keys = list({_sku_key(r.sku) for r in rows if r.sku})
+    product_names: dict[str, str] = {}
+    if sku_keys:
+        for name_row in db.query(FreemirName).filter(
+            func.lower(FreemirName.sku).in_(sku_keys)
+        ).all():
+            key = _sku_key(name_row.sku)
+            if key:
+                product_names[key] = (name_row.product_name or "").strip()
+
+    items = []
+    for row in rows:
+        item = _row_to_dict(row)
+        item["productName"] = product_names.get(_sku_key(row.sku), "")
+        items.append(item)
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "pageSize": page_size,
+    }
+
+
 def _row_media_type(row: BrandMaterial) -> str:
     return getattr(row, "media_type", None) or media_type_from_mime(row.mime_type)
 

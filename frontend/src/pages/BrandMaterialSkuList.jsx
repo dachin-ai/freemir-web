@@ -2,13 +2,22 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Empty, Pagination, Spin, Typography } from 'antd';
 import { CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
+import CatalogSearchModeSwitch from '../components/brandMaterial/CatalogSearchModeSwitch';
+import MaterialDetailSearchGrid from '../components/brandMaterial/MaterialDetailSearchGrid';
+import MaterialPreviewModal from '../components/brandMaterial/MaterialPreviewModal';
 import MaterialSkuFolderCard from '../components/brandMaterial/MaterialSkuFolderCard';
-import { listBrandMaterialCoverage, prefetchBrandMaterialPreviews } from '../utils/brandMaterialStore';
+import {
+    listBrandMaterialCoverage,
+    prefetchBrandMaterialPreviews,
+    searchBrandMaterialDetail,
+} from '../utils/brandMaterialStore';
 import './brand-material-catalog.css';
 
 const { Text } = Typography;
 const PAGE_SIZE = 32; // 4 rows × 8 cols on desktop
+const DETAIL_PAGE_SIZE = 24; // 3 rows × 8 cols on desktop
 const SEARCH_DEBOUNCE_MS = 280;
+const DETAIL_SEARCH_MIN = 2;
 
 function groupItemsByCategory(items) {
     const sections = [];
@@ -27,22 +36,34 @@ function groupItemsByCategory(items) {
 
 export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0, coverOverrides = {} }) {
     const { t } = useTranslation();
-    const [items, setItems] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
+    const [searchMode, setSearchMode] = useState('product');
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [page, setPage] = useState(1);
+    const [items, setItems] = useState([]);
     const [total, setTotal] = useState(0);
+    const [detailItems, setDetailItems] = useState([]);
+    const [detailTotal, setDetailTotal] = useState(0);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [loadError, setLoadError] = useState(false);
+    const [previewItem, setPreviewItem] = useState(null);
     const loadGenRef = useRef(0);
     const debouncedSearchRef = useRef(debouncedSearch);
     const itemsRef = useRef(items);
+    const detailItemsRef = useRef(detailItems);
     const [previewTick, setPreviewTick] = useState(0);
+
+    const isDetailMode = searchMode === 'detail';
+    const detailQueryReady = debouncedSearch.trim().length >= DETAIL_SEARCH_MIN;
 
     useEffect(() => {
         itemsRef.current = items;
     }, [items]);
+
+    useEffect(() => {
+        detailItemsRef.current = detailItems;
+    }, [detailItems]);
 
     useEffect(() => {
         debouncedSearchRef.current = debouncedSearch;
@@ -50,17 +71,55 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0, cover
 
     useEffect(() => {
         const timer = setTimeout(() => {
-            const next = (searchQuery || '').trim();
-            setDebouncedSearch(next);
+            setDebouncedSearch((searchQuery || '').trim());
             setPage(1);
         }, SEARCH_DEBOUNCE_MS);
         return () => clearTimeout(timer);
     }, [searchQuery]);
 
-    const loadList = useCallback(async () => {
+    const handleModeChange = useCallback((mode) => {
+        setSearchMode(mode);
+        setPage(1);
+    }, []);
+
+    const searchPlaceholder = isDetailMode
+        ? t('brandMaterial.catalogDetailSearchPh')
+        : t('brandMaterial.catalogProductSearchPh');
+
+    const prefetchCovers = useCallback((rows, gen) => {
+        const previewIds = (rows || [])
+            .map((row) => coverOverrides[row.sku]?.materialId ?? row.mainPhotoMaterialId ?? row.id)
+            .filter(Boolean)
+            .map((id) => ({ id }));
+
+        if (previewIds.length === 0) return;
+
+        prefetchBrandMaterialPreviews(previewIds, {
+            isCancelled: () => gen !== loadGenRef.current,
+            onPreview: () => {
+                if (gen === loadGenRef.current) {
+                    setPreviewTick((n) => n + 1);
+                }
+            },
+        });
+    }, [coverOverrides]);
+
+    const loadResults = useCallback(async () => {
         const gen = ++loadGenRef.current;
-        const hasItems = itemsRef.current.length > 0;
-        if (hasItems) {
+        const query = debouncedSearchRef.current;
+        const hasCached = isDetailMode
+            ? detailItemsRef.current.length > 0
+            : itemsRef.current.length > 0;
+
+        if (isDetailMode && query.length < DETAIL_SEARCH_MIN) {
+            setDetailItems([]);
+            setDetailTotal(0);
+            setLoading(false);
+            setRefreshing(false);
+            return;
+        }
+
+        if (hasCached) {
             setRefreshing(true);
         } else {
             setLoading(true);
@@ -68,35 +127,36 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0, cover
         setLoadError(false);
 
         try {
-            const result = await listBrandMaterialCoverage({
-                page,
-                pageSize: PAGE_SIZE,
-                sku: debouncedSearchRef.current,
-            });
-            if (gen !== loadGenRef.current) return;
-
-            setItems(result.items);
-            setTotal(result.total);
-
-            const previewIds = (result.items || [])
-                .map((row) => coverOverrides[row.sku]?.materialId ?? row.mainPhotoMaterialId)
-                .filter(Boolean)
-                .map((id) => ({ id }));
-
-            if (previewIds.length > 0) {
-                prefetchBrandMaterialPreviews(previewIds, {
-                    isCancelled: () => gen !== loadGenRef.current,
-                    onPreview: () => {
-                        if (gen === loadGenRef.current) {
-                            setPreviewTick((n) => n + 1);
-                        }
-                    },
+            if (isDetailMode) {
+                const result = await searchBrandMaterialDetail({
+                    q: query,
+                    page,
+                    pageSize: DETAIL_PAGE_SIZE,
                 });
+                if (gen !== loadGenRef.current) return;
+                setDetailItems(result.items);
+                setDetailTotal(result.total);
+                prefetchCovers(result.items, gen);
+            } else {
+                const result = await listBrandMaterialCoverage({
+                    page,
+                    pageSize: PAGE_SIZE,
+                    sku: query,
+                });
+                if (gen !== loadGenRef.current) return;
+                setItems(result.items);
+                setTotal(result.total);
+                prefetchCovers(result.items, gen);
             }
         } catch {
             if (gen !== loadGenRef.current) return;
-            setItems([]);
-            setTotal(0);
+            if (isDetailMode) {
+                setDetailItems([]);
+                setDetailTotal(0);
+            } else {
+                setItems([]);
+                setTotal(0);
+            }
             setLoadError(true);
         } finally {
             if (gen === loadGenRef.current) {
@@ -104,11 +164,11 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0, cover
                 setRefreshing(false);
             }
         }
-    }, [page, debouncedSearch, reloadToken, coverOverrides]);
+    }, [isDetailMode, page, debouncedSearch, reloadToken, prefetchCovers]);
 
     useEffect(() => {
-        loadList();
-    }, [loadList]);
+        loadResults();
+    }, [loadResults]);
 
     const categorySections = useMemo(() => {
         const sections = groupItemsByCategory(items);
@@ -123,43 +183,86 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0, cover
         }));
     }, [items]);
 
-    const showInitialLoading = loading && items.length === 0;
+    const showInitialLoading = loading && (
+        isDetailMode
+            ? (detailQueryReady ? detailItems.length === 0 : false)
+            : items.length === 0
+    );
+    const showDetailHint = isDetailMode
+        && searchQuery.trim().length > 0
+        && searchQuery.trim().length < DETAIL_SEARCH_MIN;
+    const showDetailIdle = isDetailMode && !searchQuery.trim();
+
+    const openPreview = useCallback((item) => setPreviewItem(item), []);
+    const closePreview = useCallback(() => setPreviewItem(null), []);
+
+    const handleOpenSkuFromDetail = useCallback((sku) => {
+        onOpenSku?.({ sku });
+    }, [onOpenSku]);
+
+    const activePageSize = isDetailMode ? DETAIL_PAGE_SIZE : PAGE_SIZE;
+    const activeTotal = isDetailMode ? detailTotal : total;
 
     return (
         <div className="bm-sku-list">
             <div className="bm-catalog-search-area">
-                <label className="bm-sku-note-search bm-catalog-search" htmlFor="bm-catalog-search">
-                    <div className="bm-sku-note-search-field bm-catalog-search-field">
-                        <SearchOutlined className="bm-sku-note-search-icon" aria-hidden />
-                        <input
-                            id="bm-catalog-search"
-                            type="search"
-                            className="bm-sku-note-search-input"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder={t('landing.catalogSearchPlaceholder')}
-                            autoComplete="off"
-                            aria-label={t('landing.catalogSearchPlaceholder')}
-                        />
-                        {searchQuery ? (
-                            <button
-                                type="button"
-                                className="bm-sku-note-search-clear"
-                                onClick={() => setSearchQuery('')}
-                                aria-label={t('brandMaterial.searchClear')}
-                            >
-                                <CloseOutlined />
-                            </button>
-                        ) : null}
-                        {refreshing ? (
-                            <Spin size="small" className="bm-catalog-search-spinner" aria-hidden />
-                        ) : null}
-                    </div>
-                </label>
-                {debouncedSearch && !showInitialLoading && (
+                <div className="bm-catalog-search-toolbar">
+                    <CatalogSearchModeSwitch
+                        value={searchMode}
+                        onChange={handleModeChange}
+                        t={t}
+                    />
+                    <label className="bm-sku-note-search bm-catalog-search" htmlFor="bm-catalog-search">
+                        <div className="bm-sku-note-search-field bm-catalog-search-field">
+                            <SearchOutlined className="bm-sku-note-search-icon" aria-hidden />
+                            <input
+                                id="bm-catalog-search"
+                                type="search"
+                                className="bm-sku-note-search-input"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder={searchPlaceholder}
+                                autoComplete="off"
+                                aria-label={searchPlaceholder}
+                            />
+                            {searchQuery ? (
+                                <button
+                                    type="button"
+                                    className="bm-sku-note-search-clear"
+                                    onClick={() => setSearchQuery('')}
+                                    aria-label={t('brandMaterial.searchClear')}
+                                >
+                                    <CloseOutlined />
+                                </button>
+                            ) : null}
+                            {refreshing ? (
+                                <Spin size="small" className="bm-catalog-search-spinner" aria-hidden />
+                            ) : null}
+                        </div>
+                    </label>
+                </div>
+
+                {showDetailIdle && (
+                    <Text type="secondary" className="bm-catalog-search-meta">
+                        {t('brandMaterial.catalogDetailSearchIdle')}
+                    </Text>
+                )}
+                {showDetailHint && (
+                    <Text type="secondary" className="bm-catalog-search-meta">
+                        {t('brandMaterial.catalogDetailSearchMin', { min: DETAIL_SEARCH_MIN })}
+                    </Text>
+                )}
+                {isDetailMode && detailQueryReady && !loading && (
+                    <Text type="secondary" className="bm-catalog-search-meta">
+                        {detailTotal > 0
+                            ? t('brandMaterial.catalogDetailSearchCount', { count: detailTotal })
+                            : t('brandMaterial.detailSearchEmpty')}
+                    </Text>
+                )}
+                {!isDetailMode && debouncedSearch && !showInitialLoading && (
                     <Text type="secondary" className="bm-catalog-search-meta">
                         {total > 0
-                            ? t('landing.catalogSearchCount', { count: total })
+                            ? t('brandMaterial.catalogProductSearchCount', { count: total })
                             : t('landing.learnNoResults')}
                     </Text>
                 )}
@@ -167,11 +270,34 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0, cover
 
             {loadError && (
                 <Text type="danger" className="bm-sku-list-error">
-                    {t('brandMaterial.skuListLoadFail')}
+                    {isDetailMode
+                        ? t('brandMaterial.detailSearchLoadFail')
+                        : t('brandMaterial.skuListLoadFail')}
                 </Text>
             )}
 
-            {showInitialLoading ? (
+            {isDetailMode ? (
+                showDetailIdle ? (
+                    <Empty
+                        description={t('brandMaterial.catalogDetailSearchIdle')}
+                        className="bm-sku-folder-empty"
+                    />
+                ) : showDetailHint ? null : (
+                    <MaterialDetailSearchGrid
+                        items={detailItems}
+                        loading={loading}
+                        refreshing={refreshing}
+                        total={detailTotal}
+                        page={page}
+                        pageSize={DETAIL_PAGE_SIZE}
+                        onPageChange={setPage}
+                        onPreview={openPreview}
+                        onOpenSku={handleOpenSkuFromDetail}
+                        query={debouncedSearch}
+                        t={t}
+                    />
+                )
+            ) : showInitialLoading ? (
                 <div className="bm-sku-folder-loading">
                     <Spin />
                 </div>
@@ -205,24 +331,39 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0, cover
                             </React.Fragment>
                         ))}
                     </div>
-                    {total > PAGE_SIZE && (
+                    {activeTotal > activePageSize && (
                         <div className="bm-sku-folder-pagination">
                             <Pagination
                                 current={page}
-                                pageSize={PAGE_SIZE}
-                                total={total}
+                                pageSize={activePageSize}
+                                total={activeTotal}
                                 onChange={setPage}
                                 showSizeChanger={false}
-                                showTotal={(count, range) => t('brandMaterial.pageTotalSkus', {
-                                    from: range[0],
-                                    to: range[1],
-                                    total: count,
-                                })}
+                                showTotal={(count, range) => (
+                                    isDetailMode
+                                        ? t('brandMaterial.detailSearchPageTotal', {
+                                            from: range[0],
+                                            to: range[1],
+                                            total: count,
+                                            query: debouncedSearch,
+                                        })
+                                        : t('brandMaterial.pageTotalSkus', {
+                                            from: range[0],
+                                            to: range[1],
+                                            total: count,
+                                        })
+                                )}
                             />
                         </div>
                     )}
                 </>
             )}
+
+            <MaterialPreviewModal
+                item={previewItem}
+                open={Boolean(previewItem)}
+                onClose={closePreview}
+            />
         </div>
     );
 }
