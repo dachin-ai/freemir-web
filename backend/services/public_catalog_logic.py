@@ -182,6 +182,8 @@ def invalidate_landing_catalog_cache() -> None:
     _SKU_DETAIL_CACHE["rows"] = []
     _ITEMS_CACHE["ts"] = 0.0
     _ITEMS_CACHE["items"] = []
+    from services.brand_material_logic import invalidate_coverage_meta_cache
+    invalidate_coverage_meta_cache()
 
 
 def refresh_landing_catalog_data() -> dict[str, Any]:

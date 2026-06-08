@@ -7,14 +7,15 @@ from __future__ import annotations
 import io
 import os
 import re
-from collections import Counter
+import time
+from collections import Counter, defaultdict
 import shutil
 import subprocess
 import uuid
 from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -403,42 +404,21 @@ def _parse_freemir_sku_tokens(raw: str) -> list[str]:
     return sorted(found)
 
 
-def _skus_from_detail_search(db: Session, query: str) -> list[str]:
+def _skus_from_detail_search(
+    query: str,
+    search_index: dict[str, list[str]],
+) -> list[str]:
     """SKUs whose catalog nicknames / localized names match the query."""
     needle = (query or "").strip().lower()
-    if len(needle) < 2:
+    if len(needle) < 2 or not search_index:
         return []
-
-    from services.public_catalog_logic import _build_search_terms, _get_sku_detail_rows
-
-    detail_rows = _get_sku_detail_rows()
-    if not detail_rows:
-        return []
-
-    skus = [
-        str(row.get("SKU", "")).strip().upper()
-        for row in detail_rows
-        if str(row.get("SKU", "")).strip()
-    ]
-    if not skus:
-        return []
-
-    name_rows = {
-        (row.sku or "").strip().upper(): row
-        for row in db.query(FreemirName).filter(FreemirName.sku.in_(skus)).all()
-    }
 
     tokens = [t for t in needle.split() if t]
     matched: list[str] = []
 
-    for row in detail_rows:
-        sku = str(row.get("SKU", "")).strip().upper()
-        if not sku:
+    for sku, haystacks in search_index.items():
+        if not haystacks:
             continue
-        terms = [str(t).strip().lower() for t in _build_search_terms(row, sku, name_rows.get(sku)) if str(t).strip()]
-        if not terms:
-            continue
-        haystacks = terms + [" ".join(terms)]
         hit = any(needle in h for h in haystacks)
         if not hit and len(tokens) > 1:
             hit = all(any(tok in h for h in haystacks) for tok in tokens)
@@ -448,7 +428,100 @@ def _skus_from_detail_search(db: Session, query: str) -> list[str]:
     return matched
 
 
-def _apply_coverage_search(q, db: Session, sku_filter: str):
+_COVERAGE_META_TTL_SECONDS = 300
+_COVERAGE_META_CACHE: dict[str, Any] = {
+    "ts": 0.0,
+    "category": {},
+    "status": {},
+    "search_index": {},
+    "sorted_all_names": [],
+}
+
+
+def invalidate_coverage_meta_cache() -> None:
+    _COVERAGE_META_CACHE["ts"] = 0.0
+    _COVERAGE_META_CACHE["category"] = {}
+    _COVERAGE_META_CACHE["status"] = {}
+    _COVERAGE_META_CACHE["search_index"] = {}
+    _COVERAGE_META_CACHE["sorted_all_names"] = []
+
+
+def _build_detail_search_index(db: Session) -> dict[str, list[str]]:
+    from services.public_catalog_logic import _build_search_terms, _get_sku_detail_rows
+
+    detail_rows = _get_sku_detail_rows()
+    if not detail_rows:
+        return {}
+
+    skus = [
+        str(row.get("SKU", "")).strip().upper()
+        for row in detail_rows
+        if str(row.get("SKU", "")).strip()
+    ]
+    if not skus:
+        return {}
+
+    name_rows = {
+        (row.sku or "").strip().upper(): row
+        for row in db.query(FreemirName).filter(FreemirName.sku.in_(skus)).all()
+    }
+
+    index: dict[str, list[str]] = {}
+    for row in detail_rows:
+        sku = str(row.get("SKU", "")).strip().upper()
+        if not sku:
+            continue
+        terms = _build_search_terms(row, sku, name_rows.get(sku))
+        haystacks = [str(t).strip().casefold() for t in terms if str(t).strip()]
+        phrase = " ".join(haystacks)
+        if phrase:
+            haystacks.append(phrase)
+        if haystacks:
+            index[sku] = haystacks
+    return index
+
+
+def _get_coverage_meta(db: Session) -> tuple[dict[str, str], dict[str, str], dict[str, list[str]]]:
+    now = time.time()
+    cached_ts = float(_COVERAGE_META_CACHE.get("ts") or 0)
+    if (
+        cached_ts
+        and (now - cached_ts) < _COVERAGE_META_TTL_SECONDS
+        and _COVERAGE_META_CACHE.get("search_index")
+    ):
+        return (
+            _COVERAGE_META_CACHE["category"],
+            _COVERAGE_META_CACHE["status"],
+            _COVERAGE_META_CACHE["search_index"],
+        )
+
+    category_map = _build_sku_category_map()
+    status_map = _build_sku_status_map()
+    search_index = _build_detail_search_index(db)
+    _COVERAGE_META_CACHE.update({
+        "ts": now,
+        "category": category_map,
+        "status": status_map,
+        "search_index": search_index,
+        "sorted_all_names": [],
+    })
+    return category_map, status_map, search_index
+
+
+def _get_sorted_all_coverage_names(q, category_map: dict[str, str]) -> list:
+    now = time.time()
+    cached_ts = float(_COVERAGE_META_CACHE.get("ts") or 0)
+    sorted_all = _COVERAGE_META_CACHE.get("sorted_all_names") or []
+    if sorted_all and cached_ts and (now - cached_ts) < _COVERAGE_META_TTL_SECONDS:
+        return sorted_all
+
+    all_names = q.all()
+    sorted_names = _sort_coverage_names(all_names, category_map)
+    _COVERAGE_META_CACHE["sorted_all_names"] = sorted_names
+    return sorted_names
+
+
+def _apply_coverage_search(q, db: Session, sku_filter: str, search_index: dict[str, list[str]] | None = None):
     raw = (sku_filter or "").strip()
     if not raw:
         return q
@@ -463,7 +536,7 @@ def _apply_coverage_search(q, db: Session, sku_filter: str):
         return q.filter(FreemirName.sku.ilike(f"%{token}%"))
 
     like = f"%{raw}%"
-    extra_skus = _skus_from_detail_search(db, raw)
+    extra_skus = _skus_from_detail_search(raw, search_index or {})
     clauses = [
         FreemirName.sku.ilike(like),
         FreemirName.product_name.ilike(like),
@@ -746,17 +819,19 @@ def list_material_coverage(
     sku_filter: str = "",
 ) -> dict:
     """SKU_Info catalog vs Material Library — counts per SKU."""
+    category_map, status_map, search_index = _get_coverage_meta(db)
     q = db.query(FreemirName)
-    q = _apply_coverage_search(q, db, sku_filter)
+    q = _apply_coverage_search(q, db, sku_filter, search_index)
 
-    category_map = _build_sku_category_map()
-    status_map = _build_sku_status_map()
-    all_names = q.all()
-    total = len(all_names)
     page = max(1, int(page or 1))
     page_size = min(max(1, int(page_size or 50)), 200)
 
-    sorted_names = _sort_coverage_names(all_names, category_map)
+    if not (sku_filter or "").strip():
+        sorted_names = _get_sorted_all_coverage_names(q, category_map)
+    else:
+        sorted_names = _sort_coverage_names(q.all(), category_map)
+
+    total = len(sorted_names)
     offset = (page - 1) * page_size
     names = sorted_names[offset : offset + page_size]
 
@@ -770,23 +845,36 @@ def list_material_coverage(
             .filter(BrandMaterial.sku_key.in_(sku_keys))
             .all()
         )
+        materials_by_key: dict[str, list[BrandMaterial]] = defaultdict(list)
         for row in materials:
-            key = row.sku_key
+            materials_by_key[row.sku_key].append(row)
+
+        for key, rows in materials_by_key.items():
             if key not in stats:
                 stats[key] = _coverage_counts_template()
-            mt = _row_media_type(row)
-            cat = (row.category or "").lower()
-            if mt == "video":
-                if cat == "main":
-                    stats[key]["videoMain"] += 1
+            for row in rows:
+                mt = _row_media_type(row)
+                cat = (row.category or "").lower()
+                if mt == "video":
+                    if cat == "main":
+                        stats[key]["videoMain"] += 1
+                    else:
+                        stats[key]["videoSub"] += 1
                 else:
-                    stats[key]["videoSub"] += 1
-            else:
-                if cat == "main":
-                    stats[key]["photoMain"] += 1
-                    main_photo_by_key[key] = row.id
-                else:
-                    stats[key]["photoSub"] += 1
+                    if cat == "main":
+                        stats[key]["photoMain"] += 1
+                    else:
+                        stats[key]["photoSub"] += 1
+
+            main_photo = next(
+                (
+                    row for row in sorted(rows, key=lambda r: r.id or "")
+                    if row.category == "main" and _row_media_type(row) == "photo"
+                ),
+                None,
+            )
+            if main_photo:
+                main_photo_by_key[key] = main_photo.id
 
     items = []
     for n in names:

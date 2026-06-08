@@ -145,6 +145,34 @@ export async function getBrandMaterialPreviewBlob(id) {
 }
 
 const PREVIEW_CONCURRENCY = 6;
+const previewUrlCache = new Map();
+
+/** Cached blob URL for grid/folder thumbnails — avoids duplicate preview API calls. */
+export async function getBrandMaterialPreviewUrl(id) {
+    const key = String(id || '').trim();
+    if (!key) return null;
+    const cached = previewUrlCache.get(key);
+    if (cached) return cached;
+
+    const blob = await getBrandMaterialPreviewBlob(key);
+    if (!blob?.size) return null;
+    const url = URL.createObjectURL(blob);
+    previewUrlCache.set(key, url);
+    return url;
+}
+
+export function invalidateBrandMaterialPreviewCache(id) {
+    const key = String(id || '').trim();
+    if (!key) return;
+    const url = previewUrlCache.get(key);
+    if (url) URL.revokeObjectURL(url);
+    previewUrlCache.delete(key);
+}
+
+export function clearBrandMaterialPreviewCache() {
+    previewUrlCache.forEach((url) => URL.revokeObjectURL(url));
+    previewUrlCache.clear();
+}
 
 /** Load grid thumbnails in background (limited parallelism). */
 export async function prefetchBrandMaterialPreviews(items, { onPreview, isCancelled }) {
@@ -157,9 +185,9 @@ export async function prefetchBrandMaterialPreviews(items, { onPreview, isCancel
             const row = items[next];
             next += 1;
             try {
-                const blob = await getBrandMaterialPreviewBlob(row.id);
-                if (isCancelled?.() || !blob?.size) return;
-                onPreview(row.id, blob);
+                const url = await getBrandMaterialPreviewUrl(row.id);
+                if (isCancelled?.() || !url) return;
+                onPreview(row.id, url);
             } catch {
                 /* skip broken preview */
             }

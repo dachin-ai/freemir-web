@@ -1,13 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Empty, Pagination, Spin, Typography } from 'antd';
 import { CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import MaterialSkuFolderCard from '../components/brandMaterial/MaterialSkuFolderCard';
-import { listBrandMaterialCoverage } from '../utils/brandMaterialStore';
+import { listBrandMaterialCoverage, prefetchBrandMaterialPreviews } from '../utils/brandMaterialStore';
 import './brand-material-catalog.css';
 
 const { Text } = Typography;
-const PAGE_SIZE = 64;
+const PAGE_SIZE = 32; // 4 rows × 8 cols on desktop
+const SEARCH_DEBOUNCE_MS = 280;
 
 function groupItemsByCategory(items) {
     const sections = [];
@@ -24,50 +25,90 @@ function groupItemsByCategory(items) {
     return sections;
 }
 
-export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0 }) {
+export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0, coverOverrides = {} }) {
     const { t } = useTranslation();
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [page, setPage] = useState(1);
     const [total, setTotal] = useState(0);
     const [loadError, setLoadError] = useState(false);
+    const loadGenRef = useRef(0);
+    const debouncedSearchRef = useRef(debouncedSearch);
+    const itemsRef = useRef(items);
+    const [previewTick, setPreviewTick] = useState(0);
+
+    useEffect(() => {
+        itemsRef.current = items;
+    }, [items]);
+
+    useEffect(() => {
+        debouncedSearchRef.current = debouncedSearch;
+    }, [debouncedSearch]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
-            setDebouncedSearch((searchQuery || '').trim());
-        }, 400);
+            const next = (searchQuery || '').trim();
+            setDebouncedSearch(next);
+            setPage(1);
+        }, SEARCH_DEBOUNCE_MS);
         return () => clearTimeout(timer);
     }, [searchQuery]);
 
     const loadList = useCallback(async () => {
-        setLoading(true);
+        const gen = ++loadGenRef.current;
+        const hasItems = itemsRef.current.length > 0;
+        if (hasItems) {
+            setRefreshing(true);
+        } else {
+            setLoading(true);
+        }
         setLoadError(false);
+
         try {
             const result = await listBrandMaterialCoverage({
                 page,
                 pageSize: PAGE_SIZE,
-                sku: debouncedSearch,
+                sku: debouncedSearchRef.current,
             });
+            if (gen !== loadGenRef.current) return;
+
             setItems(result.items);
             setTotal(result.total);
+
+            const previewIds = (result.items || [])
+                .map((row) => coverOverrides[row.sku]?.materialId ?? row.mainPhotoMaterialId)
+                .filter(Boolean)
+                .map((id) => ({ id }));
+
+            if (previewIds.length > 0) {
+                prefetchBrandMaterialPreviews(previewIds, {
+                    isCancelled: () => gen !== loadGenRef.current,
+                    onPreview: () => {
+                        if (gen === loadGenRef.current) {
+                            setPreviewTick((n) => n + 1);
+                        }
+                    },
+                });
+            }
         } catch {
+            if (gen !== loadGenRef.current) return;
             setItems([]);
             setTotal(0);
             setLoadError(true);
         } finally {
-            setLoading(false);
+            if (gen === loadGenRef.current) {
+                setLoading(false);
+                setRefreshing(false);
+            }
         }
-    }, [page, debouncedSearch]);
+    }, [page, debouncedSearch, reloadToken, coverOverrides]);
 
     useEffect(() => {
         loadList();
-    }, [loadList, reloadToken]);
-
-    useEffect(() => {
-        setPage(1);
-    }, [debouncedSearch]);
+    }, [loadList]);
 
     const categorySections = useMemo(() => {
         const sections = groupItemsByCategory(items);
@@ -81,6 +122,8 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0 }) {
             }),
         }));
     }, [items]);
+
+    const showInitialLoading = loading && items.length === 0;
 
     return (
         <div className="bm-sku-list">
@@ -108,9 +151,12 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0 }) {
                                 <CloseOutlined />
                             </button>
                         ) : null}
+                        {refreshing ? (
+                            <Spin size="small" className="bm-catalog-search-spinner" aria-hidden />
+                        ) : null}
                     </div>
                 </label>
-                {debouncedSearch && !loading && (
+                {debouncedSearch && !showInitialLoading && (
                     <Text type="secondary" className="bm-catalog-search-meta">
                         {total > 0
                             ? t('landing.catalogSearchCount', { count: total })
@@ -125,7 +171,7 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0 }) {
                 </Text>
             )}
 
-            {loading ? (
+            {showInitialLoading ? (
                 <div className="bm-sku-folder-loading">
                     <Spin />
                 </div>
@@ -133,7 +179,7 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0 }) {
                 <Empty description={t('brandMaterial.skuListEmpty')} className="bm-sku-folder-empty" />
             ) : (
                 <>
-                    <div className="bm-sku-folder-grid">
+                    <div className={`bm-sku-folder-grid${refreshing ? ' is-refreshing' : ''}`}>
                         {categorySections.map((section, sectionIndex) => (
                             <React.Fragment key={section.category}>
                                 <div
@@ -151,6 +197,8 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0 }) {
                                         row={row}
                                         cardIndex={cardIndex}
                                         onOpen={onOpenSku}
+                                        coverOverride={coverOverrides[row.sku]}
+                                        previewTick={previewTick}
                                         t={t}
                                     />
                                 ))}

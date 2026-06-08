@@ -32,6 +32,17 @@
   line-height: 1.4;
 }
 
+.bm-catalog-search-spinner {
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+.bm-sku-folder-grid.is-refreshing {
+  opacity: 0.72;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
 /* ── SKU folder catalog grid (list page) ── */
 .bm-sku-list {
   min-width: 0;

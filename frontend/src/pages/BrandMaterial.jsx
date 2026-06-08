@@ -28,6 +28,7 @@ import {
     deleteBrandMaterial,
     deleteBrandMaterialsBulk,
     getBrandMaterialBlob,
+    getBrandMaterialPreviewBlob,
     displayLabel,
     storageFileName,
     normalizeSku,
@@ -137,6 +138,8 @@ export default function BrandMaterial() {
     const { logActivity } = useAuth();
     const [typeFilter, setTypeFilter] = useState('all');
     const [reloadToken, setReloadToken] = useState(0);
+    const [coverOverrides, setCoverOverrides] = useState({});
+    const coverOverridesRef = useRef({});
     const [uploadOpen, setUploadOpen] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [uploadRows, setUploadRows] = useState([]);
@@ -158,6 +161,50 @@ export default function BrandMaterial() {
     const [catalogSkus, setCatalogSkus] = useState([]);
 
     const bumpReload = useCallback(() => setReloadToken((n) => n + 1), []);
+
+    useEffect(() => {
+        coverOverridesRef.current = coverOverrides;
+    }, [coverOverrides]);
+
+    useEffect(() => () => {
+        Object.values(coverOverridesRef.current).forEach((entry) => {
+            if (entry?.blobUrl) URL.revokeObjectURL(entry.blobUrl);
+        });
+    }, []);
+
+    const revokeCoverOverride = useCallback((sku) => {
+        const key = normalizeSku(sku).toUpperCase();
+        if (!key) return;
+        setCoverOverrides((prev) => {
+            const cur = prev[key];
+            if (cur?.blobUrl) URL.revokeObjectURL(cur.blobUrl);
+            if (!cur) return prev;
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
+    }, []);
+
+    const applyCoverOverride = useCallback(async (sku, materialId) => {
+        const key = normalizeSku(sku).toUpperCase();
+        if (!key) return;
+        if (!materialId) {
+            revokeCoverOverride(key);
+            return;
+        }
+        try {
+            const blob = await getBrandMaterialPreviewBlob(materialId);
+            if (!blob?.size) return;
+            const blobUrl = URL.createObjectURL(blob);
+            setCoverOverrides((prev) => {
+                const old = prev[key];
+                if (old?.blobUrl) URL.revokeObjectURL(old.blobUrl);
+                return { ...prev, [key]: { materialId, blobUrl } };
+            });
+        } catch {
+            /* list reload will still pick up mainPhotoMaterialId */
+        }
+    }, [revokeCoverOverride]);
 
     useEffect(() => {
         let cancelled = false;
@@ -347,6 +394,13 @@ export default function BrandMaterial() {
                 mediaType: editMediaType,
                 note: editNote,
             });
+            if (editMediaType === 'photo') {
+                if (editCategory === 'main') {
+                    await applyCoverOverride(sku, editItem.id);
+                } else if (editItem.category === 'main') {
+                    revokeCoverOverride(sku);
+                }
+            }
             message.success(t('brandMaterial.msgEditOk'));
             closeEdit();
             await refreshAfterChange();
@@ -444,7 +498,7 @@ export default function BrandMaterial() {
             });
 
             try {
-                await uploadBrandMaterial({
+                const saved = await uploadBrandMaterial({
                     sku: row.sku,
                     category: row.category,
                     mediaType: row.mediaType || mediaTypeFromFile(row.file),
@@ -452,6 +506,9 @@ export default function BrandMaterial() {
                     file: row.file,
                     onProgress: (pct) => patchUploadRow(row.id, { uploadProgress: pct }),
                 });
+                if (saved.category === 'main' && saved.mediaType === 'photo') {
+                    await applyCoverOverride(saved.sku, saved.id);
+                }
                 patchUploadRow(row.id, {
                     uploadStatus: UPLOAD_STATUS.DONE,
                     uploadProgress: 100,
@@ -561,6 +618,7 @@ export default function BrandMaterial() {
     const handleDelete = async (id) => {
         try {
             await deleteBrandMaterial(id);
+            if (activeSku) revokeCoverOverride(activeSku);
             message.success(t('brandMaterial.msgDeleted'));
             closeEdit();
             await refreshAfterChange();
@@ -844,6 +902,7 @@ export default function BrandMaterial() {
                     <BrandMaterialSkuList
                         onOpenSku={openSkuFolder}
                         reloadToken={reloadToken}
+                        coverOverrides={coverOverrides}
                     />
                 </>
             )}
