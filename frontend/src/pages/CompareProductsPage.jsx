@@ -96,11 +96,8 @@ export default function CompareProductsPage() {
     const suggestions = useMemo(() => {
         const q = skuInput.trim();
         if (!q) return [];
-        return searchProducts(
-            products.filter((p) => !picked.includes(normalizeSkuInput(p.sku))),
-            q,
-            6,
-        );
+        const pool = products.filter((p) => !picked.includes(normalizeSkuInput(p.sku)));
+        return searchProducts(pool, q, pool.length);
     }, [products, skuInput, picked]);
 
     const addProduct = (productOrSku) => {
@@ -123,7 +120,6 @@ export default function CompareProductsPage() {
         }
 
         setPicked((prev) => [...prev, sku]);
-        setSkuInput('');
         setAddError('');
     };
 
@@ -281,104 +277,120 @@ export default function CompareProductsPage() {
                                 </span>
                             </div>
 
-                            <div className="landing-compare-slots" role="list">
-                                {slots.map((product, index) => (
-                                    <div
-                                        key={`slot-${index}`}
-                                        role="listitem"
-                                        className={`landing-compare-slot${product ? ' is-filled' : ''}`}
+                            <div className="landing-compare-search-block">
+                                <div className="landing-compare-add-bar">
+                                    <div className="landing-compare-search-field">
+                                        <SearchOutlined className="landing-compare-search-icon" aria-hidden />
+                                        <Input
+                                            value={skuInput}
+                                            onChange={(e) => {
+                                                setSkuInput(e.target.value);
+                                                setAddError('');
+                                            }}
+                                            onPressEnter={(e) => {
+                                                e.preventDefault();
+                                                handleAddSubmit();
+                                            }}
+                                            placeholder={t('landing.compareSkuPlaceholder')}
+                                            allowClear
+                                            bordered={false}
+                                            size="large"
+                                            className="landing-compare-search-input"
+                                            autoCapitalize="off"
+                                            autoCorrect="off"
+                                            spellCheck={false}
+                                            disabled={!canAddMore}
+                                            aria-autocomplete="list"
+                                            aria-controls="compare-sku-suggestions"
+                                        />
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="landing-btn landing-btn-primary landing-compare-add-btn"
+                                        onClick={handleAddSubmit}
+                                        disabled={!canAddMore || !skuInput.trim()}
                                     >
-                                        <span className="landing-compare-slot-index">{index + 1}</span>
-                                        {product ? (
-                                            <>
-                                                <p className="landing-compare-slot-name">{product.name}</p>
-                                                <button
-                                                    type="button"
-                                                    className="landing-compare-slot-remove"
-                                                    onClick={() => removeProduct(product.sku)}
-                                                    aria-label={t('landing.compareRemoveProduct', {
-                                                        name: product.name,
-                                                    })}
-                                                >
-                                                    <CloseOutlined />
-                                                </button>
-                                            </>
-                                        ) : (
+                                        <PlusOutlined />
+                                        {t('landing.compareAddButton')}
+                                    </button>
+                                </div>
+
+                                {addError && (
+                                    <p className="landing-compare-add-error" role="alert">{addError}</p>
+                                )}
+
+                                {skuInput.trim() && suggestions.length > 0 && canAddMore && (
+                                    <div
+                                        id="compare-sku-suggestions"
+                                        className="landing-compare-suggest-panel"
+                                        role="listbox"
+                                    >
+                                        {suggestions.map((p) => (
+                                            <button
+                                                key={p.sku}
+                                                type="button"
+                                                role="option"
+                                                className="landing-compare-suggest-item"
+                                                onClick={() => addProduct(p)}
+                                            >
+                                                <span className="landing-compare-suggest-media">
+                                                    <ProductThumb
+                                                        src={p.image_url}
+                                                        alt=""
+                                                        className="landing-compare-suggest-thumb"
+                                                    />
+                                                </span>
+                                                <span className="landing-compare-suggest-meta">
+                                                    <span className="landing-compare-suggest-sku">{p.sku}</span>
+                                                    <span className="landing-compare-suggest-name">{p.name}</span>
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="landing-compare-slots landing-compare-slots--compact" role="list">
+                                {slots.map((product, index) => (
+                                    product ? (
+                                        <button
+                                            key={`slot-${index}`}
+                                            type="button"
+                                            role="listitem"
+                                            className="landing-compare-slot is-filled is-removable"
+                                            onClick={() => removeProduct(product.sku)}
+                                            aria-label={t('landing.compareRemoveProduct', {
+                                                name: product.name,
+                                            })}
+                                            title={t('landing.compareRemoveProduct', { name: product.name })}
+                                        >
+                                            <span className="landing-compare-slot-index">{index + 1}</span>
+                                            <span className="landing-compare-slot-thumb-wrap" aria-hidden>
+                                                <ProductThumb
+                                                    src={product.image_url}
+                                                    alt=""
+                                                    className="landing-compare-slot-thumb"
+                                                />
+                                            </span>
+                                            <p className="landing-compare-slot-name" title={product.name}>
+                                                {product.name}
+                                            </p>
+                                            <CloseOutlined className="landing-compare-slot-remove-icon" aria-hidden />
+                                        </button>
+                                    ) : (
+                                        <div
+                                            key={`slot-${index}`}
+                                            role="listitem"
+                                            className="landing-compare-slot"
+                                        >
+                                            <span className="landing-compare-slot-index">{index + 1}</span>
                                             <span className="landing-compare-slot-empty">
                                                 {t('landing.compareSlotEmpty')}
                                             </span>
-                                        )}
-                                    </div>
+                                        </div>
+                                    )
                                 ))}
                             </div>
-
-                            <div className="landing-compare-add-bar">
-                                <div className="landing-compare-search-field">
-                                    <SearchOutlined className="landing-compare-search-icon" aria-hidden />
-                                    <Input
-                                        value={skuInput}
-                                        onChange={(e) => {
-                                            setSkuInput(e.target.value);
-                                            setAddError('');
-                                        }}
-                                        onPressEnter={(e) => {
-                                            e.preventDefault();
-                                            handleAddSubmit();
-                                        }}
-                                        placeholder={t('landing.compareSkuPlaceholder')}
-                                        allowClear
-                                        bordered={false}
-                                        size="large"
-                                        className="landing-compare-search-input"
-                                        disabled={!canAddMore}
-                                        aria-autocomplete="list"
-                                        aria-controls="compare-sku-suggestions"
-                                    />
-                                </div>
-                                <button
-                                    type="button"
-                                    className="landing-btn landing-btn-primary landing-compare-add-btn"
-                                    onClick={handleAddSubmit}
-                                    disabled={!canAddMore || !skuInput.trim()}
-                                >
-                                    <PlusOutlined />
-                                    {t('landing.compareAddButton')}
-                                </button>
-                            </div>
-
-                            {addError && (
-                                <p className="landing-compare-add-error" role="alert">{addError}</p>
-                            )}
-
-                            {skuInput.trim() && suggestions.length > 0 && canAddMore && (
-                                <div
-                                    id="compare-sku-suggestions"
-                                    className="landing-compare-suggest-panel"
-                                    role="listbox"
-                                >
-                                    {suggestions.map((p) => (
-                                        <button
-                                            key={p.sku}
-                                            type="button"
-                                            role="option"
-                                            className="landing-compare-suggest-item"
-                                            onClick={() => addProduct(p)}
-                                        >
-                                            <span className="landing-compare-suggest-media">
-                                                <ProductThumb
-                                                    src={p.image_url}
-                                                    alt=""
-                                                    className="landing-compare-suggest-thumb"
-                                                />
-                                            </span>
-                                            <span className="landing-compare-suggest-meta">
-                                                <span className="landing-compare-suggest-sku">{p.sku}</span>
-                                                <span className="landing-compare-suggest-name">{p.name}</span>
-                                            </span>
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
 
                             {selected.length === 0 && (
                                 <p className="landing-compare-workspace-hint">{t('landing.compareEmpty')}</p>

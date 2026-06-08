@@ -34,3 +34,16 @@ export const LANDING_CONTACT_MAPS_URL = 'https://maps.app.goo.gl/7PHpJrQhga9o3BE
 export const LANDING_OFFICIAL_STORE_URL = 'https://freemirofficial.com/';
 
 export const LANDING_SHOPEE_STORE_URL = 'https://shopee.co.id/freemirofficial';
+
+export const LANDING_BROCHURE_SOCIAL = [
+    {
+        id: 'instagram',
+        href: 'https://www.instagram.com/freemirindonesia/',
+        handle: '@freemirindonesia',
+    },
+    {
+        id: 'tiktok',
+        href: 'https://www.tiktok.com/@freemirindonesia',
+        handle: '@freemirindonesia',
+    },
+];

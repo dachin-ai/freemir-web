@@ -14,6 +14,37 @@ export function seriesNameToSlug(raw) {
     return normalized;
 }
 
+/** Series with fewer products are combined into one showcase block at the bottom. */
+export const SMALL_SERIES_THRESHOLD = 6;
+
+export function partitionSeriesGroups(groups = []) {
+    const majorSeries = [];
+    const minorSeries = [];
+
+    groups.forEach((group) => {
+        const count = group.products?.length ?? group.count ?? 0;
+        if (count >= SMALL_SERIES_THRESHOLD) {
+            majorSeries.push(group);
+        } else if (count > 0) {
+            minorSeries.push(group);
+        }
+    });
+
+    return { majorSeries, minorSeries };
+}
+
+export function mergeMinorSeriesGroups(minorSeries = []) {
+    if (minorSeries.length === 0) return null;
+
+    const products = minorSeries.flatMap((group) => group.products || []);
+    return {
+        key: '__minor_series_merged__',
+        count: products.length,
+        products,
+        names: minorSeries.map((g) => g.name).filter(Boolean),
+    };
+}
+
 export function getSeriesDisplayTitle(raw, t) {
     const slug = seriesNameToSlug(raw);
     const key = SERIES_I18N_KEY_BY_SLUG[slug];

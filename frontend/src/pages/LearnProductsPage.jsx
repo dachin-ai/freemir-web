@@ -192,6 +192,9 @@ export default function LearnProductsPage() {
                         bordered={false}
                         size="large"
                         className="landing-learn-search-input"
+                        autoCapitalize="off"
+                        autoCorrect="off"
+                        spellCheck={false}
                         aria-autocomplete="list"
                         aria-controls="learn-product-suggestions"
                     />

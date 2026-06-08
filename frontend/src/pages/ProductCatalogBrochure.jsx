@@ -21,11 +21,20 @@ import {
     LAYOUT_TYPES,
     buildBrochurePages,
 } from '../utils/productCatalogBrochure';
+import CountryFlag from '../components/CountryFlag';
+import SocialIcon from '../components/SocialIcon';
+import {
+    LANDING_BROCHURE_SOCIAL,
+    LANDING_CONTACT_ADDRESS_KEY,
+    LANDING_CONTACT_MAPS_URL,
+    LANDING_CONTACT_REGIONS,
+    LANDING_OFFICIAL_STORE_URL,
+    LANDING_SHOPEE_STORE_URL,
+} from '../data/landingContact';
 import './product-catalog-brochure.css';
 
 const TOP_TIER_KEY = '__top_tier__';
 
-/* ── Helpers ── */
 function getAllProducts(blocks) {
     return (blocks || []).flatMap((b) => b.products || []);
 }
@@ -40,130 +49,177 @@ function flattenToItems(blocks, skipCatLabels = false) {
     const items = [];
     let lastCat = null;
     for (const block of (blocks || [])) {
-        if (!skipCatLabels && block.category !== TOP_TIER_KEY && block.category !== lastCat) {
-            items.push({ type: 'cat', label: block.category, continued: block.continued });
+        const showCatLabel = !skipCatLabels
+            && block.category !== TOP_TIER_KEY
+            && (block.category !== lastCat || block.continued);
+        const products = block.products || [];
+        products.forEach((p, idx) => {
+            items.push({
+                type: 'product',
+                product: p,
+                categoryLabel: showCatLabel && idx === 0
+                    ? { label: block.category, continued: Boolean(block.continued) }
+                    : null,
+            });
+        });
+        if (!skipCatLabels && block.category !== TOP_TIER_KEY) {
             lastCat = block.category;
-        }
-        for (const p of (block.products || [])) {
-            items.push({ type: 'product', product: p });
         }
     }
     return items;
 }
 
-/* ── Page header (navy bar) ── */
 function PageHeader({ categories, accent, label, t }) {
-    const catStr = categories.slice(0, 4).join(' · ');
+    const catStr = categories.slice(0, 3).join(' · ');
     return (
         <header className="brochure-page-header" data-accent={accent || 'blue'}>
-            <div className="brochure-header-left">
+            <div className="brochure-header-brand-row">
                 <img src="/logo.png" alt="freemir" className="brochure-header-logo" />
-                {catStr && <span className="brochure-header-cats">{catStr}</span>}
+                <span className="brochure-header-doc-title">{t('landing.brochureDocTitle')}</span>
             </div>
-            <div className="brochure-header-right">
+            <div className="brochure-header-meta">
                 {label && <span className="brochure-header-badge">{label}</span>}
-                <span className="brochure-header-brand">freemir</span>
+                {catStr ? <span className="brochure-header-cats">{catStr}</span> : null}
             </div>
+            <span className="brochure-header-accent" aria-hidden />
         </header>
     );
 }
 
-/* ── Flat grid (5-col, 4-col, or 3-col) ── */
-function FlatGrid({ blocks, gridClass, cardVariant, accent, currency, comingSoon }) {
-    const items = flattenToItems(blocks);
+function PageFooter({ pageNum, totalPages, t }) {
     return (
-        <div className={`${gridClass}`}>
-            {items.map((item, i) => {
-                if (item.type === 'cat') {
-                    return (
-                        <div key={`cat-${i}`} className="brochure-inline-cat">
-                            <span className="brochure-inline-cat-text">
-                                {item.label}{item.continued ? ' ›' : ''}
-                            </span>
-                            <span className="brochure-inline-cat-bar" />
-                        </div>
-                    );
-                }
-                return (
+        <footer className="brochure-page-footer">
+            <div className="brochure-footer-left">
+                <span className="brochure-footer-brand">freemir</span>
+                <span className="brochure-footer-dot" aria-hidden />
+                <span className="brochure-footer-tagline">{t('landing.brochureFooterTagline')}</span>
+            </div>
+            <span className="brochure-footer-page">
+                {t('landing.brochurePageLabel')} {pageNum}
+                <span className="brochure-footer-page-sep">/</span>
+                {totalPages}
+            </span>
+        </footer>
+    );
+}
+
+function InlineCategoryLabel({ label, continued, accent, t }) {
+    return (
+        <div className="brochure-inline-cat-head" data-accent={accent}>
+            <span className="brochure-inline-cat-eyebrow">{t('landing.brochureCategoryEyebrow')}</span>
+            <span className="brochure-inline-cat-name">
+                {label}
+                {continued ? (
+                    <span className="brochure-inline-cat-cont">
+                        {' '}
+                        · {t('landing.brochureContinued')}
+                    </span>
+                ) : null}
+            </span>
+        </div>
+    );
+}
+
+function FlatGrid({ blocks, gridClass, cardVariant, accent, currency, comingSoon, t }) {
+    const items = flattenToItems(blocks);
+    const cols = gridClass === 'brochure-grid-4' ? 4 : 0;
+    const sparse = cols > 0 && items.length > 0 && items.length < cols;
+    const rows = cols > 0 ? Math.ceil(items.length / cols) : 0;
+    const gridStyle = cols > 0 && !sparse && rows > 0
+        ? { gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))` }
+        : undefined;
+    const gridClassName = sparse ? `${gridClass} ${gridClass}--sparse` : gridClass;
+    return (
+        <div className={gridClassName} style={gridStyle}>
+            {items.map((item) => (
+                <div key={item.product.sku} className="brochure-grid-cell">
+                    {item.categoryLabel ? (
+                        <InlineCategoryLabel
+                            label={item.categoryLabel.label}
+                            continued={item.categoryLabel.continued}
+                            accent={accent}
+                            t={t}
+                        />
+                    ) : null}
                     <BrochureProductCard
-                        key={item.product.sku}
                         product={item.product}
                         currency={currency}
                         comingSoon={comingSoon}
                         variant={cardVariant}
                     />
-                );
-            })}
+                </div>
+            ))}
         </div>
     );
 }
 
-/* ══════════════════════════════════════
-   LAYOUT RENDERERS
-   ══════════════════════════════════════ */
-
-/** Five-col: 5 × 2 compact cards */
-function FiveColPage({ page, currency, comingSoon, t }) {
+function ContentPageShell({ page, currency, comingSoon, t, pageNum, totalPages, children }) {
     return (
         <div className="brochure-page-inner" data-accent={page.accent}>
-            <PageHeader categories={getCategories(page.blocks)} accent={page.accent} t={t} />
-            <div className="brochure-page-body">
-                <FlatGrid
-                    blocks={page.blocks}
-                    gridClass="brochure-grid-5"
-                    cardVariant="compact"
-                    accent={page.accent}
-                    currency={currency}
-                    comingSoon={comingSoon}
-                />
-            </div>
+            <PageHeader
+                categories={getCategories(page.blocks)}
+                accent={page.accent}
+                label={page.headerLabel}
+                t={t}
+            />
+            <div className="brochure-page-body">{children}</div>
+            <PageFooter pageNum={pageNum} totalPages={totalPages} t={t} />
         </div>
     );
 }
 
-/** Four-col: 4 × 2 standard cards */
-function FourColPage({ page, currency, comingSoon, t }) {
+function FiveColPage({ page, currency, comingSoon, t, pageNum, totalPages }) {
     return (
-        <div className="brochure-page-inner" data-accent={page.accent}>
-            <PageHeader categories={getCategories(page.blocks)} accent={page.accent} t={t} />
-            <div className="brochure-page-body">
-                <FlatGrid
-                    blocks={page.blocks}
-                    gridClass="brochure-grid-4"
-                    cardVariant="standard"
-                    accent={page.accent}
-                    currency={currency}
-                    comingSoon={comingSoon}
-                />
-            </div>
-        </div>
+        <ContentPageShell page={page} currency={currency} comingSoon={comingSoon} t={t} pageNum={pageNum} totalPages={totalPages}>
+            <FlatGrid
+                blocks={page.blocks}
+                gridClass="brochure-grid-5"
+                cardVariant="compact"
+                accent={page.accent}
+                currency={currency}
+                comingSoon={comingSoon}
+                t={t}
+            />
+        </ContentPageShell>
     );
 }
 
-/** Three-col: 3 × 2 large cards (most detail visible) */
-function ThreeColPage({ page, currency, comingSoon, t }) {
+function FourColPage({ page, currency, comingSoon, t, pageNum, totalPages }) {
     return (
-        <div className="brochure-page-inner" data-accent={page.accent}>
-            <PageHeader categories={getCategories(page.blocks)} accent={page.accent} t={t} />
-            <div className="brochure-page-body">
-                <FlatGrid
-                    blocks={page.blocks}
-                    gridClass="brochure-grid-3"
-                    cardVariant="large"
-                    accent={page.accent}
-                    currency={currency}
-                    comingSoon={comingSoon}
-                />
-            </div>
-        </div>
+        <ContentPageShell page={page} currency={currency} comingSoon={comingSoon} t={t} pageNum={pageNum} totalPages={totalPages}>
+            <FlatGrid
+                blocks={page.blocks}
+                gridClass="brochure-grid-4"
+                cardVariant="compact"
+                accent={page.accent}
+                currency={currency}
+                comingSoon={comingSoon}
+                t={t}
+            />
+        </ContentPageShell>
     );
 }
 
-/** Hero-left: 1 large hero (dark panel) + 3×2 standard cards */
-function HeroLeftPage({ page, currency, comingSoon, t, isTopTier }) {
+function ThreeColPage({ page, currency, comingSoon, t, pageNum, totalPages }) {
+    return (
+        <ContentPageShell page={page} currency={currency} comingSoon={comingSoon} t={t} pageNum={pageNum} totalPages={totalPages}>
+            <FlatGrid
+                blocks={page.blocks}
+                gridClass="brochure-grid-3"
+                cardVariant="large"
+                accent={page.accent}
+                currency={currency}
+                comingSoon={comingSoon}
+                t={t}
+            />
+        </ContentPageShell>
+    );
+}
+
+function HeroLeftPage({ page, currency, comingSoon, t, isTopTier, pageNum, totalPages }) {
     const allProds = getAllProducts(page.blocks);
     const hero = allProds[0];
-    const compact = allProds.slice(1, 7);
+    const compact = allProds.slice(1, 5);
     const cats = isTopTier ? [] : getCategories(page.blocks);
     const accent = page.accent || 'blue';
     const label = isTopTier ? t('landing.brochureTopTierEyebrow') : null;
@@ -173,8 +229,8 @@ function HeroLeftPage({ page, currency, comingSoon, t, isTopTier }) {
             <PageHeader categories={cats} accent={accent} label={label} t={t} />
             <div className="brochure-page-body">
                 <div className="brochure-hero-left-body">
-                    {/* Hero panel */}
                     <div className="brochure-hero-panel" data-accent={accent}>
+                        <div className="brochure-hero-panel-glow" aria-hidden />
                         <div className="brochure-hero-panel-inner">
                             {isTopTier && (
                                 <div className="brochure-hero-eyebrow">
@@ -192,62 +248,210 @@ function HeroLeftPage({ page, currency, comingSoon, t, isTopTier }) {
                             )}
                         </div>
                     </div>
-                    {/* Compact grid */}
                     <div className="brochure-compact-panel">
-                        <div className="brochure-grid-3" style={{ height: '100%' }}>
+                        <div className="brochure-grid-2 brochure-grid-2--hero-side">
                             {compact.map((p) => (
                                 <BrochureProductCard
                                     key={p.sku}
                                     product={p}
                                     currency={currency}
                                     comingSoon={comingSoon}
-                                    variant="standard"
+                                    variant="compact"
                                 />
                             ))}
                         </div>
                     </div>
                 </div>
             </div>
+            <PageFooter pageNum={pageNum} totalPages={totalPages} t={t} />
         </div>
     );
 }
 
-/* ══════════════════════════════════════
-   COVER PAGE — navy panel + image
-   ══════════════════════════════════════ */
-function CoverPage({ t }) {
+function ContactPage({ t, pageNum, totalPages }) {
+    const storeLinks = [
+        {
+            key: 'official',
+            href: LANDING_OFFICIAL_STORE_URL,
+            label: t('landing.brochureContactOfficialStore'),
+            sub: 'freemirofficial.com',
+        },
+        {
+            key: 'shopee',
+            href: LANDING_SHOPEE_STORE_URL,
+            label: t('landing.brochureContactShopee'),
+            sub: 'shopee.co.id/freemirofficial',
+        },
+        {
+            key: 'maps',
+            href: LANDING_CONTACT_MAPS_URL,
+            label: t('landing.brochureContactMaps'),
+            sub: t('landing.contactAddressLabel'),
+        },
+    ];
+
+    const socialLabelKey = {
+        instagram: 'landing.brochureContactInstagram',
+        tiktok: 'landing.brochureContactTikTok',
+    };
+
     return (
-        <div className="brochure-cover">
-            <div className="brochure-cover-panel">
-                <div className="brochure-cover-panel-inner">
-                    <img src="/logo.png" alt="freemir" className="brochure-cover-logo" />
-                    <p className="brochure-cover-eyebrow">{t('landing.brochureCoverEyebrow')}</p>
-                    <h1 className="brochure-cover-title">
-                        {t('landing.brochureCoverTitle')}
-                    </h1>
-                    <p className="brochure-cover-sub">{t('landing.brochureCoverSub')}</p>
-                    <div className="brochure-cover-spacer" />
-                    <div className="brochure-cover-footer">
-                        <span className="brochure-cover-year">2024 – 2025</span>
-                        <span className="brochure-cover-tagline">Premium Kitchen Solutions</span>
+        <div className="brochure-page-inner" data-accent="blue">
+            <PageHeader categories={[]} accent="blue" t={t} />
+            <div className="brochure-page-body brochure-contact-body">
+                <div className="brochure-contact-layout">
+                    <aside className="brochure-contact-aside">
+                        <p className="brochure-contact-eyebrow">{t('landing.brochureContactEyebrow')}</p>
+                        <h2 className="brochure-contact-title">{t('landing.contactUsTitle')}</h2>
+                        <p className="brochure-contact-lead">{t('landing.brochureContactLead')}</p>
+
+                        <div className="brochure-contact-social-block">
+                            <span className="brochure-contact-social-label">
+                                {t('landing.brochureContactSocialTitle')}
+                            </span>
+                            <div className="brochure-contact-social-row">
+                                {LANDING_BROCHURE_SOCIAL.map((social) => (
+                                    <a
+                                        key={social.id}
+                                        href={social.href}
+                                        className={`brochure-contact-social-pill brochure-contact-social-pill--${social.id}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
+                                        <span className="brochure-contact-social-icon" aria-hidden>
+                                            <SocialIcon id={social.id} />
+                                        </span>
+                                        <span className="brochure-contact-social-copy">
+                                            <span className="brochure-contact-social-name">
+                                                {t(socialLabelKey[social.id])}
+                                            </span>
+                                            <span className="brochure-contact-social-handle">{social.handle}</span>
+                                        </span>
+                                    </a>
+                                ))}
+                            </div>
+                        </div>
+
+                        <p className="brochure-contact-mission">{t('landing.footerMission')}</p>
+                    </aside>
+
+                    <div className="brochure-contact-main">
+                        <div className="brochure-contact-regions">
+                            {LANDING_CONTACT_REGIONS.map((region) => (
+                                <article key={region.id} className="brochure-contact-region">
+                                    <header className="brochure-contact-region-head">
+                                        <CountryFlag
+                                            code={region.countryCode}
+                                            alt=""
+                                            className="brochure-contact-flag"
+                                        />
+                                        <h3>{t(region.countryKey)}</h3>
+                                    </header>
+                                    <div className="brochure-contact-channels">
+                                        <a href={region.email.href} className="brochure-contact-link">
+                                            <span className="brochure-contact-link-label">{t('landing.contactEmail')}</span>
+                                            <span className="brochure-contact-link-value">{region.email.display}</span>
+                                        </a>
+                                        <a
+                                            href={region.whatsapp.href}
+                                            className="brochure-contact-link brochure-contact-link--whatsapp"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                        >
+                                            <span className="brochure-contact-link-label">{t('landing.contactWhatsApp')}</span>
+                                            <span className="brochure-contact-link-value">{region.whatsapp.display}</span>
+                                        </a>
+                                    </div>
+                                </article>
+                            ))}
+                        </div>
+
+                        <article className="brochure-contact-stores">
+                            <header className="brochure-contact-stores-head">
+                                <h3>{t('landing.brochureContactLinksTitle')}</h3>
+                            </header>
+                            <div className="brochure-contact-store-grid">
+                                {storeLinks.map((link) => (
+                                    <a
+                                        key={link.key}
+                                        href={link.href}
+                                        className="brochure-contact-store-card"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
+                                        <span className="brochure-contact-store-label">{link.label}</span>
+                                        <span className="brochure-contact-store-url">{link.sub}</span>
+                                    </a>
+                                ))}
+                            </div>
+                        </article>
+
+                        <div className="brochure-contact-meta">
+                            <div className="brochure-contact-meta-block">
+                                <span className="brochure-contact-meta-label">{t('landing.contactAddressLabel')}</span>
+                                <p className="brochure-contact-meta-value">{t(LANDING_CONTACT_ADDRESS_KEY)}</p>
+                            </div>
+                            <div className="brochure-contact-meta-block">
+                                <span className="brochure-contact-meta-label">{t('landing.contactHoursLabel')}</span>
+                                <p className="brochure-contact-meta-value">{t('landing.contactHours')}</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div className="brochure-cover-divider" />
             </div>
+            <PageFooter pageNum={pageNum} totalPages={totalPages} t={t} />
+        </div>
+    );
+}
+
+function CoverPage({ t }) {
+    const year = new Date().getFullYear();
+    return (
+        <div className="brochure-cover">
             <div
                 className="brochure-cover-image"
                 style={{ backgroundImage: 'url(/Kitchen_BG.png)' }}
-            />
+            >
+                <span className="brochure-cover-image-overlay" aria-hidden />
+            </div>
+            <div className="brochure-cover-panel">
+                <div className="brochure-cover-panel-inner">
+                    <div className="brochure-cover-top">
+                        <img src="/logo.png" alt="freemir" className="brochure-cover-logo" />
+                        <span className="brochure-cover-edition">{t('landing.brochureCoverEdition', { year })}</span>
+                    </div>
+                    <div className="brochure-cover-copy">
+                        <p className="brochure-cover-eyebrow">{t('landing.brochureCoverEyebrow')}</p>
+                        <h1 className="brochure-cover-title">
+                            <span className="brochure-cover-title-brand">freemir</span>
+                            <span className="brochure-cover-title-line">{t('landing.brochureCoverTitleLine')}</span>
+                        </h1>
+                        <p className="brochure-cover-sub">{t('landing.brochureCoverSub')}</p>
+                    </div>
+                    <div className="brochure-cover-footer">
+                        <span className="brochure-cover-tagline">{t('landing.brochureFooterTagline')}</span>
+                        <span className="brochure-cover-confidential">{t('landing.brochureCoverConfidential')}</span>
+                    </div>
+                </div>
+                <span className="brochure-cover-accent-line" aria-hidden />
+            </div>
         </div>
     );
 }
 
-/* ══════════════════════════════════════
-   PAGE DISPATCHER
-   ══════════════════════════════════════ */
-function BrochurePageContent({ page, currency, comingSoon, t }) {
+function BrochurePageContent({ page, currency, comingSoon, t, pageNum, totalPages }) {
     if (page.type === BROCHURE_PAGE_TYPES.COVER) {
         return <CoverPage t={t} />;
+    }
+
+    if (page.type === BROCHURE_PAGE_TYPES.CONTACT) {
+        return (
+            <ContactPage
+                t={t}
+                pageNum={pageNum}
+                totalPages={totalPages}
+            />
+        );
     }
 
     if (page.type === BROCHURE_PAGE_TYPES.TOP_TIER) {
@@ -258,25 +462,60 @@ function BrochurePageContent({ page, currency, comingSoon, t }) {
                 comingSoon={comingSoon}
                 t={t}
                 isTopTier
+                pageNum={pageNum}
+                totalPages={totalPages}
             />
         );
     }
 
     switch (page.layout) {
         case LAYOUT_TYPES.HERO_LEFT:
-            return <HeroLeftPage page={page} currency={currency} comingSoon={comingSoon} t={t} />;
+            return (
+                <HeroLeftPage
+                    page={page}
+                    currency={currency}
+                    comingSoon={comingSoon}
+                    t={t}
+                    pageNum={pageNum}
+                    totalPages={totalPages}
+                />
+            );
         case LAYOUT_TYPES.FOUR_COL:
-            return <FourColPage page={page} currency={currency} comingSoon={comingSoon} t={t} />;
+            return (
+                <FourColPage
+                    page={page}
+                    currency={currency}
+                    comingSoon={comingSoon}
+                    t={t}
+                    pageNum={pageNum}
+                    totalPages={totalPages}
+                />
+            );
         case LAYOUT_TYPES.THREE_COL:
-            return <ThreeColPage page={page} currency={currency} comingSoon={comingSoon} t={t} />;
+            return (
+                <ThreeColPage
+                    page={page}
+                    currency={currency}
+                    comingSoon={comingSoon}
+                    t={t}
+                    pageNum={pageNum}
+                    totalPages={totalPages}
+                />
+            );
         default:
-            return <FiveColPage page={page} currency={currency} comingSoon={comingSoon} t={t} />;
+            return (
+                <FiveColPage
+                    page={page}
+                    currency={currency}
+                    comingSoon={comingSoon}
+                    t={t}
+                    pageNum={pageNum}
+                    totalPages={totalPages}
+                />
+            );
     }
 }
 
-/* ══════════════════════════════════════
-   MAIN COMPONENT
-   ══════════════════════════════════════ */
 export default function ProductCatalogBrochure() {
     const { t, i18n } = useTranslation();
     const { isDark, toggleTheme } = useTheme();
@@ -403,6 +642,8 @@ export default function ProductCatalogBrochure() {
                                     currency={currency}
                                     comingSoon={comingSoon}
                                     t={t}
+                                    pageNum={index + 1}
+                                    totalPages={totalPages}
                                 />
                             </section>
                         ))}

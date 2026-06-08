@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    AutoComplete, Button, Card, Checkbox, Empty, Flex, Input, Modal, Segmented, Select, Space,
-    Tag, Typography, Upload, message, Popconfirm, Table, Tooltip,
+    AutoComplete, Button, Card, Checkbox, Empty, Flex, Input, Modal, Progress, Segmented,
+    Select, Space, Tag, Typography, Upload, message, Popconfirm, Table, Tooltip,
 } from 'antd';
 import {
     CloudUploadOutlined, DownloadOutlined, DeleteOutlined,
     ReloadOutlined, MinusCircleOutlined, InboxOutlined,
-    EditOutlined, FileZipOutlined,
+    EditOutlined, FileZipOutlined, CheckCircleOutlined, CloseCircleOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -34,6 +34,12 @@ import {
 } from '../utils/brandMaterialStore';
 import { isMediaFile, isVideoMime, mediaTypeFromFile } from '../utils/brandMaterialMedia';
 import { downloadMaterialsAsZip } from '../utils/brandMaterialDownload';
+import {
+    UPLOAD_STATUS,
+    formatUploadBytes,
+    isUploadFileTooLarge,
+    uploadErrorLabel,
+} from '../utils/brandMaterialUploadQueue';
 
 import {
     buildSkuIndex,
@@ -80,7 +86,7 @@ function MediaPreview({ previewUrl, mimeType, alt, style = {} }) {
     return <img src={previewUrl} alt={alt || ''} style={boxStyle} />;
 }
 
-function SkuField({ value, onChange, skuIndex, placeholder }) {
+function SkuField({ value, onChange, skuIndex, placeholder, disabled = false }) {
     const [search, setSearch] = useState(value || '');
     useEffect(() => {
         setSearch(value || '');
@@ -98,6 +104,7 @@ function SkuField({ value, onChange, skuIndex, placeholder }) {
             style={{ width: '100%' }}
             maxLength={SKU_LENGTH}
             placeholder={placeholder}
+            disabled={disabled}
             onSearch={(v) => {
                 const n = normalizeSkuInput(v);
                 setSearch(n);
@@ -274,7 +281,7 @@ export default function BrandMaterial() {
             clearSelection();
             closeBulkDeleteModal();
             await refreshAfterChange();
-            logActivity('Material Library (Bulk Delete)');
+            logActivity('Product Gallery (Bulk Delete)');
         } catch {
             message.error(t('brandMaterial.msgBulkDeleteFail'));
         } finally {
@@ -295,7 +302,7 @@ export default function BrandMaterial() {
                 return;
             }
             message.success(t('brandMaterial.msgZipOk', { count }));
-            logActivity(`Material Library (Download ${zipLabel})`);
+            logActivity(`Product Gallery (Download ${zipLabel})`);
         } catch {
             message.error(t('brandMaterial.msgDownloadFail'));
         } finally {
@@ -346,7 +353,7 @@ export default function BrandMaterial() {
             if (activeSku && sku !== activeSku) {
                 navigate(toolsPath(`brand-material/${encodeURIComponent(sku)}`));
             }
-            logActivity('Material Library (Edit)');
+            logActivity('Product Gallery (Edit)');
         } catch (e) {
             const code = e?.message;
             if (code === 'TYPE_MIME_MISMATCH') message.error(t('brandMaterial.msgTypeMismatch'));
@@ -370,10 +377,109 @@ export default function BrandMaterial() {
     };
 
     const closeUploadModal = () => {
+        if (uploading) {
+            message.warning(t('brandMaterial.uploadInProgressWarn'));
+            return;
+        }
         setUploadOpen(false);
         setUploadRows([]);
         revokeRowPreviews(rowPreviews);
         setRowPreviews({});
+    };
+
+    const patchUploadRow = (id, patch) => {
+        setUploadRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+    };
+
+    const uploadQueueSummary = useMemo(() => {
+        const total = uploadRows.length;
+        const done = uploadRows.filter((r) => r.uploadStatus === UPLOAD_STATUS.DONE).length;
+        const failed = uploadRows.filter((r) => r.uploadStatus === UPLOAD_STATUS.ERROR).length;
+        const uploadingCount = uploadRows.filter((r) => r.uploadStatus === UPLOAD_STATUS.UPLOADING).length;
+        const ready = uploadRows.filter((r) => r.uploadStatus === UPLOAD_STATUS.READY).length;
+        const started = done + failed + uploadingCount;
+        const percent = total ? Math.round(((done + failed) / total) * 100) : 0;
+        return { total, done, failed, uploadingCount, ready, started, percent };
+    }, [uploadRows]);
+
+    const runUploadQueue = async (rows) => {
+        setUploading(true);
+        let ok = 0;
+        let fail = 0;
+
+        for (const row of rows) {
+            const sku = normalizeSku(row.sku);
+            if (!row.file || !sku) {
+                patchUploadRow(row.id, {
+                    uploadStatus: UPLOAD_STATUS.ERROR,
+                    uploadError: 'SKU_REQUIRED',
+                    uploadProgress: 0,
+                });
+                fail += 1;
+                continue;
+            }
+            if (!isValidFreemirSku(sku)) {
+                patchUploadRow(row.id, {
+                    uploadStatus: UPLOAD_STATUS.ERROR,
+                    uploadError: 'INVALID_SKU',
+                    uploadProgress: 0,
+                });
+                fail += 1;
+                continue;
+            }
+            if (isUploadFileTooLarge(row.file)) {
+                patchUploadRow(row.id, {
+                    uploadStatus: UPLOAD_STATUS.ERROR,
+                    uploadError: 'FILE_TOO_LARGE',
+                    uploadProgress: 0,
+                });
+                fail += 1;
+                continue;
+            }
+
+            patchUploadRow(row.id, {
+                uploadStatus: UPLOAD_STATUS.UPLOADING,
+                uploadProgress: 0,
+                uploadError: null,
+            });
+
+            try {
+                await uploadBrandMaterial({
+                    sku: row.sku,
+                    category: row.category,
+                    mediaType: row.mediaType || mediaTypeFromFile(row.file),
+                    note: row.note,
+                    file: row.file,
+                    onProgress: (pct) => patchUploadRow(row.id, { uploadProgress: pct }),
+                });
+                patchUploadRow(row.id, {
+                    uploadStatus: UPLOAD_STATUS.DONE,
+                    uploadProgress: 100,
+                    uploadError: null,
+                });
+                ok += 1;
+            } catch (e) {
+                patchUploadRow(row.id, {
+                    uploadStatus: UPLOAD_STATUS.ERROR,
+                    uploadError: e?.message || 'REQUEST_FAILED',
+                    uploadProgress: 0,
+                });
+                fail += 1;
+            }
+        }
+
+        setUploading(false);
+        if (ok > 0) {
+            await refreshAfterChange();
+            logActivity('Product Gallery (Upload)');
+        }
+        if (fail > 0 && ok > 0) {
+            message.warning(t('brandMaterial.uploadBatchPartial', { ok, fail }));
+        } else if (fail > 0 && ok === 0) {
+            message.error(t('brandMaterial.uploadBatchAllFailed'));
+        } else if (ok > 0) {
+            message.success(t('brandMaterial.msgBatchOk', { count: ok }));
+        }
     };
 
     const appendFilesToRows = (files) => {
@@ -394,8 +500,15 @@ export default function BrandMaterial() {
                 category: parsed.category,
                 mediaType: mediaTypeFromFile(file),
                 file,
+                uploadStatus: UPLOAD_STATUS.READY,
+                uploadProgress: 0,
+                uploadError: null,
             };
         });
+        const oversized = mediaFiles.filter((f) => isUploadFileTooLarge(f));
+        if (oversized.length) {
+            message.warning(t('brandMaterial.uploadFileTooLargeHint', { count: oversized.length }));
+        }
         const previews = {};
         newRows.forEach((row) => {
             previews[row.id] = URL.createObjectURL(row.file);
@@ -439,7 +552,7 @@ export default function BrandMaterial() {
             a.download = storageFileName(item);
             a.click();
             URL.revokeObjectURL(url);
-            logActivity('Brand Material (Download)');
+            logActivity('Product Gallery (Download)');
         } catch {
             message.error(t('brandMaterial.msgDownloadFail'));
         }
@@ -460,61 +573,118 @@ export default function BrandMaterial() {
     };
 
     const handleBatchUpload = async () => {
-        const tasks = uploadRows.filter((r) => r.file && normalizeSku(r.sku));
+        const tasks = uploadRows.filter((r) => r.uploadStatus === UPLOAD_STATUS.READY);
         if (!tasks.length) {
             message.warning(t('brandMaterial.msgBatchEmpty'));
             return;
         }
 
-        const incomplete = uploadRows.filter((r) => (r.sku && !r.file) || (!r.sku && r.file));
+        const incomplete = uploadRows.filter(
+            (r) => r.uploadStatus === UPLOAD_STATUS.READY
+                && ((r.sku && !r.file) || (!r.sku && r.file)),
+        );
         if (incomplete.length) {
             message.warning(t('brandMaterial.msgBatchIncomplete'));
             return;
         }
 
-        const invalidSku = tasks.filter((r) => !isValidFreemirSku(r.sku));
-        if (invalidSku.length) {
-            message.warning(t('brandMaterial.msgSkuFormat'));
-            return;
-        }
+        await runUploadQueue(tasks);
+    };
 
-        setUploading(true);
-        let ok = 0;
-        try {
-            for (const row of tasks) {
-                await uploadBrandMaterial({
-                    sku: row.sku,
-                    category: row.category,
-                    mediaType: row.mediaType || mediaTypeFromFile(row.file),
-                    note: row.note,
-                    file: row.file,
-                });
-                ok += 1;
-            }
-            message.success(t('brandMaterial.msgBatchOk', { count: ok }));
-            closeUploadModal();
-            await refreshAfterChange();
-            logActivity('Material Library (Upload)');
-        } catch (e) {
-            const code = e?.message;
-            if (code === 'SKU_REQUIRED') message.error(t('brandMaterial.msgSkuRequired'));
-            else if (code === 'MEDIA_REQUIRED' || code === 'IMAGE_REQUIRED') {
-                message.error(t('brandMaterial.msgPickMedia'));
-            } else if (code === 'TYPE_MIME_MISMATCH') {
-                message.error(t('brandMaterial.msgTypeMismatch'));
-            } else if (code && code !== 'REQUEST_FAILED') {
-                message.error(`${t('brandMaterial.msgUploadFail')}: ${code}`);
-            } else message.error(t('brandMaterial.msgUploadFail'));
-        } finally {
-            setUploading(false);
-        }
+    const retryFailedUploads = async () => {
+        const failed = uploadRows.filter((r) => r.uploadStatus === UPLOAD_STATUS.ERROR && r.file);
+        if (!failed.length) return;
+        const resetRows = failed.map((r) => ({
+            ...r,
+            uploadStatus: UPLOAD_STATUS.READY,
+            uploadError: null,
+            uploadProgress: 0,
+        }));
+        resetRows.forEach((r) => patchUploadRow(r.id, {
+            uploadStatus: UPLOAD_STATUS.READY,
+            uploadError: null,
+            uploadProgress: 0,
+        }));
+        await runUploadQueue(resetRows);
+    };
+
+    const retryUploadRow = async (row) => {
+        if (!row?.file || uploading) return;
+        patchUploadRow(row.id, {
+            uploadStatus: UPLOAD_STATUS.READY,
+            uploadError: null,
+            uploadProgress: 0,
+        });
+        await runUploadQueue([{ ...row, uploadStatus: UPLOAD_STATUS.READY }]);
     };
 
     const uploadTableColumns = [
         {
             title: '#',
-            width: 40,
+            width: 36,
             render: (_, __, idx) => idx + 1,
+        },
+        {
+            title: t('brandMaterial.colUploadStatus'),
+            width: 128,
+            render: (_, row) => {
+                if (row.uploadStatus === UPLOAD_STATUS.UPLOADING) {
+                    return (
+                        <div style={{ minWidth: 108 }}>
+                            <Text style={{ fontSize: 11 }}>{t('brandMaterial.uploadStatusUploading')}</Text>
+                            <Progress
+                                percent={row.uploadProgress || 0}
+                                size="small"
+                                showInfo={false}
+                                strokeColor="#0ea5e9"
+                            />
+                        </div>
+                    );
+                }
+                if (row.uploadStatus === UPLOAD_STATUS.DONE) {
+                    return (
+                        <Tag icon={<CheckCircleOutlined />} color="success" style={{ margin: 0 }}>
+                            {t('brandMaterial.uploadStatusDone')}
+                        </Tag>
+                    );
+                }
+                if (row.uploadStatus === UPLOAD_STATUS.ERROR) {
+                    return (
+                        <Space direction="vertical" size={4}>
+                            <Tag icon={<CloseCircleOutlined />} color="error" style={{ margin: 0 }}>
+                                {t('brandMaterial.uploadStatusError')}
+                            </Tag>
+                            <Tooltip title={uploadErrorLabel(row.uploadError, t)}>
+                                <Text type="danger" style={{ fontSize: 10 }} ellipsis>
+                                    {uploadErrorLabel(row.uploadError, t)}
+                                </Text>
+                            </Tooltip>
+                            <Button
+                                type="link"
+                                size="small"
+                                icon={<ReloadOutlined />}
+                                disabled={uploading}
+                                onClick={() => retryUploadRow(row)}
+                                style={{ padding: 0, height: 'auto', fontSize: 11 }}
+                            >
+                                {t('brandMaterial.uploadRetryOne')}
+                            </Button>
+                        </Space>
+                    );
+                }
+                return (
+                    <Tag style={{ margin: 0 }}>{t('brandMaterial.uploadStatusReady')}</Tag>
+                );
+            },
+        },
+        {
+            title: t('brandMaterial.colFileSize'),
+            width: 72,
+            render: (_, row) => (
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                    {formatUploadBytes(row.file?.size)}
+                </Text>
+            ),
         },
         {
             title: t('brandMaterial.colPreview'),
@@ -542,6 +712,7 @@ export default function BrandMaterial() {
                     value={row.sku}
                     skuIndex={skuIndex}
                     placeholder={t('brandMaterial.fieldSkuPh')}
+                    disabled={row.uploadStatus === UPLOAD_STATUS.UPLOADING || row.uploadStatus === UPLOAD_STATUS.DONE}
                     onChange={(sku) => updateRow(row.id, { sku })}
                 />
             ),
@@ -555,6 +726,7 @@ export default function BrandMaterial() {
                     value={row.note || ''}
                     maxLength={500}
                     placeholder={t('brandMaterial.fieldNotePh')}
+                    disabled={row.uploadStatus === UPLOAD_STATUS.UPLOADING || row.uploadStatus === UPLOAD_STATUS.DONE}
                     onChange={(e) => updateRow(row.id, { note: e.target.value })}
                 />
             ),
@@ -565,6 +737,7 @@ export default function BrandMaterial() {
             render: (_, row) => (
                 <Select
                     size="small"
+                    disabled={row.uploadStatus === UPLOAD_STATUS.UPLOADING || row.uploadStatus === UPLOAD_STATUS.DONE}
                     value={row.mediaType || 'photo'}
                     onChange={(mediaType) => updateRow(row.id, { mediaType })}
                     options={[
@@ -581,6 +754,7 @@ export default function BrandMaterial() {
             render: (_, row) => (
                 <Select
                     size="small"
+                    disabled={row.uploadStatus === UPLOAD_STATUS.UPLOADING || row.uploadStatus === UPLOAD_STATUS.DONE}
                     value={row.category}
                     onChange={(category) => updateRow(row.id, { category })}
                     options={[
@@ -599,6 +773,7 @@ export default function BrandMaterial() {
                     type="text"
                     danger
                     icon={<MinusCircleOutlined />}
+                    disabled={row.uploadStatus === UPLOAD_STATUS.UPLOADING}
                     onClick={() => removeRow(row.id)}
                 />
             ),
@@ -833,12 +1008,29 @@ export default function BrandMaterial() {
                 onCancel={closeUploadModal}
                 footer={null}
                 destroyOnClose
-                width={760}
+                width={920}
             >
                 <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 12 }}>
                     {t('brandMaterial.uploadBucketHint')}
                 </Paragraph>
+                {uploadQueueSummary.started > 0 && (
+                    <div style={{ marginBottom: 14 }}>
+                        <Progress
+                            percent={uploadQueueSummary.percent}
+                            status={uploadQueueSummary.failed > 0 && !uploading ? 'exception' : 'active'}
+                            strokeColor="#0ea5e9"
+                        />
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                            {t('brandMaterial.uploadQueueSummary', {
+                                done: uploadQueueSummary.done,
+                                failed: uploadQueueSummary.failed,
+                                total: uploadQueueSummary.total,
+                            })}
+                        </Text>
+                    </div>
+                )}
                 <Dragger
+                    disabled={uploading}
                     accept="image/*,video/*"
                     multiple
                     showUploadList={false}
@@ -877,7 +1069,7 @@ export default function BrandMaterial() {
                         rowKey="id"
                         dataSource={uploadRows}
                         columns={uploadTableColumns}
-                        scroll={{ x: 700 }}
+                        scroll={{ x: 980 }}
                         style={{ marginBottom: 16 }}
                     />
                 ) : (
@@ -888,13 +1080,13 @@ export default function BrandMaterial() {
                     />
                 )}
 
-                <Space>
+                <Space wrap>
                     <Button
                         type="primary"
                         size="large"
                         loading={uploading}
                         icon={<CloudUploadOutlined />}
-                        disabled={!uploadRows.length}
+                        disabled={!uploadRows.length || uploadQueueSummary.ready === 0}
                         onClick={handleBatchUpload}
                         style={{
                             height: 44,
@@ -903,9 +1095,23 @@ export default function BrandMaterial() {
                             borderRadius: 10,
                         }}
                     >
-                        {t('brandMaterial.uploadSubmit')}
+                        {uploading
+                            ? t('brandMaterial.uploadStatusUploading')
+                            : t('brandMaterial.uploadSubmit')}
                     </Button>
-                    <Button onClick={closeUploadModal}>{t('brandMaterial.cancel')}</Button>
+                    {uploadQueueSummary.failed > 0 && (
+                        <Button
+                            size="large"
+                            icon={<ReloadOutlined />}
+                            disabled={uploading}
+                            onClick={retryFailedUploads}
+                        >
+                            {t('brandMaterial.uploadRetryFailed', { count: uploadQueueSummary.failed })}
+                        </Button>
+                    )}
+                    <Button onClick={closeUploadModal} disabled={uploading}>
+                        {t('brandMaterial.cancel')}
+                    </Button>
                 </Space>
             </Modal>
         </div>

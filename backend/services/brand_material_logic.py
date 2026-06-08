@@ -7,6 +7,7 @@ from __future__ import annotations
 import io
 import os
 import re
+from collections import Counter
 import shutil
 import subprocess
 import uuid
@@ -20,7 +21,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 from google.cloud import storage
 from google.oauth2 import service_account
-from sqlalchemy import case, exists, func, select
+from sqlalchemy import case, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from models import BrandMaterial, FreemirName
@@ -356,12 +357,121 @@ def _row_to_dict(row: BrandMaterial) -> dict:
     }
 
 
+FREEMIR_SKU_RE = re.compile(r"^[A-Z]{2}\d{4}[A-Z]\d{5}$", re.I)
+
+
 def _parse_sku_filter_tokens(sku_filter: str) -> list[str]:
     raw = (sku_filter or "").strip()
     if not raw:
         return []
     parts = re.split(r"[\s,;\n\r]+", raw)
     return [p.strip().upper() for p in parts if p.strip()]
+
+
+def _is_freemir_sku(value: str) -> bool:
+    return bool(FREEMIR_SKU_RE.match((value or "").strip().upper()))
+
+
+def _parse_freemir_sku_tokens(raw: str) -> list[str]:
+    """Extract valid Freemir SKUs from pasted text (aligned with frontend skuIndex)."""
+    text = (raw or "").strip()
+    if not text:
+        return []
+    found: set[str] = set()
+    upper = text.upper()
+    chunks = re.split(r"[\s,;\n\r\t]+", upper)
+    token_re = re.compile(r"[A-Z]{2}\d{4}[A-Z]\d{5}")
+
+    def collect(chunk: str) -> None:
+        if _is_freemir_sku(chunk):
+            found.add(chunk.upper())
+            return
+        for match in token_re.findall(chunk):
+            if _is_freemir_sku(match):
+                found.add(match.upper())
+
+    for chunk in chunks:
+        if chunk:
+            collect(chunk)
+
+    if not found or (len(chunks) == 1 and len(chunks[0]) > 12):
+        compact = re.sub(r"\s+", "", upper)
+        for match in token_re.findall(compact):
+            if _is_freemir_sku(match):
+                found.add(match.upper())
+
+    return sorted(found)
+
+
+def _skus_from_detail_search(db: Session, query: str) -> list[str]:
+    """SKUs whose catalog nicknames / localized names match the query."""
+    needle = (query or "").strip().lower()
+    if len(needle) < 2:
+        return []
+
+    from services.public_catalog_logic import _build_search_terms, _get_sku_detail_rows
+
+    detail_rows = _get_sku_detail_rows()
+    if not detail_rows:
+        return []
+
+    skus = [
+        str(row.get("SKU", "")).strip().upper()
+        for row in detail_rows
+        if str(row.get("SKU", "")).strip()
+    ]
+    if not skus:
+        return []
+
+    name_rows = {
+        (row.sku or "").strip().upper(): row
+        for row in db.query(FreemirName).filter(FreemirName.sku.in_(skus)).all()
+    }
+
+    tokens = [t for t in needle.split() if t]
+    matched: list[str] = []
+
+    for row in detail_rows:
+        sku = str(row.get("SKU", "")).strip().upper()
+        if not sku:
+            continue
+        terms = [str(t).strip().lower() for t in _build_search_terms(row, sku, name_rows.get(sku)) if str(t).strip()]
+        if not terms:
+            continue
+        haystacks = terms + [" ".join(terms)]
+        hit = any(needle in h for h in haystacks)
+        if not hit and len(tokens) > 1:
+            hit = all(any(tok in h for h in haystacks) for tok in tokens)
+        if hit:
+            matched.append(sku)
+
+    return matched
+
+
+def _apply_coverage_search(q, db: Session, sku_filter: str):
+    raw = (sku_filter or "").strip()
+    if not raw:
+        return q
+
+    sku_tokens = _parse_freemir_sku_tokens(raw)
+    if len(sku_tokens) > 1:
+        keys = {_sku_key(t) for t in sku_tokens}
+        return q.filter(func.lower(FreemirName.sku).in_(list(keys)))
+
+    if len(sku_tokens) == 1:
+        token = sku_tokens[0]
+        return q.filter(FreemirName.sku.ilike(f"%{token}%"))
+
+    like = f"%{raw}%"
+    extra_skus = _skus_from_detail_search(db, raw)
+    clauses = [
+        FreemirName.sku.ilike(like),
+        FreemirName.product_name.ilike(like),
+        FreemirName.mark.ilike(like),
+    ]
+    if extra_skus:
+        clauses.append(func.upper(FreemirName.sku).in_(extra_skus))
+    return q.filter(or_(*clauses))
 
 
 def list_materials(
@@ -573,19 +683,59 @@ def _coverage_counts_template() -> dict:
     }
 
 
-def _coverage_sku_order_by():
-    """SKUs with materials first; then FR prefixes, ET last, others; then SKU A–Z."""
-    prefix = func.upper(func.substr(FreemirName.sku, 1, 2))
-    prefix_group = case(
-        (prefix == "FR", 0),
-        (prefix == "ET", 2),
-        else_=1,
-    )
-    has_materials = exists(
-        select(1).where(BrandMaterial.sku_key == func.lower(FreemirName.sku))
-    )
-    has_materials_sort = case((has_materials, 0), else_=1)
-    return (has_materials_sort, prefix_group, FreemirName.sku.asc())
+def _build_sku_status_map() -> dict[str, str]:
+    """SKU → raw Status from SKU_Detail (e.g. Zero Sales = discontinued)."""
+    from services.public_catalog_logic import _get_sku_detail_rows
+
+    out: dict[str, str] = {}
+    for row in _get_sku_detail_rows():
+        sku = str(row.get("SKU", "")).strip().upper()
+        if not sku:
+            continue
+        status = str(row.get("Status", "")).strip()
+        out[sku] = status
+    return out
+
+
+def _is_discontinued_sku(sku: str, status_map: dict[str, str]) -> bool:
+    from services.public_catalog_logic import _norm_status
+
+    status = status_map.get((sku or "").strip().upper(), "")
+    return _norm_status(status) == "zerosales"
+
+
+def _build_sku_category_map(lang: str = "EN") -> dict[str, str]:
+    """SKU → catalog category (L2 preferred, else L1) — aligned with product catalog."""
+    from services.public_catalog_logic import _get_sku_detail_rows, _pick_lang_value
+
+    out: dict[str, str] = {}
+    for row in _get_sku_detail_rows():
+        sku = str(row.get("SKU", "")).strip().upper()
+        if not sku:
+            continue
+        l2 = _pick_lang_value(row, "Level_2_Category", lang)
+        l1 = _pick_lang_value(row, "Level_1_Category", lang)
+        out[sku] = (l2 or l1 or "Other").strip() or "Other"
+    return out
+
+
+def _coverage_category_key(sku: str, category_map: dict[str, str]) -> str:
+    return category_map.get((sku or "").strip().upper(), "Other")
+
+
+def _sort_coverage_names(
+    names: list,
+    category_map: dict[str, str],
+) -> list:
+    """Category groups with most SKUs first (product catalog), then SKU A–Z within group."""
+    counts = Counter(_coverage_category_key(n.sku, category_map) for n in names)
+
+    def sort_key(row) -> tuple:
+        sku = (row.sku or "").strip().upper()
+        cat = _coverage_category_key(sku, category_map)
+        return (-counts[cat], cat, sku)
+
+    return sorted(names, key=sort_key)
 
 
 def list_material_coverage(
@@ -597,24 +747,18 @@ def list_material_coverage(
 ) -> dict:
     """SKU_Info catalog vs Material Library — counts per SKU."""
     q = db.query(FreemirName)
+    q = _apply_coverage_search(q, db, sku_filter)
 
-    tokens = _parse_sku_filter_tokens(sku_filter)
-    if len(tokens) > 1:
-        keys = {_sku_key(t) for t in tokens}
-        q = q.filter(func.lower(FreemirName.sku).in_(list(keys)))
-    elif len(tokens) == 1:
-        q = q.filter(FreemirName.sku.ilike(f"%{tokens[0]}%"))
-
-    total = q.count()
+    category_map = _build_sku_category_map()
+    status_map = _build_sku_status_map()
+    all_names = q.all()
+    total = len(all_names)
     page = max(1, int(page or 1))
     page_size = min(max(1, int(page_size or 50)), 200)
 
-    names = (
-        q.order_by(*_coverage_sku_order_by())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
+    sorted_names = _sort_coverage_names(all_names, category_map)
+    offset = (page - 1) * page_size
+    names = sorted_names[offset : offset + page_size]
 
     sku_keys = [_sku_key(n.sku) for n in names if n.sku]
     stats: dict[str, dict] = {k: _coverage_counts_template() for k in sku_keys}
@@ -653,10 +797,12 @@ def list_material_coverage(
             {
                 "sku": n.sku,
                 "productName": (n.product_name or "").strip(),
+                "category": _coverage_category_key(n.sku, category_map),
                 "skuInfoImageUrl": (n.link or "").strip(),
                 "mainPhotoMaterialId": main_photo_by_key.get(key),
                 **counts,
                 "hasMaterials": has_materials,
+                "isDiscontinued": _is_discontinued_sku(n.sku, status_map),
             }
         )
 

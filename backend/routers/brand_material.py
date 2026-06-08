@@ -29,6 +29,7 @@ from services.permission_guard import require_tool_access
 router = APIRouter(prefix="/api/brand-material", tags=["brand-material"])
 
 SKU_PATTERN = re.compile(r"^[A-Z]{2}\d{4}[A-Z]\d{5}$")
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
 
 
 def get_db():
@@ -168,6 +169,8 @@ async def upload(
         raise HTTPException(status_code=400, detail="category must be main or sub")
 
     content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="FILE_TOO_LARGE")
     mime = file.content_type or "image/jpeg"
     uploader_name = _uploader_display_name(user)
     preview_bytes = None

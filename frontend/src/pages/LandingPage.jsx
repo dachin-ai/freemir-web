@@ -13,6 +13,7 @@ import CountryFlag from '../components/CountryFlag';
 import LandingAuthNav from '../components/landing/LandingAuthNav';
 import LandingCurrencySwitch from '../components/landing/LandingCurrencySwitch';
 import LandingProductDetailModal from '../components/landing/LandingProductDetailModal';
+import LandingMergedSeriesBlock from '../components/landing/LandingMergedSeriesBlock';
 import LandingSeriesPager from '../components/landing/LandingSeriesPager';
 import {
     ProductImage,
@@ -20,8 +21,9 @@ import {
     formatProductOriginalPrice,
     formatProductPrice,
     productHasStrikethroughOriginal,
-    compareProductCatalogOrder,
+    groupProductsByCategory,
     searchProducts,
+    sortCategoryOrderByProductCount,
 } from '../components/landing/landingProductHelpers';
 import { useLandingCurrency } from '../hooks/useLandingCurrency';
 import { useLandingMediaProtection } from '../hooks/useLandingMediaProtection';
@@ -40,7 +42,12 @@ import {
     HERO_IMAGE_CANDIDATES,
     LANDING_STATS,
 } from '../data/landingProducts';
-import { getSeriesDisplayTitle, seriesNameToSlug } from '../data/landingSeriesLabels';
+import {
+    getSeriesDisplayTitle,
+    mergeMinorSeriesGroups,
+    partitionSeriesGroups,
+    seriesNameToSlug,
+} from '../data/landingSeriesLabels';
 import './landing.css';
 
 function WhatsAppIcon() {
@@ -99,7 +106,6 @@ export default function LandingPage() {
     const [products, setProducts] = useState([]);
     const [topTierProducts, setTopTierProducts] = useState([]);
     const [seriesGroups, setSeriesGroups] = useState([]);
-    const [categories, setCategories] = useState([]);
     const [activeCategory, setActiveCategory] = useState('');
     const [catalogQuery, setCatalogQuery] = useState('');
     const [selectedProduct, setSelectedProduct] = useState(null);
@@ -145,9 +151,9 @@ export default function LandingPage() {
                     setProducts(payload.products || []);
                     setTopTierProducts(payload.top_tier_products || []);
                     setSeriesGroups(payload.series_groups || []);
-                    const fetchedCategories = payload.categories || [];
-                    setCategories(fetchedCategories);
-                    setActiveCategory((prev) => (prev && fetchedCategories.includes(prev) ? prev : ''));
+                    setActiveCategory((prev) => (
+                        prev && (payload.products || []).some((p) => p.category_l2 === prev) ? prev : ''
+                    ));
                     catalogHydratedRef.current = true;
                 }
             })
@@ -156,7 +162,6 @@ export default function LandingPage() {
                     setProducts([]);
                     setTopTierProducts([]);
                     setSeriesGroups([]);
-                    setCategories([]);
                     setActiveCategory('');
                     setCatalogPage(1);
                 }
@@ -182,17 +187,51 @@ export default function LandingPage() {
     }, [activeCategory, catalogQuery]);
 
     const heroImage = HERO_IMAGE_CANDIDATES[Math.min(heroIndex, HERO_IMAGE_CANDIDATES.length - 1)];
-    const categoryFiltered = useMemo(() => (
-        activeCategory ? products.filter((p) => p.category_l2 === activeCategory) : products
-    ), [products, activeCategory]);
+    const catalogSort = useMemo(() => ({ activeFirst: true }), []);
+
+    const { majorSeries, minorSeries } = useMemo(
+        () => partitionSeriesGroups(seriesGroups),
+        [seriesGroups],
+    );
+
+    const mergedMinorSeries = useMemo(
+        () => mergeMinorSeriesGroups(minorSeries),
+        [minorSeries],
+    );
+
+    const { categoryOrder, groups } = useMemo(
+        () => groupProductsByCategory(products, catalogSort),
+        [products, catalogSort],
+    );
 
     const sortedProducts = useMemo(() => {
         const q = catalogQuery.trim();
-        if (!q) {
-            return [...categoryFiltered].sort(compareProductCatalogOrder);
+        const pool = activeCategory ? (groups[activeCategory] || []) : products;
+
+        if (q) {
+            const matches = searchProducts(pool, q, pool.length, catalogSort);
+            if (activeCategory) return matches;
+
+            const nextGroups = {};
+            const nextOrder = [];
+            matches.forEach((p) => {
+                const key = p.category_l2 || p.category_l1 || 'Other';
+                if (!nextGroups[key]) {
+                    nextGroups[key] = [];
+                    nextOrder.push(key);
+                }
+                nextGroups[key].push(p);
+            });
+            return sortCategoryOrderByProductCount(nextOrder, nextGroups)
+                .flatMap((cat) => nextGroups[cat] || []);
         }
-        return searchProducts(categoryFiltered, q, categoryFiltered.length);
-    }, [categoryFiltered, catalogQuery]);
+
+        if (activeCategory) {
+            return groups[activeCategory] || [];
+        }
+
+        return categoryOrder.flatMap((cat) => groups[cat] || []);
+    }, [products, activeCategory, catalogQuery, categoryOrder, groups, catalogSort]);
     const PAGE_SIZE = 18; // 3 rows on desktop default grid
     const pagedProducts = sortedProducts.slice((catalogPage - 1) * PAGE_SIZE, catalogPage * PAGE_SIZE);
     const hasCatalogContent = products.length > 0
@@ -387,7 +426,7 @@ export default function LandingPage() {
                     <h2 className="landing-section-title">{t('landing.seriesTitle')}</h2>
                     <p className="landing-section-lead">{t('landing.seriesLead')}</p>
                     <div className="landing-series-stack">
-                        {seriesGroups.map((group) => {
+                        {majorSeries.map((group) => {
                             const seriesKey = seriesNameToSlug(group.name) || group.name;
                             const totalInSeries = group.products?.length || 0;
                             const totalPages = Math.max(1, Math.ceil(totalInSeries / seriesRowPageSize));
@@ -420,6 +459,58 @@ export default function LandingPage() {
                                 </article>
                             );
                         })}
+                        {mergedMinorSeries && (
+                            <article className="landing-series-block landing-series-block--merged" key={mergedMinorSeries.key}>
+                                <header className="landing-series-block-head">
+                                    <h3 className="landing-series-block-title">
+                                        {minorSeries.length === 1
+                                            ? getSeriesDisplayTitle(minorSeries[0].name, t)
+                                            : t('landing.seriesMergedTitle')}
+                                    </h3>
+                                    <p className="landing-series-block-count">
+                                        {t('landing.seriesProductCount', { count: mergedMinorSeries.count })}
+                                    </p>
+                                </header>
+                                {minorSeries.length === 1 ? (
+                                    <LandingSeriesPager
+                                        products={minorSeries[0].products || []}
+                                        pageSize={seriesRowPageSize}
+                                        currentPage={Math.min(
+                                            seriesPageByKey[mergedMinorSeries.key] || 1,
+                                            Math.max(1, Math.ceil((minorSeries[0].products?.length || 0) / seriesRowPageSize)),
+                                        )}
+                                        onPageChange={(page) => {
+                                            setSeriesPageByKey((prev) => ({
+                                                ...prev,
+                                                [mergedMinorSeries.key]: page,
+                                            }));
+                                        }}
+                                        renderProductCard={renderProductCard}
+                                    />
+                                ) : (
+                                    <LandingMergedSeriesBlock
+                                        groups={minorSeries.map((group) => ({
+                                            name: group.name,
+                                            products: group.products || [],
+                                            title: getSeriesDisplayTitle(group.name, t),
+                                            countLabel: t('landing.seriesProductCount', { count: group.count }),
+                                        }))}
+                                        pageSize={seriesRowPageSize}
+                                        currentPage={Math.min(
+                                            seriesPageByKey[mergedMinorSeries.key] || 1,
+                                            Math.max(1, Math.ceil(mergedMinorSeries.count / seriesRowPageSize)),
+                                        )}
+                                        onPageChange={(page) => {
+                                            setSeriesPageByKey((prev) => ({
+                                                ...prev,
+                                                [mergedMinorSeries.key]: page,
+                                            }));
+                                        }}
+                                        renderProductCard={renderProductCard}
+                                    />
+                                )}
+                            </article>
+                        )}
                     </div>
                 </section>
             )}
@@ -451,7 +542,7 @@ export default function LandingPage() {
                         )}
                     </div>
                 )}
-                {!catalogInitialLoading && categories.length > 0 && (
+                {!catalogInitialLoading && categoryOrder.length > 0 && (
                     <div className="landing-filter-row">
                         <button
                             type="button"
@@ -463,7 +554,7 @@ export default function LandingPage() {
                         >
                             {t('landing.allCategories')}
                         </button>
-                        {categories.map((cat) => (
+                        {categoryOrder.map((cat) => (
                             <button
                                 type="button"
                                 key={cat}
@@ -527,21 +618,21 @@ export default function LandingPage() {
                     <div className="landing-tool-card">
                         <h3>{t('landing.learnProductTitle')}</h3>
                         <p>{t('landing.learnProductDesc')}</p>
-                        <Link to="/learn-products" className="landing-btn landing-btn-outline">
+                        <Link to="/learn-products" className="landing-btn landing-btn-sky">
                             {t('landing.learnProductTitle')}
                         </Link>
                     </div>
                     <div className="landing-tool-card">
                         <h3>{t('landing.compareTitle')}</h3>
                         <p>{t('landing.compareDesc')}</p>
-                        <Link to="/compare-products" className="landing-btn landing-btn-outline">
+                        <Link to="/compare-products" className="landing-btn landing-btn-sky">
                             {t('landing.compareTitle')}
                         </Link>
                     </div>
                     <div className="landing-tool-card">
                         <h3>{t('landing.brochureTitle')}</h3>
                         <p>{t('landing.brochureDesc')}</p>
-                        <Link to="/product-catalog" className="landing-btn landing-btn-outline">
+                        <Link to="/product-catalog" className="landing-btn landing-btn-sky">
                             {t('landing.brochureTitle')}
                         </Link>
                     </div>

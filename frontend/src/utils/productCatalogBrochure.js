@@ -1,12 +1,12 @@
 /**
  * Build paginated A4-landscape brochure pages from landing + compare API payloads.
- * Supports 4 layout types cycling for visual variety.
  */
 
 export const BROCHURE_PAGE_TYPES = {
     COVER: 'cover',
     TOP_TIER: 'top-tier',
     PRODUCTS: 'products',
+    CONTACT: 'contact',
 };
 
 export const LAYOUT_TYPES = {
@@ -16,28 +16,27 @@ export const LAYOUT_TYPES = {
     THREE_COL: 'three-col',
 };
 
-/** Products per layout (how many fit on one sheet) */
+export const LAYOUT_COLUMNS = {
+    [LAYOUT_TYPES.FIVE_COL]: 5,
+    [LAYOUT_TYPES.HERO_LEFT]: 2,
+    [LAYOUT_TYPES.FOUR_COL]: 4,
+    [LAYOUT_TYPES.THREE_COL]: 3,
+};
+
 const LAYOUT_CAPACITIES = {
     [LAYOUT_TYPES.FIVE_COL]: 10,
-    [LAYOUT_TYPES.HERO_LEFT]: 7,
+    [LAYOUT_TYPES.HERO_LEFT]: 5,
     [LAYOUT_TYPES.FOUR_COL]: 8,
     [LAYOUT_TYPES.THREE_COL]: 6,
 };
 
-/** Cycling order for catalog pages — creates visual rhythm */
-const LAYOUT_CYCLE = [
-    LAYOUT_TYPES.FIVE_COL,
-    LAYOUT_TYPES.HERO_LEFT,
-    LAYOUT_TYPES.FOUR_COL,
-    LAYOUT_TYPES.FIVE_COL,
-    LAYOUT_TYPES.THREE_COL,
-    LAYOUT_TYPES.HERO_LEFT,
-    LAYOUT_TYPES.FOUR_COL,
-    LAYOUT_TYPES.THREE_COL,
-];
+const CATALOG_LAYOUT = LAYOUT_TYPES.FOUR_COL;
+const CATALOG_CAPACITY = LAYOUT_CAPACITIES[CATALOG_LAYOUT];
 
-/** Accent colors per cycle index */
-const ACCENT_CYCLE = ['blue', 'blue', 'pink', 'blue', 'blue', 'pink', 'blue', 'blue'];
+const CATALOG_ACCENTS = ['blue', 'blue', 'pink', 'blue', 'blue', 'pink', 'blue', 'blue'];
+
+/** Categories with fewer products are pooled and packed at the end of the catalog. */
+const SMALL_SERIES_THRESHOLD = 6;
 
 export const PRODUCTS_PER_PAGE = 10;
 
@@ -89,51 +88,129 @@ function groupProductsByCategory(products, categoryOrder) {
         .map((cat) => ({ category: cat, products: groups.get(cat) }));
 }
 
-/**
- * Pack category sections into pages using cycling layouts.
- * Each page gets a layout and accent colour for visual variety.
- */
-export function packProductBlocks(sections, { maxPages = 17, startCycleIdx = 0 } = {}) {
-    const pages = [];
-    let cycleIdx = startCycleIdx;
-    let blocks = [];
-    let countOnPage = 0;
-    let layout = LAYOUT_CYCLE[cycleIdx % LAYOUT_CYCLE.length];
-    let capacity = LAYOUT_CAPACITIES[layout];
+function countPageProducts(page) {
+    return (page.blocks || []).reduce((n, b) => n + (b.products?.length || 0), 0);
+}
 
-    const flush = () => {
-        if (blocks.length === 0) return;
-        pages.push({
-            blocks: [...blocks],
-            layout,
-            accent: ACCENT_CYCLE[cycleIdx % ACCENT_CYCLE.length],
-        });
-        blocks = [];
-        countOnPage = 0;
-        cycleIdx += 1;
-        layout = LAYOUT_CYCLE[cycleIdx % LAYOUT_CYCLE.length];
-        capacity = LAYOUT_CAPACITIES[layout];
-    };
+function appendProductToBlocks(blocks, category, product, continued) {
+    const last = blocks[blocks.length - 1];
+    if (last && last.category === category) {
+        last.products.push(product);
+        return;
+    }
+    blocks.push({
+        category,
+        products: [product],
+        continued: Boolean(continued),
+    });
+}
 
-    for (const { category, products } of sections) {
-        let offset = 0;
-        while (offset < products.length) {
-            const space = capacity - countOnPage;
-            if (space <= 0) { flush(); continue; }
-            const slice = products.slice(offset, offset + space);
-            blocks.push({ category, products: slice, continued: offset > 0 });
-            countOnPage += slice.length;
-            offset += slice.length;
+function mergePageBlocks(targetBlocks, sourceBlocks) {
+    const out = targetBlocks.map((b) => ({
+        category: b.category,
+        continued: b.continued,
+        products: [...b.products],
+    }));
+
+    for (const block of sourceBlocks) {
+        const last = out[out.length - 1];
+        if (last && last.category === block.category) {
+            last.products.push(...block.products);
+        } else {
+            const continued = last
+                ? block.continued || last.category === block.category
+                : block.continued;
+            out.push({
+                category: block.category,
+                continued,
+                products: [...block.products],
+            });
         }
     }
-    flush();
+    return out;
+}
 
-    return pages.slice(0, maxPages);
+function mergeSparsePages(pages, { minFill = 6, capacity = CATALOG_CAPACITY } = {}) {
+    const merged = pages.map((p) => ({
+        ...p,
+        blocks: p.blocks.map((b) => ({
+            category: b.category,
+            continued: b.continued,
+            products: [...b.products],
+        })),
+    }));
+
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (let i = merged.length - 1; i > 0; i -= 1) {
+            const curCount = countPageProducts(merged[i]);
+            const prevCount = countPageProducts(merged[i - 1]);
+            if (curCount > 0 && curCount < minFill && prevCount + curCount <= capacity) {
+                merged[i - 1].blocks = mergePageBlocks(merged[i - 1].blocks, merged[i].blocks);
+                merged.splice(i, 1);
+                changed = true;
+                break;
+            }
+        }
+    }
+    return merged;
+}
+
+function packSectionsIntoPages(sections, pageIdxStart = 0) {
+    const entries = [];
+    for (const { category, products } of sections) {
+        for (const product of products) {
+            entries.push({ category, product });
+        }
+    }
+
+    const pages = [];
+    let pageIdx = pageIdxStart;
+    let lastCategoryOnPrevPage = null;
+
+    for (let i = 0; i < entries.length; i += CATALOG_CAPACITY) {
+        const slice = entries.slice(i, i + CATALOG_CAPACITY);
+        const blocks = [];
+
+        for (const { category, product } of slice) {
+            const isFirstOnPage = blocks.length === 0
+                || blocks[blocks.length - 1].category !== category;
+            const continued = isFirstOnPage && category === lastCategoryOnPrevPage;
+            appendProductToBlocks(blocks, category, product, continued);
+        }
+
+        lastCategoryOnPrevPage = slice[slice.length - 1]?.category ?? null;
+
+        pages.push({
+            blocks,
+            layout: CATALOG_LAYOUT,
+            accent: CATALOG_ACCENTS[pageIdx % CATALOG_ACCENTS.length],
+        });
+        pageIdx += 1;
+    }
+
+    return { pages, nextPageIdx: pageIdx };
 }
 
 /**
- * Build all brochure pages, targeting ≤ 20 pages total.
+ * Pack catalog products into uniform 4×2 pages.
+ * Series with ≥6 products keep catalog order up front; smaller series are
+ * merged together and placed at the bottom to avoid sparse pages mid-catalog.
  */
+export function packProductBlocks(sections, { maxPages = 17 } = {}) {
+    const majorSections = sections.filter((s) => s.products.length >= SMALL_SERIES_THRESHOLD);
+    const minorSections = sections.filter((s) => s.products.length < SMALL_SERIES_THRESHOLD);
+
+    const { pages: majorPages, nextPageIdx } = packSectionsIntoPages(majorSections, 0);
+    const denseMajor = mergeSparsePages(majorPages);
+
+    const { pages: minorPages } = packSectionsIntoPages(minorSections, nextPageIdx);
+    const denseMinor = mergeSparsePages(minorPages);
+
+    return [...denseMajor, ...denseMinor].slice(0, maxPages);
+}
+
 export function buildBrochurePages({
     topTierProducts = [],
     catalogProducts = [],
@@ -149,15 +226,13 @@ export function buildBrochurePages({
         return `${prefix}-${pageIndex}`;
     };
 
-    // Cover
     pages.push({ id: nextId('cover'), type: BROCHURE_PAGE_TYPES.COVER });
 
-    // Top tier — hero-left layout, capacity 7 per page, max 2 pages
     const topTier = topTierProducts
         .map((p) => enrichProductFromMap(p, detailBySku))
         .filter((p) => p?.sku);
 
-    const TOP_TIER_CAPACITY = 7;
+    const TOP_TIER_CAPACITY = 5;
     let topOffset = 0;
     let topPageNum = 0;
     while (topOffset < topTier.length && topPageNum < 2) {
@@ -174,7 +249,6 @@ export function buildBrochurePages({
         topPageNum += 1;
     }
 
-    // Catalog products — exclude top tier SKUs
     const catalogEnriched = catalogProducts
         .map((p) => enrichProductFromMap(p, detailBySku))
         .filter((p) => p?.sku);
@@ -183,7 +257,7 @@ export function buildBrochurePages({
     const rest = catalogEnriched.filter((p) => !topSkus.has(String(p.sku).toUpperCase()));
     const sections = groupProductsByCategory(rest, categories);
 
-    const remainingMax = Math.max(1, 19 - pages.length);
+    const remainingMax = Math.max(1, 18 - pages.length);
     const packedPages = packProductBlocks(sections, { maxPages: remainingMax });
 
     packedPages.forEach((packed) => {
@@ -195,6 +269,8 @@ export function buildBrochurePages({
             accent: packed.accent,
         });
     });
+
+    pages.push({ id: nextId('contact'), type: BROCHURE_PAGE_TYPES.CONTACT, accent: 'blue' });
 
     return {
         pages,

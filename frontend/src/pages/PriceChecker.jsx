@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-    Button, Input, InputNumber, Collapse, Dropdown, Select,
+    Button, Input, InputNumber, Collapse, Dropdown,
     Row, Col, Typography, Table, Upload,
     message, Spin, Divider
 } from 'antd';
@@ -20,6 +20,7 @@ import { useTheme } from '../context/ThemeContext';
 import Bi from '../components/Bi';
 import PageHeader from '../components/PageHeader';
 import FlagIcon from '../components/FlagIcon';
+import PricePreferenceControl from '../components/priceChecker/PricePreferenceControl';
 import {
     readCurrency, writeCurrency,
     SUPPORTED_CURRENCIES, CURRENCY_META, formatPrice,
@@ -104,7 +105,7 @@ const statCardStyle = (accentColor) => ({
     textAlign: 'center',
 });
 
-/** Prefer Material Library main photo (authenticated API); fallback to public image URL. */
+/** Prefer Product Gallery main photo (authenticated API); fallback to public image URL. */
 const MATERIAL_PREVIEW_CACHE_MAX = 80;
 const materialPreviewCache = new Map();
 
@@ -587,11 +588,6 @@ const PriceChecker = () => {
     const directStockTypes = useMemo(
         () => directResult?.stock_types || [],
         [directResult],
-    );
-
-    const pricePreferenceOptions = useMemo(
-        () => PRICE_TIER_OPTIONS.map((tier) => ({ value: tier, label: tier })),
-        [],
     );
 
     const preferredSummaryPrice = useMemo(() => {
@@ -1405,12 +1401,7 @@ const PriceChecker = () => {
                         ? '0 10px 30px rgba(2, 6, 23, 0.45)'
                         : '0 10px 30px rgba(15, 23, 42, 0.08)',
                 }}>
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                        gap: 14,
-                        alignItems: 'end',
-                    }}>
+                    <div className="pc-direct-input-grid">
                         <div style={{ gridColumn: 'span 2' }}>
                             <Label><Bi i18nKey="priceChecker.bundleSku" /></Label>
                             <Input
@@ -1501,20 +1492,12 @@ const PriceChecker = () => {
                                 </div>
                             ) : null}
                         </div>
-                        <div className="pc-price-preference-inline">
-                            <span className="pc-price-preference__label">
-                                {t('priceChecker.preference')}
-                            </span>
-                            <Select
-                                className="pc-price-preference-select"
-                                value={pricePreference}
-                                onChange={setPricePreference}
-                                options={pricePreferenceOptions}
-                                popupMatchSelectWidth={false}
-                                listHeight={280}
-                                suffixIcon={<DownOutlined style={{ fontSize: 11, color: 'var(--text-muted)' }} />}
-                            />
-                        </div>
+                        <PricePreferenceControl
+                            value={pricePreference}
+                            onChange={setPricePreference}
+                            options={PRICE_TIER_OPTIONS}
+                            label={t('priceChecker.preference')}
+                        />
                     </div>
 
                     {calcLoading && (

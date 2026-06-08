@@ -44,13 +44,30 @@ export function brandMaterialPublicMediaUrl(gcsObjectPath) {
     return `https://storage.googleapis.com/${GCS_BUCKET}/${encoded}`;
 }
 
+const POSTER_TIMEOUT_MS = 20000;
+const POSTER_SKIP_BYTES = 80 * 1024 * 1024;
+
 /** Capture first video frame in browser for upload poster (lightweight grid thumbnail). */
-export function videoFramePosterBlob(file) {
+export function videoFramePosterBlob(file, { timeoutMs = POSTER_TIMEOUT_MS } = {}) {
     return new Promise((resolve) => {
         if (!file || !isVideoMime(file.type)) {
             resolve(null);
             return;
         }
+        if (file.size > POSTER_SKIP_BYTES) {
+            resolve(null);
+            return;
+        }
+
+        let settled = false;
+        const finish = (blob) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            cleanup();
+            resolve(blob);
+        };
+
         const url = URL.createObjectURL(file);
         const video = document.createElement('video');
         video.muted = true;
@@ -63,6 +80,8 @@ export function videoFramePosterBlob(file) {
             video.load();
         };
 
+        const timer = setTimeout(() => finish(null), timeoutMs);
+
         video.onloadeddata = () => {
             video.currentTime = Math.min(0.1, video.duration || 0.1);
         };
@@ -74,19 +93,12 @@ export function videoFramePosterBlob(file) {
                 canvas.width = w;
                 canvas.height = h;
                 canvas.getContext('2d').drawImage(video, 0, 0, w, h);
-                canvas.toBlob((blob) => {
-                    cleanup();
-                    resolve(blob);
-                }, 'image/jpeg', 0.82);
+                canvas.toBlob((blob) => finish(blob), 'image/jpeg', 0.82);
             } catch {
-                cleanup();
-                resolve(null);
+                finish(null);
             }
         };
-        video.onerror = () => {
-            cleanup();
-            resolve(null);
-        };
+        video.onerror = () => finish(null);
         video.src = url;
     });
 }

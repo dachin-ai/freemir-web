@@ -1,5 +1,5 @@
 /**
- * Brand Material catalog — PostgreSQL metadata + Google Cloud Storage (via API).
+ * Product Gallery catalog — PostgreSQL metadata + Google Cloud Storage (via API).
  */
 
 import api from '../api';
@@ -57,6 +57,7 @@ export async function listBrandMaterialCoverage({
         items: (data.items || []).map((row) => ({
             sku: row.sku,
             productName: row.productName ?? row.product_name ?? '',
+            category: row.category ?? row.category_l2 ?? row.category_l1 ?? 'Other',
             skuInfoImageUrl: row.skuInfoImageUrl ?? row.sku_info_image_url ?? '',
             mainPhotoMaterialId: row.mainPhotoMaterialId ?? row.main_photo_material_id ?? null,
             videoMain: row.videoMain ?? row.video_main ?? 0,
@@ -64,6 +65,7 @@ export async function listBrandMaterialCoverage({
             photoMain: row.photoMain ?? row.photo_main ?? 0,
             photoSub: row.photoSub ?? row.photo_sub ?? 0,
             hasMaterials: Boolean(row.hasMaterials ?? row.has_materials),
+            isDiscontinued: Boolean(row.isDiscontinued ?? row.is_discontinued),
         })),
         total: data.total ?? 0,
         page: data.page ?? page,
@@ -169,7 +171,7 @@ export async function prefetchBrandMaterialPreviews(items, { onPreview, isCancel
 }
 
 export async function uploadBrandMaterial({
-    sku, category, mediaType, file, note = '',
+    sku, category, mediaType, file, note = '', onProgress,
 }) {
     const skuNorm = normalizeSku(sku);
     if (!skuNorm) throw new Error('SKU_REQUIRED');
@@ -190,7 +192,13 @@ export async function uploadBrandMaterial({
     try {
         const { data } = await api.post('/brand-material/upload', form, {
             headers: { 'Content-Type': 'multipart/form-data' },
-            timeout: 300000,
+            timeout: 600000,
+            onUploadProgress: onProgress
+                ? (evt) => {
+                    if (!evt.total) return;
+                    onProgress(Math.min(100, Math.round((evt.loaded / evt.total) * 100)));
+                }
+                : undefined,
         });
         return mapItem(data.item);
     } catch (err) {
