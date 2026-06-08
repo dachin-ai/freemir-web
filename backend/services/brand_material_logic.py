@@ -7,6 +7,8 @@ from __future__ import annotations
 import io
 import os
 import re
+import sys
+import tempfile
 import time
 from collections import Counter, defaultdict
 import shutil
@@ -30,6 +32,14 @@ from models import BrandMaterial, FreemirName
 GCS_BUCKET = os.getenv("GCS_BUCKET", "dachin-ai-picture")
 GCS_PREFIX = os.getenv("GCS_BRAND_MATERIAL_PREFIX", "brand-material")
 JAKARTA_TZ = ZoneInfo("Asia/Jakarta")
+
+# Cloud Run HTTP/1 request cap is 32 MiB — large files use signed GCS PUT instead.
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+DIRECT_UPLOAD_THRESHOLD_BYTES = 28 * 1024 * 1024
+VIDEO_COMPRESS_MIN_BYTES = 32 * 1024 * 1024
+VIDEO_COMPRESS_CRF = int(os.getenv("BM_VIDEO_CRF", "20"))
+VIDEO_COMPRESS_PRESET = os.getenv("BM_VIDEO_PRESET", "medium")
+VIDEO_COMPRESS_TIMEOUT_SEC = int(os.getenv("BM_VIDEO_COMPRESS_TIMEOUT", "900"))
 
 if os.path.exists("/etc/secrets/credentials.json"):
     CREDENTIALS_FILE = "/etc/secrets/credentials.json"
@@ -124,6 +134,27 @@ def brand_material_signed_read_url(
         )
     except Exception:
         return brand_material_public_url(gcs_object_path)
+
+
+def brand_material_signed_write_url(
+    gcs_object_path: str,
+    content_type: str,
+    *,
+    minutes: int = 30,
+) -> str | None:
+    """Signed PUT URL so the browser can upload large files directly to GCS."""
+    if not gcs_object_path:
+        return None
+    try:
+        blob = get_storage_client().bucket(GCS_BUCKET).blob(gcs_object_path)
+        return blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(minutes=minutes),
+            method="PUT",
+            content_type=content_type,
+        )
+    except Exception:
+        return None
 
 
 def brand_material_public_url(gcs_object_path: str | None) -> str | None:
@@ -330,6 +361,52 @@ def get_storage_client() -> storage.Client:
         project=creds.project_id,
     )
     return _storage_client
+
+
+_GCS_UPLOAD_CORS_READY = False
+
+
+def ensure_gcs_upload_cors() -> None:
+    """Allow browser PUT to signed upload URLs (required for large direct uploads)."""
+    global _GCS_UPLOAD_CORS_READY
+    if _GCS_UPLOAD_CORS_READY:
+        return
+    try:
+        bucket = get_storage_client().bucket(GCS_BUCKET)
+        bucket.reload()
+        origins = [
+            o.strip()
+            for o in os.getenv(
+                "GCS_UPLOAD_CORS_ORIGINS",
+                "http://localhost:5173,http://127.0.0.1:5173,"
+                "http://localhost:8080,https://freemir-web-123563250077.asia-southeast1.run.app",
+            ).split(",")
+            if o.strip()
+        ]
+        upload_rule = {
+            "origin": origins,
+            "method": ["GET", "PUT", "HEAD", "OPTIONS"],
+            "responseHeader": [
+                "Content-Type",
+                "Content-Length",
+                "Content-Range",
+                "x-goog-resumable",
+            ],
+            "maxAgeSeconds": 3600,
+        }
+        rules = list(bucket.cors or [])
+        has_put = any(
+            "PUT" in (r.get("method") or [])
+            and set(origins).issubset(set(r.get("origin") or []))
+            for r in rules
+        )
+        if not has_put:
+            rules.append(upload_rule)
+            bucket.cors = rules
+            bucket.patch()
+        _GCS_UPLOAD_CORS_READY = True
+    except Exception as exc:
+        print(f"[GCS] upload CORS setup skipped: {exc}")
 
 
 def _uploaded_at_jakarta_iso(dt: Optional[datetime]) -> Optional[str]:
@@ -985,6 +1062,360 @@ def _preview_object_path(sku: str, material_id: str) -> str:
     return f"{GCS_PREFIX}/{safe_sku}/.preview_{material_id}.jpg"
 
 
+def _compression_meta(original: int, compressed: int, *, crf: int) -> dict:
+    return {
+        "applied": True,
+        "originalBytes": original,
+        "sizeBytes": compressed,
+        "codec": "h264",
+        "crf": crf,
+    }
+
+
+def _compression_skipped(original: int, reason: str) -> dict:
+    return {
+        "applied": False,
+        "originalBytes": original,
+        "sizeBytes": original,
+        "reason": reason,
+    }
+
+
+def _resolve_ffmpeg_path() -> str | None:
+    env = os.getenv("FFMPEG_PATH", "").strip()
+    if env and os.path.isfile(env):
+        return env
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    if sys.platform != "win32":
+        return None
+    local = os.environ.get("LOCALAPPDATA", "")
+    candidates = [
+        os.path.join(local, "Microsoft", "WinGet", "Links", "ffmpeg.exe"),
+    ]
+    winget_pkg = os.path.join(local, "Microsoft", "WinGet", "Packages")
+    if os.path.isdir(winget_pkg):
+        for name in os.listdir(winget_pkg):
+            if "ffmpeg" not in name.lower():
+                continue
+            for sub in ("bin", "ffmpeg-8.1.1-full_build/bin", "ffmpeg-7.1-full_build/bin"):
+                exe = os.path.join(winget_pkg, name, sub, "ffmpeg.exe")
+                if os.path.isfile(exe):
+                    candidates.append(exe)
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def _video_compress_crf(size_bytes: int) -> int:
+    """Slightly stronger settings for larger sources — still visually clean."""
+    if size_bytes > 80 * 1024 * 1024:
+        return min(28, VIDEO_COMPRESS_CRF + 6)
+    if size_bytes > 50 * 1024 * 1024:
+        return min(26, VIDEO_COMPRESS_CRF + 4)
+    if size_bytes > 40 * 1024 * 1024:
+        return min(23, VIDEO_COMPRESS_CRF + 2)
+    return VIDEO_COMPRESS_CRF
+
+
+def _ffmpeg_compress_video_file(
+    input_path: str,
+    output_path: str,
+    *,
+    crf: int | None = None,
+) -> bool:
+    """Re-encode to H.264/AAC MP4 — CRF keeps visual quality while shrinking large uploads."""
+    ffmpeg = _resolve_ffmpeg_path()
+    if not ffmpeg:
+        return False
+    use_crf = crf if crf is not None else VIDEO_COMPRESS_CRF
+    base = [
+        ffmpeg,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        input_path,
+        "-c:v",
+        "libx264",
+        "-crf",
+        str(use_crf),
+        "-preset",
+        VIDEO_COMPRESS_PRESET,
+        "-profile:v",
+        "high",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+    ]
+    for audio_args in (["-c:a", "aac", "-b:a", "128k", "-ac", "2"], ["-an"]):
+        cmd = base + audio_args + [output_path]
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=VIDEO_COMPRESS_TIMEOUT_SEC,
+            )
+            if (
+                proc.returncode == 0
+                and os.path.isfile(output_path)
+                and os.path.getsize(output_path) > 0
+            ):
+                return True
+        except (subprocess.TimeoutExpired, OSError):
+            return False
+    return False
+
+
+def compress_video_bytes_if_large(
+    file_bytes: bytes,
+    mime_type: str,
+) -> tuple[bytes, str, dict | None]:
+    """Compress large videos in-memory (multipart upload path)."""
+    original = len(file_bytes or b"")
+    if original <= VIDEO_COMPRESS_MIN_BYTES:
+        return file_bytes, mime_type, None
+    if media_type_from_mime(mime_type) != "video":
+        return file_bytes, mime_type, None
+
+    crf = _video_compress_crf(original)
+    with tempfile.TemporaryDirectory() as tmp:
+        ext = MIME_EXT.get((mime_type or "").lower(), "mp4")
+        inp = os.path.join(tmp, f"src.{ext}")
+        out = os.path.join(tmp, "out.mp4")
+        with open(inp, "wb") as fh:
+            fh.write(file_bytes)
+        if not _ffmpeg_compress_video_file(inp, out, crf=crf):
+            print(f"[brand-material] ffmpeg compress skipped — binary not found or encode failed ({original} bytes)")
+            return file_bytes, mime_type, _compression_skipped(original, "FFMPEG_UNAVAILABLE")
+        new_size = os.path.getsize(out)
+        if new_size >= original:
+            print(f"[brand-material] ffmpeg output not smaller ({original} → {new_size} bytes), keeping original")
+            return file_bytes, mime_type, _compression_skipped(original, "ALREADY_OPTIMIZED")
+        with open(out, "rb") as fh:
+            compressed = fh.read()
+        print(f"[brand-material] video compressed {original} → {new_size} bytes (crf={crf})")
+        return compressed, "video/mp4", _compression_meta(original, new_size, crf=crf)
+
+
+def compress_gcs_video_blob_if_large(
+    bucket,
+    blob,
+    mime_type: str,
+) -> tuple[int, str, dict | None]:
+    """Compress a pending/final GCS video blob in place when it exceeds the threshold."""
+    blob.reload()
+    original = int(blob.size or 0)
+    if original <= VIDEO_COMPRESS_MIN_BYTES:
+        return original, mime_type, None
+    if media_type_from_mime(mime_type) != "video":
+        return original, mime_type, None
+
+    crf = _video_compress_crf(original)
+    with tempfile.TemporaryDirectory() as tmp:
+        ext = MIME_EXT.get((mime_type or "").lower(), "mp4")
+        inp = os.path.join(tmp, f"src.{ext}")
+        out = os.path.join(tmp, "out.mp4")
+        blob.download_to_filename(inp)
+        if not _ffmpeg_compress_video_file(inp, out, crf=crf):
+            print(f"[brand-material] gcs ffmpeg compress skipped ({original} bytes)")
+            return original, mime_type, _compression_skipped(original, "FFMPEG_UNAVAILABLE")
+        new_size = os.path.getsize(out)
+        if new_size >= original:
+            print(f"[brand-material] gcs output not smaller ({original} → {new_size}), keeping original")
+            return original, mime_type, _compression_skipped(original, "ALREADY_OPTIMIZED")
+        with open(out, "rb") as fh:
+            payload = fh.read()
+        blob.upload_from_string(payload, content_type="video/mp4")
+        print(f"[brand-material] gcs video compressed {original} → {new_size} bytes (crf={crf})")
+        return new_size, "video/mp4", _compression_meta(original, new_size, crf=crf)
+
+
+def _pending_upload_path(sku: str, material_id: str, mime_type: str) -> str:
+    safe_sku = re.sub(r"[^\w\-]+", "_", normalize_sku(sku))
+    ext = MIME_EXT.get((mime_type or "").lower(), "bin")
+    return f"{GCS_PREFIX}/{safe_sku}/.pending_{material_id}.{ext}"
+
+
+def init_direct_material_upload(
+    *,
+    sku: str,
+    category: str,
+    media_type: str,
+    mime_type: str,
+    size_bytes: int,
+) -> dict:
+    """Issue a signed GCS PUT URL for files that exceed Cloud Run's HTTP body limit."""
+    sku_norm = normalize_sku(sku)
+    if not sku_norm:
+        raise ValueError("SKU_REQUIRED")
+    if category not in ("main", "sub"):
+        raise ValueError("INVALID_CATEGORY")
+    if not mime_type or not is_allowed_media_mime(mime_type):
+        raise ValueError("MEDIA_REQUIRED")
+
+    size = int(size_bytes or 0)
+    if size <= 0:
+        raise ValueError("MEDIA_REQUIRED")
+    if size > MAX_UPLOAD_BYTES:
+        raise ValueError("FILE_TOO_LARGE")
+    if size < DIRECT_UPLOAD_THRESHOLD_BYTES:
+        raise ValueError("USE_REGULAR_UPLOAD")
+
+    mt = normalize_media_type(media_type, mime_type)
+    assert_type_matches_mime(mt, mime_type)
+
+    ensure_gcs_upload_cors()
+
+    material_id = f"bm_{uuid.uuid4().hex[:16]}"
+    pending_path = _pending_upload_path(sku_norm, material_id, mime_type)
+    signed_url = brand_material_signed_write_url(pending_path, mime_type)
+    if not signed_url:
+        raise ValueError("SIGNED_URL_FAILED")
+
+    return {
+        "materialId": material_id,
+        "signedUrl": signed_url,
+        "objectPath": pending_path,
+        "contentType": mime_type,
+    }
+
+
+def complete_direct_material_upload(
+    db: Session,
+    *,
+    material_id: str,
+    pending_path: str,
+    sku: str,
+    category: str,
+    media_type: str,
+    mime_type: str,
+    uploaded_by: str = "",
+    preview_bytes: bytes | None = None,
+    note: str | None = None,
+) -> dict:
+    """Finalize a direct GCS upload — copy pending blob to final path and create DB row."""
+    sku_norm = normalize_sku(sku)
+    if not sku_norm:
+        raise ValueError("SKU_REQUIRED")
+    if category not in ("main", "sub"):
+        raise ValueError("INVALID_CATEGORY")
+    if not mime_type or not is_allowed_media_mime(mime_type):
+        raise ValueError("MEDIA_REQUIRED")
+
+    mid = (material_id or "").strip()
+    path = (pending_path or "").strip()
+    if not mid or f".pending_{mid}." not in path:
+        raise ValueError("INVALID_UPLOAD_SESSION")
+
+    mt = normalize_media_type(media_type, mime_type)
+    assert_type_matches_mime(mt, mime_type)
+
+    client = get_storage_client()
+    bucket = client.bucket(GCS_BUCKET)
+    pending_blob = bucket.blob(path)
+    if not pending_blob.exists():
+        raise ValueError("GCS_OBJECT_MISSING")
+    pending_blob.reload()
+    size_bytes = int(pending_blob.size or 0)
+    if size_bytes <= 0:
+        pending_blob.delete()
+        raise ValueError("MEDIA_REQUIRED")
+    if size_bytes > MAX_UPLOAD_BYTES:
+        pending_blob.delete()
+        raise ValueError("FILE_TOO_LARGE")
+
+    compression_meta = None
+    if mt == "video":
+        size_bytes, mime_type, compression_meta = compress_gcs_video_blob_if_large(
+            bucket, pending_blob, mime_type,
+        )
+        if size_bytes > MAX_UPLOAD_BYTES:
+            pending_blob.delete()
+            raise ValueError("FILE_TOO_LARGE")
+
+    sku_k = _sku_key(sku_norm)
+    sub_index = None
+
+    if category == "main":
+        existing_mains = (
+            db.query(BrandMaterial)
+            .filter(
+                BrandMaterial.sku_key == sku_k,
+                BrandMaterial.category == "main",
+                BrandMaterial.media_type == mt,
+            )
+            .all()
+        )
+        for row in existing_mains:
+            _demote_main_to_sub(db, row)
+        db.flush()
+    else:
+        max_idx = (
+            db.query(BrandMaterial.sub_index)
+            .filter(
+                BrandMaterial.sku_key == sku_k,
+                BrandMaterial.category == "sub",
+                BrandMaterial.media_type == mt,
+            )
+            .order_by(BrandMaterial.sub_index.desc())
+            .first()
+        )
+        sub_index = (max_idx[0] if max_idx and max_idx[0] else 0) + 1
+
+    file_name = storage_file_name(sku_norm, category, sub_index, mime_type)
+    final_path = _gcs_object_path(sku_norm, file_name)
+
+    preview_payload = preview_bytes
+    if mt == "photo" and not preview_payload:
+        try:
+            preview_payload = _thumbnail_image_bytes(pending_blob.download_as_bytes())
+        except (UnidentifiedImageError, OSError, ValueError):
+            preview_payload = None
+
+    bucket.copy_blob(pending_blob, bucket, final_path)
+    pending_blob.delete()
+
+    now = datetime.now(timezone.utc)
+    preview_path = None
+    if preview_payload:
+        preview_path = _preview_object_path(sku_norm, mid)
+        bucket.blob(preview_path).upload_from_string(
+            preview_payload, content_type="image/jpeg",
+        )
+
+    row = BrandMaterial(
+        id=mid,
+        sku=sku_norm,
+        sku_key=sku_k,
+        category=category,
+        media_type=mt,
+        sub_index=sub_index,
+        gcs_object_path=final_path,
+        preview_gcs_object_path=preview_path,
+        mime_type=mime_type,
+        size_bytes=size_bytes,
+        uploaded_at=now,
+        uploaded_by=uploaded_by or "",
+        note=normalize_note(note),
+    )
+    db.add(row)
+    db.commit()
+
+    if category == "main":
+        _renumber_subs(db, sku_norm, mt)
+
+    db.refresh(row)
+    result = _row_to_dict(row)
+    if compression_meta is not None:
+        result["compression"] = compression_meta
+    return result
+
+
 def upload_material(
     db: Session,
     *,
@@ -1009,6 +1440,14 @@ def upload_material(
 
     mt = normalize_media_type(media_type, mime_type)
     assert_type_matches_mime(mt, mime_type)
+
+    compression_meta = None
+    if mt == "video" and len(file_bytes) > VIDEO_COMPRESS_MIN_BYTES:
+        file_bytes, mime_type, compression_meta = compress_video_bytes_if_large(
+            file_bytes, mime_type,
+        )
+        if len(file_bytes) > MAX_UPLOAD_BYTES:
+            raise ValueError("FILE_TOO_LARGE")
 
     sku_k = _sku_key(sku_norm)
     sub_index = None
@@ -1084,7 +1523,10 @@ def upload_material(
         _renumber_subs(db, sku_norm, mt)
 
     db.refresh(row)
-    return _row_to_dict(row)
+    result = _row_to_dict(row)
+    if compression_meta is not None:
+        result["compression"] = compression_meta
+    return result
 
 
 def update_material(

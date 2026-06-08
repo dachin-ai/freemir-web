@@ -2,7 +2,13 @@
  * Product Gallery catalog — PostgreSQL metadata + Google Cloud Storage (via API).
  */
 
+import axios from 'axios';
 import api from '../api';
+import {
+    UPLOAD_PHASE,
+    shouldUseDirectGcsUpload,
+    willCompressVideo,
+} from './brandMaterialUploadQueue';
 import { extFromMime, isMediaFile, isVideoMime, videoFramePosterBlob } from './brandMaterialMedia';
 
 export function normalizeSku(sku) {
@@ -31,6 +37,7 @@ function mapItem(row) {
         note: row.note ?? '',
         gcsObjectPath: row.gcsObjectPath ?? row.gcs_object_path ?? '',
         hasPreview: Boolean(row.hasPreview ?? row.has_preview),
+        compression: row.compression ?? null,
     };
 }
 
@@ -38,7 +45,12 @@ function apiErrorCode(err) {
     const detail = err?.response?.data?.detail;
     if (typeof detail === 'string') return detail;
     if (Array.isArray(detail)) return detail[0]?.msg || 'REQUEST_FAILED';
-    return err?.message || 'REQUEST_FAILED';
+    if (err?.response?.status === 413) return 'UPLOAD_PAYLOAD_TOO_LARGE';
+    const msg = String(err?.message || '');
+    if (!err?.response && /network error/i.test(msg)) {
+        return 'GCS_DIRECT_UPLOAD_FAILED';
+    }
+    return msg || 'REQUEST_FAILED';
 }
 
 export async function listBrandMaterialCoverage({
@@ -198,36 +210,115 @@ export async function prefetchBrandMaterialPreviews(items, { onPreview, isCancel
     await Promise.all(Array.from({ length: n }, () => worker()));
 }
 
+async function uploadBrandMaterialDirect({
+    sku, category, mediaType, file, note = '', onProgress, onPhase,
+}) {
+    const skuNorm = normalizeSku(sku).toUpperCase();
+    const mime = file.type || 'application/octet-stream';
+    const mt = mediaType || (isVideoMime(mime) ? 'video' : 'photo');
+    const cat = category || 'sub';
+    const needsCompress = willCompressVideo(file);
+    const setPhase = (phase) => onPhase?.(phase);
+
+    setPhase(UPLOAD_PHASE.PREPARING);
+    const { data: init } = await api.post('/brand-material/upload/direct/init', {
+        sku: skuNorm,
+        category: cat,
+        mediaType: mt,
+        mimeType: mime,
+        sizeBytes: file.size,
+    });
+
+    setPhase(UPLOAD_PHASE.UPLOADING);
+    await axios.put(init.signedUrl, file, {
+        headers: { 'Content-Type': init.contentType || mime },
+        timeout: 600000,
+        onUploadProgress: onProgress
+            ? (evt) => {
+                if (!evt.total) return;
+                onProgress(Math.min(92, Math.round((evt.loaded / evt.total) * 92)));
+            }
+            : undefined,
+    });
+
+    const form = new FormData();
+    form.append('materialId', init.materialId);
+    form.append('objectPath', init.objectPath);
+    form.append('sku', skuNorm);
+    form.append('category', cat);
+    form.append('mediaType', mt);
+    form.append('mimeType', mime);
+    form.append('note', (note || '').trim().slice(0, 500));
+
+    if (isVideoMime(mime)) {
+        setPhase(UPLOAD_PHASE.POSTER);
+        if (onProgress) onProgress(93);
+        const poster = await videoFramePosterBlob(file);
+        if (poster) form.append('poster', poster, 'poster.jpg');
+    }
+
+    setPhase(needsCompress ? UPLOAD_PHASE.COMPRESSING : UPLOAD_PHASE.FINALIZING);
+    if (onProgress) onProgress(needsCompress ? 94 : 97);
+
+    const { data } = await api.post('/brand-material/upload/direct/complete', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 600000,
+    });
+
+    if (onProgress) onProgress(100);
+    return mapItem(data.item);
+}
+
 export async function uploadBrandMaterial({
-    sku, category, mediaType, file, note = '', onProgress,
+    sku, category, mediaType, file, note = '', onProgress, onPhase,
 }) {
     const skuNorm = normalizeSku(sku);
     if (!skuNorm) throw new Error('SKU_REQUIRED');
     if (!isMediaFile(file)) throw new Error('MEDIA_REQUIRED');
 
-    const form = new FormData();
-    form.append('sku', skuNorm.toUpperCase());
-    form.append('category', category || 'sub');
-    form.append('mediaType', mediaType || 'photo');
-    form.append('note', (note || '').trim().slice(0, 500));
-    form.append('file', file);
-
-    if (isVideoMime(file.type)) {
-        const poster = await videoFramePosterBlob(file);
-        if (poster) form.append('poster', poster, 'poster.jpg');
-    }
-
     try {
+        if (shouldUseDirectGcsUpload(file)) {
+            return await uploadBrandMaterialDirect({
+                sku, category, mediaType, file, note, onProgress, onPhase,
+            });
+        }
+
+        const needsCompress = willCompressVideo(file);
+        onPhase?.(UPLOAD_PHASE.PREPARING);
+        const form = new FormData();
+        form.append('sku', skuNorm.toUpperCase());
+        form.append('category', category || 'sub');
+        form.append('mediaType', mediaType || 'photo');
+        form.append('note', (note || '').trim().slice(0, 500));
+        form.append('file', file);
+
+        if (isVideoMime(file.type)) {
+            onPhase?.(UPLOAD_PHASE.POSTER);
+            const poster = await videoFramePosterBlob(file);
+            if (poster) form.append('poster', poster, 'poster.jpg');
+        }
+
+        onPhase?.(UPLOAD_PHASE.UPLOADING);
         const { data } = await api.post('/brand-material/upload', form, {
             headers: { 'Content-Type': 'multipart/form-data' },
             timeout: 600000,
             onUploadProgress: onProgress
                 ? (evt) => {
                     if (!evt.total) return;
-                    onProgress(Math.min(100, Math.round((evt.loaded / evt.total) * 100)));
+                    const sent = evt.loaded >= evt.total;
+                    const pct = sent
+                        ? 82
+                        : Math.min(82, Math.round((evt.loaded / evt.total) * 82));
+                    onProgress(pct);
+                    if (needsCompress && sent) {
+                        onPhase?.(UPLOAD_PHASE.COMPRESSING);
+                    } else if (!needsCompress && sent) {
+                        onPhase?.(UPLOAD_PHASE.FINALIZING);
+                    }
                 }
                 : undefined,
         });
+        if (onProgress) onProgress(100);
         return mapItem(data.item);
     } catch (err) {
         throw new Error(apiErrorCode(err));

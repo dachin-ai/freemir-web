@@ -36,10 +36,12 @@ import {
 import { isMediaFile, isVideoMime, mediaTypeFromFile } from '../utils/brandMaterialMedia';
 import { downloadMaterialsAsZip } from '../utils/brandMaterialDownload';
 import {
+    UPLOAD_PHASE,
     UPLOAD_STATUS,
     formatUploadBytes,
     isUploadFileTooLarge,
     uploadErrorLabel,
+    uploadPhaseLabel,
 } from '../utils/brandMaterialUploadQueue';
 
 import {
@@ -494,6 +496,7 @@ export default function BrandMaterial() {
             patchUploadRow(row.id, {
                 uploadStatus: UPLOAD_STATUS.UPLOADING,
                 uploadProgress: 0,
+                uploadPhase: UPLOAD_PHASE.PREPARING,
                 uploadError: null,
             });
 
@@ -505,13 +508,31 @@ export default function BrandMaterial() {
                     note: row.note,
                     file: row.file,
                     onProgress: (pct) => patchUploadRow(row.id, { uploadProgress: pct }),
+                    onPhase: (phase) => patchUploadRow(row.id, { uploadPhase: phase }),
                 });
                 if (saved.category === 'main' && saved.mediaType === 'photo') {
                     await applyCoverOverride(saved.sku, saved.id);
                 }
+                if (saved.compression?.applied) {
+                    message.info(
+                        t('brandMaterial.uploadVideoCompressed', {
+                            from: formatUploadBytes(saved.compression.originalBytes),
+                            to: formatUploadBytes(saved.compression.sizeBytes),
+                        }),
+                        5,
+                    );
+                } else if (saved.compression && saved.compression.applied === false) {
+                    const reasonKey = `brandMaterial.uploadCompressReason_${saved.compression.reason}`;
+                    const reasonText = t(reasonKey, { defaultValue: saved.compression.reason || '' });
+                    message.warning(
+                        t('brandMaterial.uploadCompressSkipped', { reason: reasonText }),
+                        6,
+                    );
+                }
                 patchUploadRow(row.id, {
                     uploadStatus: UPLOAD_STATUS.DONE,
                     uploadProgress: 100,
+                    uploadPhase: null,
                     uploadError: null,
                 });
                 ok += 1;
@@ -559,6 +580,7 @@ export default function BrandMaterial() {
                 file,
                 uploadStatus: UPLOAD_STATUS.READY,
                 uploadProgress: 0,
+                uploadPhase: null,
                 uploadError: null,
             };
         });
@@ -684,17 +706,23 @@ export default function BrandMaterial() {
         },
         {
             title: t('brandMaterial.colUploadStatus'),
-            width: 128,
+            width: 148,
             render: (_, row) => {
                 if (row.uploadStatus === UPLOAD_STATUS.UPLOADING) {
+                    const phaseLabel = uploadPhaseLabel(row.uploadPhase, t);
+                    const isSlowPhase = row.uploadPhase === UPLOAD_PHASE.COMPRESSING
+                        || row.uploadPhase === UPLOAD_PHASE.FINALIZING
+                        || row.uploadPhase === UPLOAD_PHASE.PREPARING
+                        || row.uploadPhase === UPLOAD_PHASE.POSTER;
                     return (
-                        <div style={{ minWidth: 108 }}>
-                            <Text style={{ fontSize: 11 }}>{t('brandMaterial.uploadStatusUploading')}</Text>
+                        <div style={{ minWidth: 132 }}>
+                            <Text style={{ fontSize: 11, display: 'block', lineHeight: 1.35 }}>{phaseLabel}</Text>
                             <Progress
-                                percent={row.uploadProgress || 0}
+                                percent={row.uploadProgress || (isSlowPhase ? 8 : 0)}
                                 size="small"
                                 showInfo={false}
                                 strokeColor="#0ea5e9"
+                                status={isSlowPhase ? 'active' : 'normal'}
                             />
                         </div>
                     );
