@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Empty, Pagination, Spin, Typography } from 'antd';
+import { Checkbox, Empty, Pagination, Spin, Tooltip, Typography } from 'antd';
 import { CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import CatalogSearchModeSwitch from '../components/brandMaterial/CatalogSearchModeSwitch';
@@ -37,6 +37,7 @@ function groupItemsByCategory(items) {
 export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0, coverOverrides = {} }) {
     const { t } = useTranslation();
     const [searchMode, setSearchMode] = useState('product');
+    const [includeDiscontinued, setIncludeDiscontinued] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [page, setPage] = useState(1);
@@ -132,6 +133,7 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0, cover
                     q: query,
                     page,
                     pageSize: DETAIL_PAGE_SIZE,
+                    includeDiscontinued,
                 });
                 if (gen !== loadGenRef.current) return;
                 setDetailItems(result.items);
@@ -142,6 +144,7 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0, cover
                     page,
                     pageSize: PAGE_SIZE,
                     sku: query,
+                    includeDiscontinued,
                 });
                 if (gen !== loadGenRef.current) return;
                 setItems(result.items);
@@ -164,7 +167,7 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0, cover
                 setRefreshing(false);
             }
         }
-    }, [isDetailMode, page, debouncedSearch, reloadToken, prefetchCovers]);
+    }, [isDetailMode, page, debouncedSearch, includeDiscontinued, reloadToken, prefetchCovers]);
 
     useEffect(() => {
         loadResults();
@@ -240,6 +243,18 @@ export default function BrandMaterialSkuList({ onOpenSku, reloadToken = 0, cover
                             ) : null}
                         </div>
                     </label>
+                    <Tooltip title={t('brandMaterial.includeDiscontinuedHint')}>
+                        <Checkbox
+                            className="bm-catalog-include-discontinued"
+                            checked={includeDiscontinued}
+                            onChange={(e) => {
+                                setIncludeDiscontinued(e.target.checked);
+                                setPage(1);
+                            }}
+                        >
+                            {t('brandMaterial.includeDiscontinued')}
+                        </Checkbox>
+                    </Tooltip>
                 </div>
 
                 {showDetailIdle && (

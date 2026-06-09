@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from sqlalchemy import text
-from routers import price_checker, order_loss, failed_delivery, presales, erp_oos, sku_plan, conversion_cleaner, order_match, auth, warehouse_order, socmed, affiliate, tiktok_ads, access, product_performance, livestream_display, photo_downloader, quick_links, brand_material, sku_review, public_site, social_media_analytics
+from routers import price_checker, order_loss, failed_delivery, presales, erp_oos, sku_plan, conversion_cleaner, order_match, auth, warehouse_order, socmed, affiliate, tiktok_ads, ads_monitor, access, product_performance, livestream_display, photo_downloader, quick_links, brand_material, sku_review, public_site, social_media_analytics
 from database import engine, Base, SessionLocal, USING_SQLITE_DEV
 import models  # noqa: F401 - ensure all models are registered before create_all
 import os
@@ -511,6 +511,7 @@ app.include_router(warehouse_order.router)
 app.include_router(socmed.router)
 app.include_router(affiliate.router)
 app.include_router(tiktok_ads.router)
+app.include_router(ads_monitor.router)
 app.include_router(access.router)
 app.include_router(product_performance.router)
 app.include_router(livestream_display.router)

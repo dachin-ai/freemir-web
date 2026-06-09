@@ -27,6 +27,7 @@ export const LEGACY_TOOL_REDIRECTS = [
     'affiliate-analyzer',
     'shopee-affiliate',
     'tiktok-ads',
+    'tiktok-ads-monitor',
     'request-access',
     'access-management',
     'product-performance',

@@ -335,6 +335,42 @@ class SocmedApifyToken(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class AdsMonitorInternalCreator(Base):
+    """TikTok accounts (column G) marked as internal creator for Ads Monitor."""
+
+    __tablename__ = "ads_monitor_internal_creators"
+
+    account_name = Column(String(255), primary_key=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class AdsMonitorDiscoveredAccount(Base):
+    """Unique TikTok accounts seen across Ads Monitor file ads uploads."""
+
+    __tablename__ = "ads_monitor_discovered_accounts"
+
+    account_name = Column(String(255), primary_key=True)
+    first_seen_at = Column(DateTime, server_default=func.now())
+    last_seen_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class AdsMonitorDailyRecord(Base):
+    """Per-store daily non-live ads snapshot (Product Card / Internal / External)."""
+
+    __tablename__ = "ads_monitor_daily_records"
+
+    store_code = Column(String(64), primary_key=True)
+    data_date = Column(String(10), primary_key=True)
+    product_card_cost = Column(Float, default=0.0)
+    product_card_gmv = Column(Float, default=0.0)
+    internal_cost = Column(Float, default=0.0)
+    internal_gmv = Column(Float, default=0.0)
+    external_cost = Column(Float, default=0.0)
+    external_gmv = Column(Float, default=0.0)
+    source_filename = Column(String(512), default="")
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 class SocmedAnalyticsProfileSnapshot(Base):
     """Point-in-time profile metrics."""
 

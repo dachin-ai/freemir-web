@@ -712,6 +712,7 @@ def search_materials_detail(
     query: str,
     page: int = 1,
     page_size: int = DETAIL_SEARCH_MAX_PAGE_SIZE,
+    include_discontinued: bool = False,
 ) -> dict:
     """Cross-SKU material search — note, SKU, or product name (incl. catalog nicknames)."""
     raw = (query or "").strip()
@@ -729,11 +730,16 @@ def search_materials_detail(
         DETAIL_SEARCH_MAX_PAGE_SIZE,
     )
 
-    _, _, search_index = _get_coverage_meta(db)
+    _, status_map, search_index = _get_coverage_meta(db)
     sku_tokens = _parse_freemir_sku_tokens(raw)
     like = f"%{raw}%"
 
     q = db.query(BrandMaterial)
+
+    if not include_discontinued:
+        discontinued_keys = _discontinued_sku_keys(status_map)
+        if discontinued_keys:
+            q = q.filter(~BrandMaterial.sku_key.in_(list(discontinued_keys)))
 
     if len(sku_tokens) > 1:
         keys = [_sku_key(t) for t in sku_tokens]
@@ -986,6 +992,25 @@ def _is_discontinued_sku(sku: str, status_map: dict[str, str]) -> bool:
     return _norm_status(status) == "zerosales"
 
 
+def _discontinued_sku_keys(status_map: dict[str, str]) -> set[str]:
+    return {
+        _sku_key(sku)
+        for sku in status_map
+        if _is_discontinued_sku(sku, status_map)
+    }
+
+
+def _filter_coverage_names(
+    names: list,
+    status_map: dict[str, str],
+    *,
+    include_discontinued: bool,
+) -> list:
+    if include_discontinued:
+        return names
+    return [n for n in names if not _is_discontinued_sku(n.sku, status_map)]
+
+
 def _build_sku_category_map(lang: str = "EN") -> dict[str, str]:
     """SKU → catalog category (L2 preferred, else L1) — aligned with product catalog."""
     from services.public_catalog_logic import _get_sku_detail_rows, _pick_lang_value
@@ -1026,6 +1051,7 @@ def list_material_coverage(
     page: int = 1,
     page_size: int = 50,
     sku_filter: str = "",
+    include_discontinued: bool = False,
 ) -> dict:
     """SKU_Info catalog vs Material Library — counts per SKU."""
     category_map, status_map, search_index = _get_coverage_meta(db)
@@ -1039,6 +1065,12 @@ def list_material_coverage(
         sorted_names = _get_sorted_all_coverage_names(q, category_map)
     else:
         sorted_names = _sort_coverage_names(q.all(), category_map)
+
+    sorted_names = _filter_coverage_names(
+        sorted_names,
+        status_map,
+        include_discontinued=include_discontinued,
+    )
 
     total = len(sorted_names)
     offset = (page - 1) * page_size

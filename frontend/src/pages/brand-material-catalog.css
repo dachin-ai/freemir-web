@@ -15,7 +15,7 @@
 
 /* ── SKU list catalog search ── */
 .bm-catalog-search-area {
-  max-width: 520px;
+  max-width: 720px;
   margin-bottom: 16px;
 }
 
@@ -24,6 +24,20 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 12px;
+}
+
+.bm-catalog-include-discontinued {
+  flex-shrink: 0;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.bm-catalog-include-discontinued .ant-checkbox + span {
+  padding-inline: 6px 0;
+  color: var(--text-muted, #64748b);
 }
 
 .bm-catalog-search-toolbar .bm-catalog-search {

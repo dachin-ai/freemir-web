@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Typography, Row, Col, Card, Tag, Tooltip, Button } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRightOutlined, LockOutlined, TagOutlined, InboxOutlined, FileSearchOutlined, BarChartOutlined, FundProjectionScreenOutlined, RiseOutlined, PieChartOutlined, VideoCameraOutlined, UnlockOutlined, LinkOutlined, FileImageOutlined, LineChartOutlined } from '@ant-design/icons';
+import { ArrowRightOutlined, LockOutlined, TagOutlined, InboxOutlined, FileSearchOutlined, BarChartOutlined, FundProjectionScreenOutlined, RiseOutlined, PieChartOutlined, VideoCameraOutlined, UnlockOutlined, LinkOutlined, FileImageOutlined, LineChartOutlined, RadarChartOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -30,6 +30,7 @@ const TOOL_ITEMS = [
     { toolKey: 'pre_sales', icon: <FundProjectionScreenOutlined />, path: toolsPath('pre-sales'), active: true, category: 'tiktok' },
     { toolKey: 'affiliate_analyzer', icon: <RiseOutlined />, path: toolsPath('affiliate-analyzer'), active: true, category: 'tiktok' },
     { toolKey: 'ads_analyzer', icon: <PieChartOutlined />, path: toolsPath('tiktok-ads'), active: true, category: 'tiktok' },
+    { toolKey: 'ads_monitor', icon: <RadarChartOutlined />, path: toolsPath('tiktok-ads-monitor'), active: true, category: 'tiktok' },
 ];
 
 const Dashboard = () => {

@@ -57,9 +57,15 @@ export async function searchBrandMaterialDetail({
     q = '',
     page = 1,
     pageSize = 24,
+    includeDiscontinued = false,
 } = {}) {
     const { data } = await api.get('/brand-material/search-detail', {
-        params: { q, page, page_size: pageSize },
+        params: {
+            q,
+            page,
+            page_size: pageSize,
+            include_discontinued: includeDiscontinued,
+        },
     });
     return {
         items: (data.items || []).map((row) => ({
@@ -76,12 +82,14 @@ export async function listBrandMaterialCoverage({
     page = 1,
     pageSize = 50,
     sku = '',
+    includeDiscontinued = false,
 } = {}) {
     const { data } = await api.get('/brand-material/coverage', {
         params: {
             page,
             page_size: pageSize,
             sku,
+            include_discontinued: includeDiscontinued,
         },
     });
     return {

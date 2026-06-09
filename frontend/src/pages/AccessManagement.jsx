@@ -23,7 +23,7 @@ const { Text } = Typography;
 const ALL_TOOL_KEYS = [
     'admin', 'price_checker', 'order_planner', 'product_performance',
     'brand_material', 'sku_review', 'order_review', 'affiliate_performance',
-    'livestream_display', 'pre_sales', 'affiliate_analyzer', 'ads_analyzer',
+    'livestream_display', 'pre_sales', 'affiliate_analyzer', 'ads_analyzer', 'ads_monitor',
     'social_media_analytics',
 ];
 
@@ -41,6 +41,7 @@ const PERM_TOOLS = [
     { key: 'pre_sales',             group: 'tiktok'  },
     { key: 'affiliate_analyzer',    group: 'tiktok'  },
     { key: 'ads_analyzer',          group: 'tiktok'  },
+    { key: 'ads_monitor',           group: 'tiktok'  },
 ];
 
 const GROUP_STYLE = {

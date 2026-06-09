@@ -31,6 +31,24 @@ def clean_numeric(val) -> float:
         return 0.0
 
 
+def _clean_numeric_series(series: pd.Series) -> pd.Series:
+    if pd.api.types.is_numeric_dtype(series):
+        return pd.to_numeric(series, errors="coerce").fillna(0.0)
+    return pd.to_numeric(
+        series.astype(str).str.replace(",", "", regex=False).str.strip(),
+        errors="coerce",
+    ).fillna(0.0)
+
+
+_NUMERIC_COLS = [
+    "Cost",
+    "SKU orders",
+    "Gross revenue",
+    "Product ad impressions",
+    "Product ad clicks",
+]
+
+
 def extract_date_from_filename(filename: str) -> pd.Timestamp:
     matches = re.findall(r"\d{4}-\d{2}-\d{2}", filename or "")
     if matches:
@@ -150,48 +168,117 @@ def _map_columns_by_name(raw_df: pd.DataFrame):
     return indices, names
 
 
-def read_and_transform_single_file(file_bytes: bytes, filename: str, mode_label: str) -> pd.DataFrame:
-    read_kwargs = dict(dtype=str)
-    if filename.lower().endswith(".csv"):
-        raw_df = pd.read_csv(io.BytesIO(file_bytes), **read_kwargs)
-    else:
-        raw_df = pd.read_excel(io.BytesIO(file_bytes), **read_kwargs)
+def _map_columns_from_headers(headers: list) -> dict[str, str] | None:
+    """Map canonical column name → source header label."""
+    lower_to_src: dict[str, str] = {}
+    for header in headers:
+        key = str(header or "").strip().lower()
+        if key:
+            lower_to_src[key] = header
 
-    # Drop completely empty rows
-    raw_df = raw_df.dropna(how="all").reset_index(drop=True)
+    out: dict[str, str] = {}
+    for canonical, aliases in _TIKTOK_COL_ALIASES:
+        found = None
+        for alias in aliases:
+            if alias in lower_to_src:
+                found = lower_to_src[alias]
+                break
+        if not found:
+            return None
+        out[canonical] = found
+    return out
 
-    # If TikTok file has metadata rows before the real header, re-read with skiprows
-    header_row = _detect_header_row(raw_df)
-    if header_row > 0:
-        raw_df = pd.read_csv(io.BytesIO(file_bytes), skiprows=header_row, dtype=str) \
-            if filename.lower().endswith(".csv") \
-            else pd.read_excel(io.BytesIO(file_bytes), skiprows=header_row, dtype=str)
-        raw_df = raw_df.dropna(how="all").reset_index(drop=True)
 
+def _load_raw_tiktok_export(file_bytes: bytes, filename: str) -> pd.DataFrame:
+    """Load only required TikTok export columns (calamine for .xlsx)."""
     expected_cols = [name for name, _ in _TIKTOK_COL_ALIASES]
+    bio = io.BytesIO(file_bytes)
 
-    # Try name-based detection first
-    col_indices, col_names = _map_columns_by_name(raw_df)
-
-    if col_indices is None:
-        # Fallback: positional mapping
-        if raw_df.shape[1] <= max(_FALLBACK_INDICES):
-            found_names = list(raw_df.columns[:20])
-            raise ValueError(
-                f"Column mapping failed for '{filename}'. "
-                f"Found {raw_df.shape[1]} columns: {found_names}. "
-                "Expected either named columns (Product ID, Creative type, Cost …) "
-                "or at least 17 positional columns."
+    if filename.lower().endswith(".csv"):
+        peek = pd.read_csv(io.BytesIO(file_bytes), nrows=5, header=None, dtype=str)
+        header_row = _detect_header_row(peek)
+        bio.seek(0)
+        read_kwargs: dict = {"dtype": str}
+        if header_row > 0:
+            read_kwargs["skiprows"] = header_row
+        raw_df = pd.read_csv(bio, **read_kwargs)
+    else:
+        sheet = "Data"
+        try:
+            peek = pd.read_excel(
+                io.BytesIO(file_bytes),
+                sheet_name=sheet,
+                nrows=5,
+                header=None,
+                engine="calamine",
             )
-        col_indices = _FALLBACK_INDICES
-        col_names = expected_cols
+        except (ValueError, KeyError):
+            sheet = 0
+            peek = pd.read_excel(
+                io.BytesIO(file_bytes),
+                sheet_name=sheet,
+                nrows=5,
+                header=None,
+                engine="calamine",
+            )
 
-    df = raw_df.iloc[:, col_indices].copy()
-    df.columns = col_names
+        header_row = _detect_header_row(peek)
+        bio.seek(0)
+        header_df = pd.read_excel(
+            io.BytesIO(file_bytes),
+            sheet_name=sheet,
+            skiprows=header_row if header_row > 0 else None,
+            nrows=0,
+            engine="calamine",
+        )
+        headers = list(header_df.columns)
+        col_map = _map_columns_from_headers(headers)
+
+        read_kwargs = {
+            "sheet_name": sheet,
+            "engine": "calamine",
+            "dtype": str,
+        }
+        if header_row > 0:
+            read_kwargs["skiprows"] = header_row
+
+        if col_map:
+            read_kwargs["usecols"] = list(col_map.values())
+            raw_df = pd.read_excel(bio, **read_kwargs)
+            raw_df = raw_df.rename(columns={src: canon for canon, src in col_map.items()})
+        else:
+            if len(headers) <= max(_FALLBACK_INDICES):
+                raise ValueError(
+                    f"Column mapping failed for '{filename}'. "
+                    f"Found {len(headers)} columns: {headers[:20]}. "
+                    "Expected either named columns (Product ID, Creative type, Cost …) "
+                    "or at least 17 positional columns."
+                )
+            read_kwargs["usecols"] = _FALLBACK_INDICES
+            raw_df = pd.read_excel(bio, **read_kwargs)
+            raw_df.columns = expected_cols
+
+    return raw_df.dropna(how="all").reset_index(drop=True)
+
+
+def _filter_meaningful_ads_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop rows where Cost and Gross revenue are both zero (same rule as Ads Monitor)."""
+    if df.empty:
+        return df
+    return df.loc[(df["Cost"] != 0) | (df["Gross revenue"] != 0)].copy()
+
+
+def read_and_transform_single_file(file_bytes: bytes, filename: str, mode_label: str) -> pd.DataFrame:
+    df = _load_raw_tiktok_export(file_bytes, filename)
 
     # Drop summary/total rows that TikTok appends at the bottom
     _SKIP_IDS = {"", "-", "nan", "total", "grand total", "summary", "subtotal"}
     df = df[~df["Product ID"].fillna("").astype(str).str.strip().str.lower().isin(_SKIP_IDS)].copy()
+
+    for col in _NUMERIC_COLS:
+        df[col] = _clean_numeric_series(df[col])
+
+    df = _filter_meaningful_ads_rows(df)
 
     df["Product ID"] = df["Product ID"].fillna("-").astype(str).str.replace(r"\.0$", "", regex=True)
     df["Video ID"] = df["Video ID"].fillna("-").astype(str).str.replace(r"\.0$", "", regex=True)
@@ -199,10 +286,6 @@ def read_and_transform_single_file(file_bytes: bytes, filename: str, mode_label:
     df["Creative type"] = df["Creative type"].fillna("Unknown").astype(str).str.strip()
     df["Status"] = df["Status"].fillna("Unknown").astype(str).str.strip()
     df["Time posted"] = pd.to_datetime(df["Time posted"], errors="coerce")
-
-    numeric_cols = ["Cost", "SKU orders", "Gross revenue", "Product ad impressions", "Product ad clicks"]
-    for col in numeric_cols:
-        df[col] = df[col].apply(clean_numeric)
 
     df["Source File"] = filename
 
@@ -215,7 +298,7 @@ def read_and_transform_single_file(file_bytes: bytes, filename: str, mode_label:
             )
         df["Data Date"] = file_date
 
-    return df
+    return df.reset_index(drop=True)
 
 
 def build_summary_sheet(df: pd.DataFrame, mode_label: str) -> pd.DataFrame:
@@ -500,4 +583,5 @@ def process_tiktok_ads(files: List[Dict], mode_label: str = MODE_AGGREGATE) -> D
         "mode": mode_label,
         "file_name": file_name,
         "file_base64": _b64(excel_bytes),
+        "rowsProcessed": int(len(df)),
     }

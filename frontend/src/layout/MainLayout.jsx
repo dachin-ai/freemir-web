@@ -280,6 +280,7 @@ const MainLayout = () => {
         { key: toolsPath('pre-sales'), label: lockedLabel(<Bi i18nKey="layout.preSalesChecker" />, 'pre_sales'), style: !hasAccess('pre_sales') ? { opacity: 0.6 } : {} },
         { key: toolsPath('affiliate-analyzer'), label: lockedLabel(<Bi i18nKey="layout.affiliateAnalyzer" />, 'affiliate_analyzer'), style: !hasAccess('affiliate_analyzer') ? { opacity: 0.6 } : {} },
         { key: toolsPath('tiktok-ads'), label: lockedLabel(<Bi i18nKey="layout.adsAnalyzer" />, 'ads_analyzer'), style: !hasAccess('ads_analyzer') ? { opacity: 0.6 } : {} },
+        { key: toolsPath('tiktok-ads-monitor'), label: lockedLabel(<Bi i18nKey="layout.adsMonitor" />, 'ads_monitor'), style: !hasAccess('ads_monitor') ? { opacity: 0.6 } : {} },
       ]
     },
     { key: toolsPath('request-access'), icon: <UnlockOutlined />, label: <Bi i18nKey="layout.requestAccess" /> },
@@ -295,6 +296,7 @@ const MainLayout = () => {
     [toolsPath('pre-sales')]: 'pre_sales',
     [toolsPath('affiliate-analyzer')]: 'affiliate_analyzer',
     [toolsPath('tiktok-ads')]: 'ads_analyzer',
+    [toolsPath('tiktok-ads-monitor')]: 'ads_monitor',
     [toolsPath('access-management')]: 'admin',
     [toolsPath('product-performance')]: 'product_performance',
     [toolsPath('livestream-display')]: 'livestream_display',

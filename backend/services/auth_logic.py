@@ -42,7 +42,7 @@ SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 # Tool keys for DB-backed access control (not stored on Account sheet).
 TOOL_KEYS = [
     "price_checker", "order_planner", "order_review",
-    "affiliate_performance", "pre_sales", "affiliate_analyzer", "ads_analyzer",
+    "affiliate_performance", "pre_sales", "affiliate_analyzer", "ads_analyzer", "ads_monitor",
     "admin", "product_performance", "livestream_display", "photo_downloader",
     "brand_material", "sku_review", "social_media_analytics",
 ]

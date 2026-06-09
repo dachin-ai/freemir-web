@@ -20,6 +20,7 @@ const TOOL_KEYS = [
     'pre_sales',
     'affiliate_analyzer',
     'ads_analyzer',
+    'ads_monitor',
     'social_media_analytics',
 ];
 

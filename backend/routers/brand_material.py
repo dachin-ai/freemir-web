@@ -93,6 +93,7 @@ def list_coverage(
     page: int = 1,
     page_size: int = 50,
     sku: str = "",
+    include_discontinued: bool = False,
     db: Session = Depends(get_db),
 ):
     try:
@@ -101,6 +102,7 @@ def list_coverage(
             page=page,
             page_size=page_size,
             sku_filter=sku,
+            include_discontinued=include_discontinued,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -131,6 +133,7 @@ def search_detail(
     q: str = "",
     page: int = 1,
     page_size: int = 24,
+    include_discontinued: bool = False,
     db: Session = Depends(get_db),
 ):
     try:
@@ -139,6 +142,7 @@ def search_detail(
             query=q,
             page=page,
             page_size=page_size,
+            include_discontinued=include_discontinued,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
