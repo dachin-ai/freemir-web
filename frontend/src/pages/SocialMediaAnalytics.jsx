@@ -24,8 +24,25 @@ export default function SocialMediaAnalytics() {
     useEffect(() => {
         api.get('/social-media-analytics/config')
             .then((res) => setConfig(res.data))
-            .catch(() => setConfig({ apify_configured: false }));
-    }, []);
+            .catch((err) => {
+                const status = err.response?.status;
+                const detail = err.response?.data?.detail;
+                if (status === 403) {
+                    message.error(
+                        typeof detail === 'string'
+                            ? detail
+                            : t('socialMediaAnalytics.errors.noPermission'),
+                    );
+                } else if (status && status !== 401) {
+                    message.error(
+                        typeof detail === 'string'
+                            ? detail
+                            : t('socialMediaAnalytics.errors.configLoadFailed'),
+                    );
+                }
+                setConfig({ apify_configured: false });
+            });
+    }, [t]);
 
     const requireToken = useCallback(() => {
         if (tokenMode === MODE_SAVED && selectedTokenId) {

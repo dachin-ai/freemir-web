@@ -26,7 +26,8 @@ steps:
       - '--image=asia-southeast1-docker.pkg.dev/dachin-ai-493209/cloud-run-source-deploy/${_BACKEND_IMAGE}:$COMMIT_SHA'
       - '--region=asia-southeast1'
       - '--allow-unauthenticated'
-      # Do NOT set OPENAI_API_KEY here (empty substitution wipes production). Set once in Cloud Run console.
+      # Do NOT set OPENAI_API_KEY / APIFY_API_TOKEN here (empty substitution wipes production).
+      # Set once in Cloud Run console → freemir-web-api → Variables: APIFY_API_TOKEN for SMA scraping.
       - '--update-env-vars=DATABASE_URL=${_DATABASE_URL},JWT_SECRET=${_JWT_SECRET},OPENAI_BASE_URL=${_OPENAI_BASE_URL},OPENAI_MODEL=${_OPENAI_MODEL}'
       - '--set-secrets=/etc/secrets/credentials.json=credentials-json:latest'
       - '--min-instances=0'

@@ -315,6 +315,148 @@ def _run_migrations():
         END
         $$;
         """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'socmed_analytics_videos'
+            ) THEN
+                CREATE TABLE socmed_analytics_videos (
+                    id SERIAL PRIMARY KEY,
+                    created_by VARCHAR(120) DEFAULT '',
+                    platform VARCHAR(20) NOT NULL,
+                    url VARCHAR(512) NOT NULL,
+                    url_key VARCHAR(512) DEFAULT '',
+                    canonical_url VARCHAR(512) DEFAULT '',
+                    post_id VARCHAR(80) DEFAULT '',
+                    author_username VARCHAR(120) DEFAULT '',
+                    author_display_name VARCHAR(200) DEFAULT '',
+                    caption VARCHAR(2000) DEFAULT '',
+                    thumbnail_url VARCHAR(1024) DEFAULT '',
+                    posted_at VARCHAR(40) DEFAULT '',
+                    views INTEGER,
+                    likes INTEGER,
+                    comments INTEGER,
+                    shares INTEGER,
+                    saves INTEGER,
+                    video_download_url VARCHAR(1024) DEFAULT '',
+                    duration_sec INTEGER,
+                    last_fetched_at TIMESTAMP,
+                    fetch_status VARCHAR(20) DEFAULT 'pending',
+                    fetch_error VARCHAR(500) DEFAULT '',
+                    note VARCHAR(500) DEFAULT '',
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS ix_socmed_analytics_videos_created_by
+                    ON socmed_analytics_videos (created_by);
+                CREATE INDEX IF NOT EXISTS ix_socmed_analytics_videos_platform
+                    ON socmed_analytics_videos (platform);
+                CREATE INDEX IF NOT EXISTS ix_socmed_analytics_videos_url_key
+                    ON socmed_analytics_videos (url_key);
+                CREATE INDEX IF NOT EXISTS ix_socmed_analytics_videos_post_id
+                    ON socmed_analytics_videos (post_id);
+            END IF;
+        END
+        $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'socmed_analytics_profiles'
+            ) THEN
+                CREATE TABLE socmed_analytics_profiles (
+                    id SERIAL PRIMARY KEY,
+                    created_by VARCHAR(120) DEFAULT '',
+                    platform VARCHAR(20) NOT NULL,
+                    username VARCHAR(120) NOT NULL,
+                    profile_key VARCHAR(160) DEFAULT '',
+                    profile_url VARCHAR(512) DEFAULT '',
+                    display_name VARCHAR(200) DEFAULT '',
+                    biography VARCHAR(2000) DEFAULT '',
+                    avatar_url VARCHAR(1024) DEFAULT '',
+                    followers INTEGER,
+                    following INTEGER,
+                    posts_count INTEGER,
+                    total_likes INTEGER,
+                    is_verified VARCHAR(10) DEFAULT '',
+                    recent_posts_json JSON,
+                    recent_avg_views INTEGER,
+                    recent_avg_likes INTEGER,
+                    recent_avg_comments INTEGER,
+                    recent_avg_engagement_rate VARCHAR(20) DEFAULT '',
+                    last_fetched_at TIMESTAMP,
+                    fetch_status VARCHAR(20) DEFAULT 'pending',
+                    fetch_error VARCHAR(500) DEFAULT '',
+                    note VARCHAR(500) DEFAULT '',
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS ix_socmed_analytics_profiles_created_by
+                    ON socmed_analytics_profiles (created_by);
+                CREATE INDEX IF NOT EXISTS ix_socmed_analytics_profiles_platform
+                    ON socmed_analytics_profiles (platform);
+                CREATE INDEX IF NOT EXISTS ix_socmed_analytics_profiles_username
+                    ON socmed_analytics_profiles (username);
+                CREATE INDEX IF NOT EXISTS ix_socmed_analytics_profiles_profile_key
+                    ON socmed_analytics_profiles (profile_key);
+            END IF;
+        END
+        $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'socmed_apify_tokens'
+            ) THEN
+                CREATE TABLE socmed_apify_tokens (
+                    id SERIAL PRIMARY KEY,
+                    owner VARCHAR(120) NOT NULL,
+                    label VARCHAR(120) DEFAULT '',
+                    token_enc TEXT NOT NULL,
+                    token_hint VARCHAR(32) DEFAULT '',
+                    is_default VARCHAR(1) DEFAULT '0',
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS ix_socmed_apify_tokens_owner
+                    ON socmed_apify_tokens (owner);
+            END IF;
+        END
+        $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'socmed_analytics_profile_snapshots'
+            ) THEN
+                CREATE TABLE socmed_analytics_profile_snapshots (
+                    id SERIAL PRIMARY KEY,
+                    profile_id INTEGER NOT NULL,
+                    fetched_at TIMESTAMP NOT NULL,
+                    followers INTEGER,
+                    following INTEGER,
+                    posts_count INTEGER,
+                    total_likes INTEGER,
+                    recent_avg_views INTEGER,
+                    recent_avg_likes INTEGER,
+                    recent_avg_engagement_rate VARCHAR(20) DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS ix_socmed_analytics_profile_snapshots_profile_id
+                    ON socmed_analytics_profile_snapshots (profile_id);
+                CREATE INDEX IF NOT EXISTS ix_socmed_analytics_profile_snapshots_fetched_at
+                    ON socmed_analytics_profile_snapshots (fetched_at);
+            END IF;
+        END
+        $$;
+        """,
     ]
     with engine.connect() as conn:
         for sql in migrations:

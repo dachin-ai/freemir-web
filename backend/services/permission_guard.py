@@ -4,12 +4,13 @@ Permission Guard — FastAPI dependency for tool access control.
 Each tool endpoint can use `require_tool_access("tool_key")` as a dependency
 to verify that the logged-in user has permission for that specific tool.
 
-Permission data is stored in the JWT token (set at login time from the
-Account sheet / PostgreSQL `account_users.permissions` JSON column).
+Permissions are read from PostgreSQL on each request (same source as /auth/verify)
+so admin grants take effect without forcing a re-login. JWT is only used for
+identity after signature/expiry validation.
 """
 
 from fastapi import Request, HTTPException, Depends
-from services.auth_logic import verify_token, has_permission
+from services.auth_logic import verify_token, has_permission, get_user_auth_claims_from_db
 
 
 def _extract_token(request: Request) -> str:
@@ -35,7 +36,9 @@ def require_tool_access(tool_key: str):
         if not payload:
             raise HTTPException(status_code=401, detail="Token expired or invalid.")
 
-        permissions = payload.get("permissions", {})
+        username = (payload.get("username") or "").strip()
+        fresh = get_user_auth_claims_from_db(username) if username else None
+        permissions = (fresh or {}).get("permissions") or payload.get("permissions", {})
         if not has_permission(permissions, tool_key):
             raise HTTPException(
                 status_code=403,

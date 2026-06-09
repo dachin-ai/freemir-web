@@ -1491,6 +1491,10 @@
     "openPost": "Buka postingan",
     "apifyTokenPlaceholder": "",
     "tokenRequired": "Pilih token tersimpan, paste manual, atau pakai token env server.",
+    "errors": {
+      "noPermission": "Kamu belum punya akses Social Media Analytics. Minta admin aktifkan di Access Management.",
+      "configLoadFailed": "Gagal memuat konfigurasi tool dari server."
+    },
     "downloadExcel": "Unduh Excel",
     "downloadJson": "Unduh JSON",
     "downloadVideo": "Unduh video",

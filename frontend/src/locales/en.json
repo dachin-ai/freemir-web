@@ -1518,6 +1518,10 @@
     "openPost": "Open post",
     "apifyTokenPlaceholder": "",
     "tokenRequired": "Select a saved token, paste one manually, or configure server env token.",
+    "errors": {
+      "noPermission": "You do not have access to Social Media Analytics. Ask an admin to grant permission in Access Management.",
+      "configLoadFailed": "Could not load tool configuration from the server."
+    },
     "downloadExcel": "Download Excel",
     "downloadJson": "Download JSON",
     "downloadVideo": "Download video",

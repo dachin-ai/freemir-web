@@ -1491,6 +1491,10 @@
     "openPost": "打开帖子",
     "apifyTokenPlaceholder": "",
     "tokenRequired": "请选择已保存令牌、手动粘贴，或配置服务器 env 令牌。",
+    "errors": {
+      "noPermission": "您没有社媒分析权限。请联系管理员在 Access Management 中开通。",
+      "configLoadFailed": "无法从服务器加载工具配置。"
+    },
     "downloadExcel": "下载 Excel",
     "downloadJson": "下载 JSON",
     "downloadVideo": "下载视频",
