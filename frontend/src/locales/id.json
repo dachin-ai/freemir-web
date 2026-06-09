@@ -787,6 +787,16 @@
     "storeLabel": "Kode toko (Store Code)",
     "storePh": "Pilih toko TikTok",
     "storeRequired": "Pilih kode toko dulu",
+    "stores": {
+      "alertTitle": "Daftar toko gagal dimuat",
+      "empty": "Tidak ada toko TikTok. Minta admin cek sheet Store_Info atau coba refresh.",
+      "loadFail": "Gagal memuat daftar toko. Cek koneksi lalu coba lagi.",
+      "forbidden": "Kamu belum punya akses Ads Monitor. Minta ke admin.",
+      "unauthorized": "Sesi habis. Silakan login lagi.",
+      "notFound": "Toko tidak ditemukan",
+      "retry": "Coba lagi",
+      "refresh": "Muat ulang"
+    },
     "rowsProcessedNote": "Diproses {{processed}} baris (ada Cost atau Gross revenue) dari {{total}} baris file",
     "internalBreakdownTitle": "Rincian Internal Creator",
     "colAccount": "Akun",

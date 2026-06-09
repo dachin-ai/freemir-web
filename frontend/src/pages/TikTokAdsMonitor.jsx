@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    Button, Card, Checkbox, Collapse, DatePicker, Input, Modal, Select, Space, Spin, Table, Tag, Typography, Upload, message,
+    Alert, Button, Card, Checkbox, Collapse, DatePicker, Input, Modal, Space, Spin, Table, Tag, Typography, Upload, message,
 } from 'antd';
+import AdsMonitorStoreSelect from '../components/social/AdsMonitorStoreSelect';
 import {
     CalendarOutlined, CheckCircleOutlined, CloudUploadOutlined, DeleteOutlined, DownloadOutlined, FileExcelOutlined, InboxOutlined, LoadingOutlined, SettingOutlined, TeamOutlined,
 } from '@ant-design/icons';
@@ -58,6 +59,9 @@ export default function TikTokAdsMonitor() {
     const [savingCreators, setSavingCreators] = useState(false);
     const [loadingAccounts, setLoadingAccounts] = useState(false);
     const [stores, setStores] = useState([]);
+    const [storesLoading, setStoresLoading] = useState(false);
+    const [storesError, setStoresError] = useState(null);
+    const [storesWarning, setStoresWarning] = useState(null);
     const [uploadStoreCode, setUploadStoreCode] = useState(() => localStorage.getItem(UPLOAD_STORE_LS_KEY) || null);
     const [reportStoreCode, setReportStoreCode] = useState(() => localStorage.getItem(REPORT_STORE_LS_KEY) || null);
     const [reportMonth, setReportMonth] = useState(() => {
@@ -103,14 +107,39 @@ export default function TikTokAdsMonitor() {
         }
     };
 
-    const loadStores = useCallback(async () => {
+    const loadStores = useCallback(async (refresh = false) => {
+        setStoresLoading(true);
+        setStoresError(null);
+        setStoresWarning(null);
         try {
-            const { data } = await api.get('/ads-monitor/stores');
-            setStores(data.stores || []);
-        } catch {
+            const { data } = await api.get('/ads-monitor/stores', {
+                params: refresh ? { refresh: true } : {},
+            });
+            const list = data.stores || [];
+            setStores(list);
+            if (data.warning) {
+                setStoresWarning(data.warning);
+            }
+            if (!list.length) {
+                setStoresError(data.warning || t('adsMonitor.stores.empty'));
+            }
+        } catch (err) {
+            const status = err.response?.status;
+            const detail = err.response?.data?.detail || err.response?.data?.warning;
+            if (status === 403) {
+                setStoresError(t('adsMonitor.stores.forbidden'));
+            } else if (status === 401) {
+                setStoresError(t('adsMonitor.stores.unauthorized'));
+            } else {
+                setStoresError(detail || t('adsMonitor.stores.loadFail'));
+            }
             setStores([]);
+        } finally {
+            setStoresLoading(false);
         }
-    }, []);
+    }, [t]);
+
+    const retryStores = useCallback(() => loadStores(true), [loadStores]);
 
     const loadMonthlyReport = useCallback(async () => {
         if (!reportStoreCode) {
@@ -458,6 +487,21 @@ export default function TikTokAdsMonitor() {
                 )}
             />
 
+            {storesError && (
+                <Alert
+                    className="ads-monitor-stores-alert"
+                    type="error"
+                    showIcon
+                    message={t('adsMonitor.stores.alertTitle')}
+                    description={storesError}
+                    action={(
+                        <Button size="small" loading={storesLoading} onClick={retryStores}>
+                            {t('adsMonitor.stores.retry')}
+                        </Button>
+                    )}
+                />
+            )}
+
             <Card
                 className="ads-monitor-toolbar-card"
                 styles={{ body: { padding: '12px 14px' } }}
@@ -465,17 +509,14 @@ export default function TikTokAdsMonitor() {
                 <div className="ads-monitor-toolbar">
                     <label className="ads-monitor-toolbar-field">
                         <span className="ads-monitor-field-label">{t('adsMonitor.storeLabel')}</span>
-                        <Select
-                            showSearch
-                            allowClear
-                            placeholder={t('adsMonitor.storePh')}
+                        <AdsMonitorStoreSelect
                             value={uploadStoreCode}
                             onChange={handleUploadStoreChange}
-                            optionFilterProp="label"
-                            options={stores.map((s) => ({
-                                value: s.code,
-                                label: `${s.code} — ${s.name}`,
-                            }))}
+                            stores={stores}
+                            loading={storesLoading}
+                            warning={storesWarning}
+                            onRetry={retryStores}
+                            showError={false}
                         />
                     </label>
                     <label className="ads-monitor-toolbar-field ads-monitor-toolbar-field--date">
@@ -653,18 +694,16 @@ export default function TikTokAdsMonitor() {
                         {t('adsMonitor.report.title')}
                     </Text>
                     <div className="ads-monitor-monthly-controls">
-                        <Select
-                            showSearch
-                            allowClear
+                        <AdsMonitorStoreSelect
                             className="ads-monitor-report-store-select"
                             placeholder={t('adsMonitor.report.storePh')}
                             value={reportStoreCode}
                             onChange={handleReportStoreChange}
-                            optionFilterProp="label"
-                            options={stores.map((s) => ({
-                                value: s.code,
-                                label: `${s.code} — ${s.name}`,
-                            }))}
+                            stores={stores}
+                            loading={storesLoading}
+                            warning={storesWarning}
+                            onRetry={retryStores}
+                            showError={false}
                         />
                         <DatePicker
                             picker="month"
@@ -705,6 +744,10 @@ export default function TikTokAdsMonitor() {
                         children: (
                             <AdsMonitorManualImport
                                 stores={stores}
+                                storesLoading={storesLoading}
+                                storesError={storesError}
+                                storesWarning={storesWarning}
+                                onRetryStores={retryStores}
                                 defaultStoreCode={reportStoreCode}
                                 onSaved={handleImportSaved}
                             />

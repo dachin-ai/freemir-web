@@ -29,6 +29,52 @@
 }
 
 /* ── Compact upload toolbar ── */
+.ads-monitor-stores-alert {
+  margin-bottom: 12px;
+}
+
+.ads-monitor-store-select-wrap {
+  width: 100%;
+}
+
+.ads-monitor-store-select-wrap .ant-select {
+  width: 100%;
+}
+
+.ads-monitor-stores-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.ads-monitor-stores-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.ads-monitor-stores-error-text {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.ads-monitor-stores-not-found {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px;
+}
+
+.ads-monitor-stores-dropdown-footer {
+  padding: 4px 8px 6px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
 .ads-monitor-toolbar-card {
   margin-bottom: 12px;
   border-radius: 10px !important;

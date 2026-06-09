@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
-    Button, Select, Typography, Upload, message,
+    Button, Typography, Upload, message,
 } from 'antd';
+import AdsMonitorStoreSelect from './AdsMonitorStoreSelect';
 import {
     DownloadOutlined, FileExcelOutlined, ImportOutlined, InboxOutlined,
 } from '@ant-design/icons';
@@ -12,7 +13,15 @@ import { downloadImportTemplate, parseImportFile } from '../../utils/adsMonitorI
 
 const { Text } = Typography;
 
-export default function AdsMonitorManualImport({ stores, defaultStoreCode, onSaved }) {
+export default function AdsMonitorManualImport({
+    stores,
+    storesLoading,
+    storesError,
+    storesWarning,
+    onRetryStores,
+    defaultStoreCode,
+    onSaved,
+}) {
     const { t } = useTranslation();
     const [importStoreCode, setImportStoreCode] = useState(defaultStoreCode || null);
     const [fileList, setFileList] = useState([]);
@@ -80,17 +89,14 @@ export default function AdsMonitorManualImport({ stores, defaultStoreCode, onSav
                     <Text type="secondary" className="ads-monitor-import-store-label">
                         {t('adsMonitor.storeLabel')}
                     </Text>
-                    <Select
-                        showSearch
-                        allowClear
-                        placeholder={t('adsMonitor.storePh')}
+                    <AdsMonitorStoreSelect
                         value={importStoreCode}
                         onChange={setImportStoreCode}
-                        optionFilterProp="label"
-                        options={stores.map((s) => ({
-                            value: s.code,
-                            label: `${s.code} — ${s.name}`,
-                        }))}
+                        stores={stores}
+                        loading={storesLoading}
+                        error={storesError}
+                        warning={storesWarning}
+                        onRetry={onRetryStores}
                     />
                 </div>
                 <div className="ads-monitor-import-actions">

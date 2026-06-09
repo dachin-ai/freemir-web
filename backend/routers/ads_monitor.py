@@ -8,7 +8,7 @@ from database import SessionLocal
 from services.ads_monitor_logic import (
     analyze_ads_file_b64,
     get_monthly_report,
-    get_tiktok_stores,
+    get_tiktok_stores_payload,
     list_discovered_accounts,
     list_internal_creators,
     save_internal_creators,
@@ -115,8 +115,11 @@ def get_discovered_accounts(
 
 
 @router.get("/stores", dependencies=[Depends(require_tool_access("ads_monitor"))])
-def list_tiktok_stores():
-    return {"stores": get_tiktok_stores()}
+def list_tiktok_stores(refresh: bool = Query(False, description="Bypass cache and reload from sheet")):
+    payload = get_tiktok_stores_payload(force_refresh=refresh)
+    if not payload.get("ok"):
+        return payload
+    return payload
 
 
 @router.post("/manual-import", dependencies=[Depends(require_tool_access("ads_monitor"))])

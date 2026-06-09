@@ -788,6 +788,16 @@
     "storeLabel": "店铺代码",
     "storePh": "选择 TikTok 店铺",
     "storeRequired": "请先选择店铺代码",
+    "stores": {
+      "alertTitle": "无法加载店铺列表",
+      "empty": "未找到 TikTok 店铺。请联系管理员检查 Store_Info 或刷新。",
+      "loadFail": "加载店铺列表失败，请检查网络后重试。",
+      "forbidden": "您没有广告监控权限，请联系管理员申请。",
+      "unauthorized": "会话已过期，请重新登录。",
+      "notFound": "没有匹配的店铺",
+      "retry": "重试",
+      "refresh": "刷新列表"
+    },
     "rowsProcessedNote": "已处理 {{processed}} 行（有 Cost 或 Gross revenue），文件共 {{total}} 行",
     "internalBreakdownTitle": "内部创作者明细",
     "colAccount": "账号",

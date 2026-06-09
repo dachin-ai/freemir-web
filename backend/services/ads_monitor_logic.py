@@ -412,35 +412,17 @@ def _register_new_discovered_accounts(db: Session, accounts: Iterable[str]) -> i
     return len(new_accounts)
 
 
-_STORE_INFO_HEADER_TOKENS = frozenset({"code", "store code", "kode"})
-
-
 def get_tiktok_stores() -> list[dict]:
-    """TikTok store codes from Admin Base > Store_Info (platform column B)."""
-    try:
-        from services.auth_logic import get_sheet_client
+    """TikTok store codes from Admin Base > Store_Info."""
+    from services.store_info_logic import get_tiktok_stores as _load_stores
 
-        sh = get_sheet_client()
-        ws = sh.worksheet("Store_Info")
-        rows = ws.get_all_values()
-        stores: list[dict] = []
-        seen: set[str] = set()
-        for row in rows[1:]:
-            platform = str(row[1]).strip() if len(row) > 1 else ""
-            code = str(row[2]).strip() if len(row) > 2 else ""
-            name = str(row[4]).strip() if len(row) > 4 else ""
-            if not code or code.lower() in _STORE_INFO_HEADER_TOKENS:
-                continue
-            plat = platform.lower()
-            if "tiktok" not in plat and not code.upper().startswith("TT"):
-                continue
-            if code in seen:
-                continue
-            seen.add(code)
-            stores.append({"code": code, "name": name or code})
-        return sorted(stores, key=lambda item: item["code"])
-    except Exception:
-        return []
+    return _load_stores()
+
+
+def get_tiktok_stores_payload(*, force_refresh: bool = False) -> dict:
+    from services.store_info_logic import get_tiktok_stores_payload as _load_payload
+
+    return _load_payload(force_refresh=force_refresh)
 
 
 def _validate_store_code(store_code: str) -> str:

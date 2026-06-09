@@ -814,6 +814,16 @@
     "storeLabel": "Store code",
     "storePh": "Select TikTok store",
     "storeRequired": "Select a store code first",
+    "stores": {
+      "alertTitle": "Store list could not be loaded",
+      "empty": "No TikTok stores found. Ask admin to check Store_Info sheet or try refresh.",
+      "loadFail": "Failed to load store list. Check connection and try again.",
+      "forbidden": "You do not have Ads Monitor access. Request permission from admin.",
+      "unauthorized": "Session expired. Please log in again.",
+      "notFound": "No stores match your search",
+      "retry": "Retry",
+      "refresh": "Refresh list"
+    },
     "rowsProcessedNote": "Processed {{processed}} rows (with Cost or Gross revenue) of {{total}} file rows",
     "internalBreakdownTitle": "Internal Creator breakdown",
     "colAccount": "Account",
